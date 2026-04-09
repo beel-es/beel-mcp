@@ -1,0 +1,21 @@
+{
+  "$schema": "https://gofastmcp.com/public/schemas/fastmcp.json/v1.json",
+  "source": {
+    "type": "filesystem",
+    "path": "src/beel_mcp/server.py:mcp"
+  },
+  "environment": {
+    "type": "uv",
+    "python": ">=3.11",
+    "dependencies": [
+      "fastmcp>=3.2.0",
+      "httpx>=0.27.0",
+      "pydantic>=2.7.0",
+      "pydantic-settings>=2.2.1"
+    ]
+  },
+  "deployment": {
+    "transport": "stdio",
+    "log_level": "INFO"
+  }
+}
