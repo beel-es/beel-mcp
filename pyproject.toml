@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "MCP Server para BeeL con tools atomicas y workflows de facturacion"
 requires-python = ">=3.11"
 dependencies = [
-  "fastmcp>=3.2.0",
+  "fastmcp[apps]>=3.2.0",
   "httpx>=0.27.0",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.2.1",

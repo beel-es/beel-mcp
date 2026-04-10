@@ -29,14 +29,16 @@ class BeelClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._settings = settings
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if settings.authorization_header:
+            headers["Authorization"] = settings.authorization_header
         self._client = httpx.AsyncClient(
             base_url=settings.beel_base_url,
             timeout=httpx.Timeout(settings.beel_timeout_seconds),
-            headers={
-                "Authorization": settings.authorization_header,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             transport=transport,
         )
 

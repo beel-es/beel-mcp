@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
+from fastmcp.apps import AppConfig, ResourceCSP
 
 from beel_mcp.client.beel_client import BeelClient
 from beel_mcp.config import get_settings
@@ -13,26 +14,44 @@ from beel_mcp.services.invoice_service import InvoiceService
 from beel_mcp.services.nif_service import NifService
 from beel_mcp.services.pdf_service import PdfService
 from beel_mcp.services.verifactu_service import VerifactuService
+from beel_mcp.ui.pdf_viewer import (
+    PDF_VIEWER_URI,
+    RESOURCE_DOMAINS,
+    get_pdf_viewer_html,
+)
 
 
 @asynccontextmanager
 async def lifespan(_: FastMCP):
     settings = get_settings()
-    beel_client = BeelClient(settings)
+    client_cache: dict[str, dict] = {}
+
+    default_client = None
+    default_services: dict = {}
+    if settings.beel_api_key:
+        default_client = BeelClient(settings)
+        default_services = {
+            "beel_client": default_client,
+            "customer_service": CustomerService(default_client),
+            "nif_service": NifService(default_client),
+            "invoice_service": InvoiceService(default_client),
+            "pdf_service": PdfService(default_client),
+            "delivery_service": DeliveryService(default_client),
+            "verifactu_service": VerifactuService(default_client),
+            "export_service": ExportService(default_client),
+        }
+
     try:
         yield {
             "settings": settings,
-            "beel_client": beel_client,
-            "customer_service": CustomerService(beel_client),
-            "nif_service": NifService(beel_client),
-            "invoice_service": InvoiceService(beel_client),
-            "pdf_service": PdfService(beel_client),
-            "delivery_service": DeliveryService(beel_client),
-            "verifactu_service": VerifactuService(beel_client),
-            "export_service": ExportService(beel_client),
+            "client_cache": client_cache,
+            **default_services,
         }
     finally:
-        await beel_client.close()
+        if default_client:
+            await default_client.close()
+        for entry in client_cache.values():
+            await entry["beel_client"].close()
 
 
 mcp = FastMCP(
@@ -46,6 +65,19 @@ mcp = FastMCP(
 )
 
 
+# --- Recurso UI: visor PDF embebido ---
+@mcp.resource(
+    PDF_VIEWER_URI,
+    app=AppConfig(
+        csp=ResourceCSP(resource_domains=RESOURCE_DOMAINS),
+    ),
+)
+def pdf_viewer_resource() -> str:
+    """HTML del visor de PDF con PDF.js para renderizado en iframe."""
+    return get_pdf_viewer_html()
+
+
+# --- Imports de tools ---
 from beel_mcp.tools.customer_tools import (  # noqa: E402
     create_customer,
     search_customers,
@@ -75,6 +107,7 @@ from beel_mcp.tools.workflow_tools import (  # noqa: E402
 )
 
 
+# --- Registro de tools ---
 mcp.tool(search_customers)
 mcp.tool(create_customer)
 mcp.tool(upsert_customer)
@@ -82,7 +115,12 @@ mcp.tool(validate_nif)
 mcp.tool(create_invoice_draft)
 mcp.tool(update_invoice_draft)
 mcp.tool(issue_invoice)
-mcp.tool(preview_invoice_pdf)
+# preview_invoice_pdf se registra con AppConfig para que el host
+# sepa que debe cargar el visor PDF cuando esta tool se invoque
+mcp.tool(
+    preview_invoice_pdf,
+    app=AppConfig(resource_uri=PDF_VIEWER_URI),
+)
 mcp.tool(get_invoice_pdf_download)
 mcp.tool(send_invoice_email)
 mcp.tool(mark_invoice_paid)

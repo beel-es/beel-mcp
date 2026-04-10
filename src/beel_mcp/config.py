@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    beel_api_key: SecretStr = Field(alias="BEEL_API_KEY")
+    beel_api_key: SecretStr | None = Field(default=None, alias="BEEL_API_KEY")
     beel_base_url: str = Field(
         default="https://app.beel.es/api",
         alias="BEEL_BASE_URL",
@@ -60,7 +60,9 @@ class Settings(BaseSettings):
         return value.rstrip("/")
 
     @property
-    def authorization_header(self) -> str:
+    def authorization_header(self) -> str | None:
+        if self.beel_api_key is None:
+            return None
         return f"Bearer {self.beel_api_key.get_secret_value()}"
 
 

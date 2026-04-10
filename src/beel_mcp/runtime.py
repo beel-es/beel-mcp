@@ -5,14 +5,97 @@ import hashlib
 from typing import Any
 
 from fastmcp import Context
+from fastmcp.server.dependencies import get_http_request
 
 from beel_mcp.config import Settings
 from beel_mcp.schemas import ToolResponse
+
+_SERVICE_NAMES = {
+    "customer_service",
+    "nif_service",
+    "invoice_service",
+    "pdf_service",
+    "delivery_service",
+    "verifactu_service",
+    "export_service",
+}
+
+
+def resolve_api_key(ctx: Context) -> str:
+    """Resolve the API key for the current request.
+
+    1. Try HTTP Authorization header (HTTP/Streamable HTTP mode).
+    2. Fall back to Settings (stdio mode).
+    3. Raise if no key found.
+    """
+    try:
+        request = get_http_request()
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip()
+    except RuntimeError:
+        pass  # No HTTP request (stdio mode)
+
+    settings = ctx.lifespan_context.get("settings")
+    if settings and settings.beel_api_key:
+        return settings.beel_api_key.get_secret_value()
+
+    raise RuntimeError(
+        "No se encontro API key. Proporcionala en el JSON de configuracion "
+        "(campo 'env' para stdio o header 'Authorization: Bearer <key>' para HTTP)."
+    )
+
+
+def _resolve_service_for_request(ctx: Context, service_name: str) -> Any:
+    api_key = resolve_api_key(ctx)
+    settings: Settings = ctx.lifespan_context["settings"]
+
+    # Fast path: if the key matches the lifespan default, return existing service
+    default_key = (
+        settings.beel_api_key.get_secret_value() if settings.beel_api_key else None
+    )
+    if api_key == default_key:
+        return ctx.lifespan_context[service_name]
+
+    # Slow path: create/get services for this API key
+    client_cache: dict = ctx.lifespan_context["client_cache"]
+    if api_key not in client_cache:
+        from pydantic import SecretStr
+
+        from beel_mcp.client.beel_client import BeelClient
+        from beel_mcp.services.customer_service import CustomerService
+        from beel_mcp.services.delivery_service import DeliveryService
+        from beel_mcp.services.export_service import ExportService
+        from beel_mcp.services.invoice_service import InvoiceService
+        from beel_mcp.services.nif_service import NifService
+        from beel_mcp.services.pdf_service import PdfService
+        from beel_mcp.services.verifactu_service import VerifactuService
+
+        user_settings = settings.model_copy(
+            update={"beel_api_key": SecretStr(api_key)}
+        )
+        client = BeelClient(user_settings)
+        client_cache[api_key] = {
+            "beel_client": client,
+            "customer_service": CustomerService(client),
+            "nif_service": NifService(client),
+            "invoice_service": InvoiceService(client),
+            "pdf_service": PdfService(client),
+            "delivery_service": DeliveryService(client),
+            "verifactu_service": VerifactuService(client),
+            "export_service": ExportService(client),
+        }
+
+    return client_cache[api_key][service_name]
 
 
 def get_from_lifespan(ctx: Context | None, key: str) -> Any:
     if ctx is None:
         raise RuntimeError("FastMCP no inyecto Context en la tool.")
+
+    if key in _SERVICE_NAMES:
+        return _resolve_service_for_request(ctx, key)
+
     value = ctx.lifespan_context.get(key)
     if value is None:
         raise RuntimeError(
