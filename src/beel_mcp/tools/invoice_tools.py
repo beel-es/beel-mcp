@@ -184,3 +184,76 @@ async def issue_invoice(
             human_summary=f"Error emitiendo factura: {exc.message}",
             error=str(exc),
         )
+
+
+async def list_invoices(
+    page: int = 1,
+    limit: int = 20,
+    search: str | None = None,
+    status: str | None = None,
+    invoice_type: str | None = None,
+    customer_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    invoice_number: str | None = None,
+    recipient_name: str | None = None,
+    recipient_nif: str | None = None,
+    series_code: str | None = None,
+    taxable_base_min: float | None = None,
+    taxable_base_max: float | None = None,
+    total_min: float | None = None,
+    total_max: float | None = None,
+    verifactu_status: str | None = None,
+    sort_by: str | None = None,
+    sort_order: str = "desc",
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Lista facturas existentes con filtros (estado, cliente, rango de fechas, busqueda libre, VeriFactu, importes) y paginacion."""
+    invoice_svc = get_from_lifespan(ctx, "invoice_service")
+    params: dict[str, Any] = {
+        "page": page,
+        "limit": limit,
+        "search": search,
+        "status": status,
+        "type": invoice_type,
+        "customer_id": customer_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "invoice_number": invoice_number,
+        "recipient_name": recipient_name,
+        "recipient_nif": recipient_nif,
+        "series_code": series_code,
+        "taxable_base_min": taxable_base_min,
+        "taxable_base_max": taxable_base_max,
+        "total_min": total_min,
+        "total_max": total_max,
+        "verifactu_status": verifactu_status,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+    try:
+        result = await invoice_svc.list_invoices(**params)
+        data = result.get("data", {})
+        invoices = data.get("invoices", []) or []
+        pagination = data.get("pagination", {}) or {}
+        total_items = pagination.get("total_items", len(invoices))
+        current_page = pagination.get("current_page", page)
+        total_pages = pagination.get("total_pages", 1)
+        summary = (
+            f"{total_items} facturas encontradas. "
+            f"Pagina {current_page}/{total_pages} ({len(invoices)} en esta pagina)."
+        )
+        return success_response(
+            action_taken="invoices_listed",
+            human_summary=summary,
+            resource_ids={},
+            data=data,
+            next_actions=["get_invoice", "export_invoices_excel"],
+        )
+    except BeelApiError as exc:
+        return error_response(
+            action_taken="invoices_list_failed",
+            human_summary=f"Error listando facturas: {exc.message}",
+            error=str(exc),
+        )

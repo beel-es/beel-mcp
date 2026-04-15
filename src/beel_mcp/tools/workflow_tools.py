@@ -112,7 +112,7 @@ async def issue_send_and_track_invoice(
                 f"{get_confirmation_message('issue_send_and_track_invoice')} "
                 "Vuelve a llamar con `confirm=true`."
             ),
-            next_actions=["get_invoice_status"],
+            next_actions=["get_invoice"],
         )
 
     steps: list[str] = []
@@ -197,7 +197,7 @@ async def follow_up_unpaid_invoices(
                 "total_pending": total_pending,
                 "invoices": summary_rows,
             },
-            next_actions=["export_invoices_excel", "get_invoice_status"],
+            next_actions=["export_invoices_excel", "get_invoice"],
         )
     except BeelApiError as exc:
         return error_response(

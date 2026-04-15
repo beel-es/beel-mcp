@@ -33,7 +33,7 @@ async def mark_invoice_paid(
                 f"{get_confirmation_message('mark_invoice_paid')} "
                 "Vuelve a llamar con `confirm=true`."
             ),
-            next_actions=["get_invoice_status"],
+            next_actions=["get_invoice"],
         )
     try:
         payment_info = None
@@ -57,7 +57,7 @@ async def mark_invoice_paid(
             ),
             resource_ids={"invoice_id": invoice_id},
             data=invoice,
-            next_actions=["get_invoice_status", "export_invoices_excel"],
+            next_actions=["get_invoice", "export_invoices_excel"],
         )
     except (ValidationError, ValueError) as exc:
         return error_response(

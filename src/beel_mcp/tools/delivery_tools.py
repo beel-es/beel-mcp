@@ -33,7 +33,7 @@ async def send_invoice_email(
                 f"{get_confirmation_message('send_invoice_email')} "
                 "Vuelve a llamar con `confirm=true`."
             ),
-            next_actions=["get_invoice_status"],
+            next_actions=["get_invoice"],
         )
     try:
         await invoice_svc.ensure_action_allowed(invoice_id, "send_invoice_email")
@@ -52,7 +52,7 @@ async def send_invoice_email(
             human_summary=f"Factura enviada a {data.get('sent_to', [])}.",
             resource_ids={"invoice_id": invoice_id, "email_id": data.get("email_id", "")},
             data=data,
-            next_actions=["get_invoice_status", "mark_invoice_paid"],
+            next_actions=["get_invoice", "mark_invoice_paid"],
         )
     except ValueError as exc:
         return error_response(

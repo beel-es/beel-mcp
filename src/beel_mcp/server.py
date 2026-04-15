@@ -58,8 +58,8 @@ mcp = FastMCP(
     name="BeeL MCP Server",
     instructions=(
         "Servidor MCP para operar BeeL con guardrails fiscales. "
-        "Permite buscar y crear clientes, validar NIF, crear y emitir facturas, "
-        "consultar VeriFactu, enviar por email y exportar datos."
+        "Permite buscar y crear clientes, validar NIF, listar y obtener facturas, "
+        "crear y emitir facturas, consultar VeriFactu, enviar por email y exportar datos."
     ),
     lifespan=lifespan,
 )
@@ -88,6 +88,7 @@ from beel_mcp.tools.export_tools import export_invoices_excel  # noqa: E402
 from beel_mcp.tools.invoice_tools import (  # noqa: E402
     create_invoice_draft,
     issue_invoice,
+    list_invoices,
     update_invoice_draft,
 )
 from beel_mcp.tools.nif_tools import validate_nif  # noqa: E402
@@ -97,7 +98,7 @@ from beel_mcp.tools.pdf_tools import (  # noqa: E402
     preview_invoice_pdf,
 )
 from beel_mcp.tools.status_tools import (  # noqa: E402
-    get_invoice_status,
+    get_invoice,
     get_verifactu_status,
 )
 from beel_mcp.tools.workflow_tools import (  # noqa: E402
@@ -112,6 +113,8 @@ mcp.tool(search_customers)
 mcp.tool(create_customer)
 mcp.tool(upsert_customer)
 mcp.tool(validate_nif)
+mcp.tool(list_invoices)
+mcp.tool(get_invoice)
 mcp.tool(create_invoice_draft)
 mcp.tool(update_invoice_draft)
 mcp.tool(issue_invoice)
@@ -124,7 +127,6 @@ mcp.tool(
 mcp.tool(get_invoice_pdf_download)
 mcp.tool(send_invoice_email)
 mcp.tool(mark_invoice_paid)
-mcp.tool(get_invoice_status)
 mcp.tool(get_verifactu_status)
 mcp.tool(export_invoices_excel)
 mcp.tool(ensure_customer_ready_for_invoicing)

@@ -12,23 +12,23 @@ def _suggest_next(status: str | None) -> list[str]:
         "ISSUED": ["get_invoice_pdf_download", "send_invoice_email", "get_verifactu_status"],
         "SENT": ["mark_invoice_paid", "get_verifactu_status"],
         "PAID": ["get_verifactu_status", "export_invoices_excel"],
-        "OVERDUE": ["get_invoice_status", "export_invoices_excel"],
+        "OVERDUE": ["get_invoice", "export_invoices_excel"],
     }
-    return suggestions.get(status or "", ["get_invoice_status"])
+    return suggestions.get(status or "", ["get_invoice"])
 
 
-async def get_invoice_status(
+async def get_invoice(
     invoice_id: str,
     ctx: Context | None = None,
 ) -> dict:
-    """Recupera el detalle completo de una factura, incluido VeriFactu."""
+    """Obtiene una factura por su ID con el detalle completo (lineas, totales, recipient, estado y VeriFactu)."""
     invoice_svc = get_from_lifespan(ctx, "invoice_service")
     try:
         result = await invoice_svc.get(invoice_id)
         invoice = result.get("data", {})
         verifactu = invoice.get("verifactu", {})
         return success_response(
-            action_taken="invoice_status_retrieved",
+            action_taken="invoice_retrieved",
             human_summary=(
                 f"Factura {invoice.get('invoice_number', 'borrador')}: estado "
                 f"{invoice.get('status')}. VeriFactu: "
@@ -40,7 +40,7 @@ async def get_invoice_status(
         )
     except BeelApiError as exc:
         return error_response(
-            action_taken="invoice_status_failed",
+            action_taken="invoice_retrieval_failed",
             human_summary=f"Error recuperando factura: {exc.message}",
             error=str(exc),
         )
@@ -79,7 +79,7 @@ async def get_verifactu_status(
             human_summary=summary,
             resource_ids={"invoice_id": invoice_id},
             data=data,
-            next_actions=["get_invoice_status"] if status == "PENDING" else ["export_invoices_excel"],
+            next_actions=["get_invoice"] if status == "PENDING" else ["export_invoices_excel"],
         )
     except BeelApiError as exc:
         return error_response(
