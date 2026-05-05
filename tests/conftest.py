@@ -15,4 +15,19 @@ def mock_settings() -> Settings:
         BEEL_MAX_RETRIES=1,
         BEEL_RETRY_BACKOFF_SECONDS=0.1,
         BEEL_MAX_INLINE_BINARY_BYTES=100_000,
+        OAUTH_ENABLED=False,
+    )
+
+
+@pytest.fixture
+def mock_oauth_settings() -> Settings:
+    """Settings validos en modo OAuth (para tests de build_auth)."""
+    return Settings(
+        OAUTH_ENABLED=True,
+        OAUTH_AUTHORIZATION_ENDPOINT="https://app.beel.es/oauth2/authorize",
+        OAUTH_TOKEN_ENDPOINT="https://app.beel.es/oauth2/token",
+        OAUTH_JWKS_URI="https://app.beel.es/oauth2/jwks",
+        OAUTH_CLIENT_ID="test-client",
+        OAUTH_CLIENT_SECRET="test-secret",
+        MCP_PUBLIC_URL="https://mcp.example.com",
     )

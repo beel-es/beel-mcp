@@ -75,7 +75,7 @@ class TestResolveApiKey:
             "beel_mcp.runtime.get_http_request",
             side_effect=RuntimeError("no HTTP"),
         ):
-            with pytest.raises(RuntimeError, match="No se encontro API key"):
+            with pytest.raises(RuntimeError, match="No se encontro credencial"):
                 resolve_api_key(ctx)
 
     def test_ignores_non_bearer_auth_header(self):

@@ -10,6 +10,27 @@ from fastmcp.server.dependencies import get_http_request
 from beel_mcp.config import Settings
 from beel_mcp.schemas import ToolResponse
 
+def _debug_log_jwt_claims(token: str) -> None:
+    """TEMP: imprime el JWT crudo + claims para debug 403 de BeeL."""
+    import json
+    import logging
+
+    log = logging.getLogger("beel_mcp.debug")
+    log.warning("[BeeL JWT raw] %s", token)
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        log.warning(
+            "[BeeL JWT claims forwarded] %s",
+            json.dumps(payload, default=str, sort_keys=True),
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("[BeeL JWT claims forwarded] no decodificable: %s", e)
+
+
 _SERVICE_NAMES = {
     "customer_service",
     "nif_service",
@@ -22,12 +43,29 @@ _SERVICE_NAMES = {
 
 
 def resolve_api_key(ctx: Context) -> str:
-    """Resolve the API key for the current request.
+    """Resuelve el credencial a enviar en Authorization: Bearer a la API de BeeL.
 
-    1. Try HTTP Authorization header (HTTP/Streamable HTTP mode).
-    2. Fall back to Settings (stdio mode).
-    3. Raise if no key found.
+    Prioridad:
+    1. OAuth activado -> access token validado por FastMCP.
+    2. Header HTTP `Authorization: Bearer ...` (modo multi-tenant HTTP).
+    3. settings.beel_api_key (modo stdio / desarrollo).
     """
+    settings = ctx.lifespan_context.get("settings")
+
+    if settings and settings.oauth_enabled:
+        try:
+            from fastmcp.server.dependencies import get_access_token
+
+            token = get_access_token()
+            if token is not None and token.token:
+                _debug_log_jwt_claims(token.token)
+                return token.token
+        except RuntimeError:
+            pass
+        raise RuntimeError(
+            "OAuth activado pero no se encontro access token en la request."
+        )
+
     try:
         request = get_http_request()
         auth = request.headers.get("authorization", "")
@@ -36,13 +74,12 @@ def resolve_api_key(ctx: Context) -> str:
     except RuntimeError:
         pass  # No HTTP request (stdio mode)
 
-    settings = ctx.lifespan_context.get("settings")
     if settings and settings.beel_api_key:
         return settings.beel_api_key.get_secret_value()
 
     raise RuntimeError(
-        "No se encontro API key. Proporcionala en el JSON de configuracion "
-        "(campo 'env' para stdio o header 'Authorization: Bearer <key>' para HTTP)."
+        "No se encontro credencial. Configura BEEL_API_KEY (.env), "
+        "manda `Authorization: Bearer <key>` en HTTP, o activa OAUTH_ENABLED."
     )
 
 

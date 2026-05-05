@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
+
+_log = logging.getLogger("beel_mcp.beel_client")
 
 from beel_mcp.client.exceptions import (
     BeelApiError,
@@ -109,13 +112,20 @@ class BeelClient:
 
         for attempt in range(max_attempts):
             try:
-                response = await self._client.request(
+                req = self._client.build_request(
                     method=method,
                     url=path,
                     params=params,
                     json=json_body,
                     headers=headers,
                 )
+                _log.warning(
+                    "[BeeL HTTP] %s %s (auth=%s)",
+                    req.method,
+                    req.url,
+                    "Bearer ***" + (req.headers.get("authorization", "") or "")[-12:],
+                )
+                response = await self._client.send(req)
 
                 if response.status_code == 204:
                     return {}

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig, ResourceCSP
 
+from beel_mcp.auth import build_auth
 from beel_mcp.client.beel_client import BeelClient
 from beel_mcp.config import get_settings
 from beel_mcp.services.customer_service import CustomerService
@@ -54,6 +55,9 @@ async def lifespan(_: FastMCP):
             await entry["beel_client"].close()
 
 
+_settings = get_settings()
+_auth = build_auth(_settings)
+
 mcp = FastMCP(
     name="BeeL MCP Server",
     instructions=(
@@ -61,6 +65,7 @@ mcp = FastMCP(
         "Permite buscar y crear clientes, validar NIF, listar y obtener facturas, "
         "crear y emitir facturas, consultar VeriFactu, enviar por email y exportar datos."
     ),
+    auth=_auth,
     lifespan=lifespan,
 )
 
@@ -135,7 +140,11 @@ mcp.tool(follow_up_unpaid_invoices)
 
 
 def main() -> None:
-    mcp.run()
+    settings = get_settings()
+    if settings.oauth_enabled:
+        mcp.run(transport="http", host="0.0.0.0", port=8000)
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":
