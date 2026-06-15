@@ -1,0 +1,75 @@
+name: Sync OpenAPI spec & publish
+
+# Keeps the embedded spec in sync with the backend. Trigger options:
+#  - repository_dispatch (event_type: openapi-updated) fired by the backend repo
+#    when public-api.yaml changes on develop.
+#  - manual workflow_dispatch (optionally with publish=true to release to npm).
+on:
+  repository_dispatch:
+    types: [openapi-updated]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm if the spec changed
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beel-mcp
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout backend (develop) for the spec source
+        uses: actions/checkout@v4
+        with:
+          repository: carlosmgv02/beel.es-autonomos
+          ref: develop
+          ssh-key: ${{ secrets.BACKEND_DEPLOY_KEY }}
+          path: backend-src
+          sparse-checkout: backend/src/main/resources/openapi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Re-bundle the spec
+        run: node scripts/bundle-spec.mjs backend-src/backend/src/main/resources/openapi/public-api.yaml
+
+      - name: Validate (typecheck + tests + build)
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Commit spec changes
+        id: commit
+        run: |
+          rm -rf backend-src
+          if git diff --quiet -- openapi/public-api.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No spec changes."
+          else
+            git config user.name "beel-bot"
+            git config user.email "it@beel.es"
+            git add openapi/public-api.yaml
+            git commit -m "chore(spec): sync public-api.yaml from backend develop"
+            git push origin develop
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version & publish to npm
+        if: steps.commit.outputs.changed == 'true' && (github.event_name == 'repository_dispatch' || inputs.publish)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm version patch -m "chore(release): %s [skip ci]"
+          git push origin develop --follow-tags
+          npm publish --access public
