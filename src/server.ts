@@ -13,6 +13,8 @@ import { ApiError } from './http/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { guardrailResources, readGuardrailResource } from './resources/guardrails.js';
+import { pdfAppResource, readPdfApp } from './resources/pdf-app.js';
+import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './ui/registry.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
 
 export interface ServerInfo {
@@ -76,7 +78,13 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
       const apiTool = apiByName.get(name);
       if (!apiTool) return textResult(`Unknown tool: ${name}`, true);
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
-      return textResult(JSON.stringify(data, null, 2));
+      const result = textResult(JSON.stringify(data, null, 2));
+      // MCP App tools (e.g. the PDF viewer) need the payload as structuredContent
+      // so the host can hand it to the UI panel.
+      if (apiTool.appResourceUri && data && typeof data === 'object' && !Array.isArray(data)) {
+        result.structuredContent = data as Record<string, unknown>;
+      }
+      return result;
     } catch (err) {
       if (err instanceof ApiError) return textResult(formatApiError(err), true);
       return textResult(err instanceof Error ? err.message : String(err), true);
@@ -84,11 +92,26 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: guardrailResources,
+    resources: [...guardrailResources, pdfAppResource],
   }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
+    if (uri === INVOICE_PDF_APP_URI) {
+      const app = readPdfApp();
+      if (!app) throw new Error('Invoice PDF app not built. Run `npm run build:ui`.');
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: MCP_APP_MIME,
+            text: app.text,
+            // CSP must allow the presigned PDF host inside the sandboxed iframe.
+            _meta: { ui: { csp: { frameDomains: app.frameDomains } } },
+          },
+        ],
+      };
+    }
     const body = readGuardrailResource(uri);
     if (body === null) throw new Error(`Unknown resource: ${uri}`);
     return { contents: [{ uri, mimeType: 'text/markdown', text: body }] };
