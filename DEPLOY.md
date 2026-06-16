@@ -1,10 +1,10 @@
 # Deploying the BeeL MCP server (remote / OAuth)
 
 This deploys the **remote** server (`beel-mcp-http`) at e.g. `https://mcp.beel.es`. It
-speaks Streamable HTTP and acts as an OAuth 2.1 **Resource Server** in front of BeeL's
-authorization server: each user logs in with their own BeeL account and the server
-forwards their token to the API (multi-tenant). It validates JWTs offline via BeeL's
-JWKS, so **it needs no secrets at runtime**.
+speaks Streamable HTTP and acts as an **OAuth authorization-server facade** (token-minting
+proxy) in front of BeeL: each user logs in with their own BeeL account, the server mints
+its own opaque token, and forwards the upstream BeeL token to the API on each call
+(multi-tenant). With a public BeeL client it **needs no secrets at runtime**.
 
 > Recommended host: a long-running container (Dokploy, Fly, Render, a VM). **Not Vercel**
 > — the server keeps in-memory sessions and streams, which serverless functions don't fit.
