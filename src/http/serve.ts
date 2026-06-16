@@ -10,57 +10,39 @@ import {
 import { createServer, type ServerInfo } from '../server.js';
 import {
   configFromAuth,
-  createBeelTokenVerifier,
-  createProxyProvider,
+  createOAuthProvider,
   loadOAuthConfig,
   SUPPORTED_SCOPES,
   type OAuthConfig,
 } from './oauth.js';
 
 /**
- * Express app for the remote (Streamable HTTP) MCP server, acting as an OAuth 2.1
- * Resource Server in front of the BeeL authorization server.
+ * Express app for the remote (Streamable HTTP) MCP server.
  *
- * - Discovery: serves RFC 9728 protected-resource metadata + a copy of the AS
- *   metadata so MCP clients can auto-configure the OAuth flow.
- * - Auth: every /mcp request must carry a Bearer JWT, validated offline via JWKS;
- *   a 401 returns WWW-Authenticate pointing at the metadata URL.
- * - Sessions: an `initialize` request mints a session bound to the caller's token,
- *   so the server is multi-tenant — each session acts with its own credentials.
- *   Sessions are held in memory (single-instance; behind a load balancer use
- *   sticky routing on the `mcp-session-id` header).
+ * The server is an OAuth authorization-server facade in front of BeeL: it serves
+ * the discovery metadata and the /authorize, /token, /register and /revoke
+ * endpoints on its own domain, mints its own opaque tokens, and protects the MCP
+ * endpoint with Bearer auth (see oauth.ts). Each `initialize` opens a session
+ * bound to the caller's token, so the server is multi-tenant. Sessions are held
+ * in memory (single instance; behind a load balancer use sticky routing on the
+ * `mcp-session-id` header).
  */
 export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthConfig()) {
   const app = express();
-  // Behind Cloudflare/Traefik (Dokploy), requests carry X-Forwarded-For. Trust the
-  // proxy so the SDK's rate limiter reads the real client IP instead of throwing
-  // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. Configurable hop count via TRUST_PROXY.
+  // Behind Cloudflare/Traefik (Dokploy) requests carry X-Forwarded-For; trust the
+  // proxy so the SDK's rate limiter reads the real client IP. Hop count via TRUST_PROXY.
   app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
-  // Diagnostic: log every request (except health) with whether it carries a Bearer,
-  // to see if the client reaches the MCP endpoint after obtaining a token.
-  app.use((req, _res, next) => {
-    if (req.path !== '/healthz') {
-      process.stderr.write(
-        `[beel-mcp] ${req.method} ${req.path} auth=${req.headers.authorization ? 'bearer' : 'none'}\n`,
-      );
-    }
-    next();
-  });
   app.use(express.json({ limit: '4mb' }));
 
-  const verifier = createBeelTokenVerifier(config);
-  // Anchor the resource (and its metadata) at the server root so the connector URL
-  // works with or without a trailing path — clients may use https://host or https://host/mcp.
+  const provider = createOAuthProvider(config);
+  // Anchor the resource (and its metadata) at the server root so the connector URL is
+  // just https://host — clients read the OAuth endpoints from this server's metadata.
   const resourceServerUrl = new URL(config.resourceServerUrl);
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
 
-  // The MCP server fronts BeeL's authorization server as an OAuth proxy: it exposes
-  // /authorize, /token, /revoke and the AS + protected-resource metadata on its own
-  // domain and forwards them upstream. MCP clients (Claude) expect the OAuth endpoints
-  // on the MCP server, so this proxy is required (a pure resource-server is not enough).
   app.use(
     mcpAuthRouter({
-      provider: createProxyProvider(config),
+      provider,
       issuerUrl: resourceServerUrl,
       resourceServerUrl,
       scopesSupported: SUPPORTED_SCOPES,
@@ -73,7 +55,7 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   });
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
-  const bearer = requireBearerAuth({ verifier, resourceMetadataUrl });
+  const bearer = requireBearerAuth({ verifier: provider, resourceMetadataUrl });
 
   // Serve the MCP endpoint at the root, so the connector URL is just https://host.
   const MCP_PATH = '/';

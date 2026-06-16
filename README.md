@@ -73,24 +73,26 @@ agent retry never duplicates an invoice.
 
 Besides the local stdio binary, the package ships a **remote HTTP server**
 (`beel-mcp-http`) that speaks the **Streamable HTTP** transport and acts as an
-**OAuth 2.1 Resource Server** in front of BeeL's authorization server. This is what
-you'd deploy at `https://mcp.beel.es` for a hosted, multi-tenant connector.
+**OAuth authorization-server facade** (token-minting proxy) in front of BeeL. This is
+what you'd deploy at `https://mcp.beel.es` for a hosted, multi-tenant connector.
 
 How auth works:
 
 1. A client connects without a token → `401` with
    `WWW-Authenticate: …resource_metadata=https://mcp.beel.es/.well-known/oauth-protected-resource`.
-2. The client reads that metadata, discovers BeeL's authorization server, and runs
-   the standard `authorization_code` + PKCE flow against `app.beel.es/oauth2/*`.
-3. The client retries with a Bearer **JWT** (RS256). The server validates it offline
-   via BeeL's JWKS (`/oauth2/jwks`), checks issuer/expiry/scopes, and **forwards the
-   token to the BeeL API** — so every session acts with its own user's credentials.
-   The environment (production vs sandbox) comes from the token's `environment` claim
-   (the `sandbox` scope), not a key prefix.
+2. The client reads the metadata and uses the OAuth endpoints **on the MCP server**
+   (`/authorize`, `/token`, `/register`), which proxy to BeeL. `/register` returns the
+   pre-registered public client, so the client self-registers (DCR) — the user just
+   pastes the URL and logs into BeeL. PKCE is validated upstream by BeeL.
+3. On the token exchange the server gets BeeL's token but **issues its own opaque
+   token** to the client (so there's no upstream issuer/audience to reject) and keeps
+   the BeeL token internally. On each `/mcp` call it **forwards the BeeL token to the
+   API** — every session acts with its own user's credentials. Sandbox vs production
+   comes from the granted `sandbox` scope.
 
 ```bash
 npm run start:http   # serves on :$PORT (default 3000)
-npm run test:oauth   # end-to-end OAuth flow against a local JWKS (no BeeL login needed)
+npm run test:oauth   # end-to-end OAuth flow with BeeL stubbed locally (no login needed)
 ```
 
 ### Remote env vars
@@ -99,8 +101,11 @@ npm run test:oauth   # end-to-end OAuth flow against a local JWKS (no BeeL login
 |---|---|
 | `PORT` | HTTP port (default 3000). |
 | `MCP_PUBLIC_URL` | Public URL of this server (default `https://mcp.beel.es`), used in the advertised resource metadata. |
-| `BEEL_OAUTH_ISSUER` | BeeL OAuth issuer (default `https://app.beel.es`). The authorize/token/jwks/revoke URLs derive from it but can be overridden individually (`BEEL_OAUTH_AUTHORIZE_URL`, `…_TOKEN_URL`, `…_JWKS_URL`, `…_REVOKE_URL`). |
-| `BEEL_BASE_URL` | API base the validated token is forwarded to (default `https://app.beel.es/api`). |
+| `BEEL_OAUTH_ISSUER` | BeeL OAuth issuer (default `https://app.beel.es`). The authorize/token/revoke URLs derive from it as `<issuer>/oauth2/*`, overridable via `BEEL_OAUTH_AUTHORIZE_URL`, `…_TOKEN_URL`, `…_REVOKE_URL`. |
+| `BEEL_BASE_URL` | API base the upstream token is forwarded to (default `https://app.beel.es/api`). |
+| `BEEL_OAUTH_CLIENT_ID` | Pre-registered BeeL client (default `beel-mcp`). |
+| `BEEL_OAUTH_CLIENT_SECRET` | Only if the BeeL client is confidential; omit for a public (PKCE) client. |
+| `BEEL_OAUTH_REDIRECT_URIS` | Allowed connector callbacks, comma-separated (default Claude's). |
 
 > **Client registration.** BeeL's OAuth client registration is currently manual
 > (it@beel.es); the server does not yet expose Dynamic Client Registration. Clients
@@ -167,7 +172,8 @@ src/
   config.ts             # API key + env + base URL resolution
   http/
     client.ts           # auth, idempotency, Beel-Active-Company, error normalisation
-    oauth.ts            # JWKS token verifier, OAuth metadata, token -> config
+    oauth.ts            # OAuth proxy provider (mints opaque tokens, DCR shim) + config
+    token-store.ts      # opaque token -> upstream BeeL token mapping
     serve.ts            # express app: discovery + bearer auth + session transports
   spec/
     load.ts             # parse the embedded OpenAPI doc
