@@ -35,14 +35,15 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   app.use(express.json({ limit: '4mb' }));
 
   const verifier = createBeelTokenVerifier(config);
-  const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(
-    new URL(`${config.resourceServerUrl}/mcp`),
-  );
+  // Anchor the resource (and its metadata) at the server root so the connector URL
+  // works with or without a trailing path — clients may use https://host or https://host/mcp.
+  const resourceServerUrl = new URL(config.resourceServerUrl);
+  const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
 
   app.use(
     mcpAuthMetadataRouter({
       oauthMetadata: buildOAuthMetadata(config),
-      resourceServerUrl: new URL(`${config.resourceServerUrl}/mcp`),
+      resourceServerUrl,
       scopesSupported: SUPPORTED_SCOPES,
       resourceName: 'BeeL MCP',
     }),
@@ -55,7 +56,10 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   const transports = new Map<string, StreamableHTTPServerTransport>();
   const bearer = requireBearerAuth({ verifier, resourceMetadataUrl });
 
-  app.post('/mcp', bearer, async (req: Request, res: Response) => {
+  // Serve the MCP endpoint at the root, so the connector URL is just https://host.
+  const MCP_PATH = '/';
+
+  app.post(MCP_PATH, bearer, async (req: Request, res: Response) => {
     try {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
       const existing = sessionId ? transports.get(sessionId) : undefined;
@@ -109,8 +113,8 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
     }
     await transport.handleRequest(req, res);
   };
-  app.get('/mcp', bearer, handleSessionRequest);
-  app.delete('/mcp', bearer, handleSessionRequest);
+  app.get(MCP_PATH, bearer, handleSessionRequest);
+  app.delete(MCP_PATH, bearer, handleSessionRequest);
 
   return app;
 }

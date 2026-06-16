@@ -77,8 +77,8 @@ async function main() {
 
   const base = `http://127.0.0.1:${mcpPort}`;
 
-  // Test A — protected-resource metadata is served for discovery.
-  const metaRes = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`);
+  // Test A — protected-resource metadata is served for discovery (anchored at root).
+  const metaRes = await fetch(`${base}/.well-known/oauth-protected-resource`);
   const metaText = await metaRes.text();
   if (metaRes.status !== 200) {
     console.error(`metadata fetch ${metaRes.status}:`, metaText.slice(0, 120));
@@ -97,7 +97,7 @@ async function main() {
   );
 
   // Test B — unauthenticated request is rejected with a discovery pointer.
-  const unauth = await fetch(`${base}/mcp`, {
+  const unauth = await fetch(`${base}/`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
@@ -119,7 +119,7 @@ async function main() {
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(rogueKey);
-  const rogue = await fetch(`${base}/mcp`, {
+  const rogue = await fetch(`${base}/`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -144,7 +144,7 @@ async function main() {
     .sign(privateKey);
 
   const client = new Client({ name: 'oauth-e2e', version: '0' });
-  const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+  const transport = new StreamableHTTPClientTransport(new URL(`${base}/`), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
   await client.connect(transport);
