@@ -86,10 +86,19 @@ async function main() {
   const meta = (metaRes.status === 200 ? JSON.parse(metaText) : {}) as Record<string, unknown>;
   check('discovery: protected-resource metadata served', metaRes.status === 200);
   check(
-    'discovery: advertises the BeeL authorization server',
-    Array.isArray(meta.authorization_servers) &&
-      (meta.authorization_servers as string[]).includes(ISSUER),
+    'discovery: advertises an authorization server (the MCP proxy)',
+    Array.isArray(meta.authorization_servers) && (meta.authorization_servers as string[]).length > 0,
     JSON.stringify(meta.authorization_servers),
+  );
+  // The MCP server proxies the OAuth endpoints on its own domain.
+  const asRes = await fetch(`${base}/.well-known/oauth-authorization-server`);
+  const asMeta = (await asRes.json()) as Record<string, unknown>;
+  check(
+    'discovery: AS metadata exposes /authorize and /token on the MCP server',
+    typeof asMeta.authorization_endpoint === 'string' &&
+      (asMeta.authorization_endpoint as string).startsWith(base) &&
+      typeof asMeta.token_endpoint === 'string',
+    `${asMeta.authorization_endpoint} | ${asMeta.token_endpoint}`,
   );
   check(
     'discovery: advertises scopes',

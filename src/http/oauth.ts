@@ -2,6 +2,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
 import type { OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { KeyEnv, ResolvedConfig } from '../config.js';
 
@@ -21,6 +22,11 @@ export interface OAuthConfig {
   /** Public URL of this MCP resource server (advertised in metadata). */
   resourceServerUrl: string;
   apiBaseUrl: string;
+  /** Pre-registered OAuth client at BeeL (the MCP server proxies the flow with it). */
+  clientId: string;
+  clientSecret: string;
+  /** redirect_uris the connector is allowed to use (e.g. Claude's callback). */
+  redirectUris: string[];
 }
 
 /** All scopes BeeL exposes, advertised in the protected-resource metadata. */
@@ -52,7 +58,43 @@ export function loadOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthConf
     revocationEndpoint: env.BEEL_OAUTH_REVOKE_URL ?? `${issuer}/oauth2/revoke`,
     resourceServerUrl: (env.MCP_PUBLIC_URL ?? 'https://mcp.beel.es').replace(/\/$/, ''),
     apiBaseUrl: env.BEEL_BASE_URL ?? 'https://app.beel.es/api',
+    clientId: env.BEEL_OAUTH_CLIENT_ID ?? 'beel-mcp',
+    clientSecret: env.BEEL_OAUTH_CLIENT_SECRET ?? '',
+    redirectUris: (env.BEEL_OAUTH_REDIRECT_URIS ?? 'https://claude.ai/api/mcp/auth_callback')
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean),
   };
+}
+
+/**
+ * OAuth proxy provider: the MCP server fronts BeeL's authorization server,
+ * exposing /authorize, /token and /revoke on its own domain and forwarding them
+ * upstream. MCP clients (Claude) expect the OAuth endpoints on the MCP server,
+ * so a pure resource-server pointing at an external AS isn't enough — this proxies.
+ * PKCE is validated upstream by BeeL, not locally.
+ */
+export function createProxyProvider(config: OAuthConfig): ProxyOAuthServerProvider {
+  const provider = new ProxyOAuthServerProvider({
+    endpoints: {
+      authorizationUrl: `${config.issuer}/oauth2/authorize`,
+      tokenUrl: `${config.issuer}/oauth2/token`,
+      revocationUrl: `${config.issuer}/oauth2/revoke`,
+    },
+    verifyAccessToken: (token) => createBeelTokenVerifier(config).verifyAccessToken(token),
+    getClient: async (clientId) => ({
+      client_id: clientId,
+      client_secret: config.clientSecret,
+      redirect_uris: config.redirectUris,
+      token_endpoint_auth_method: 'client_secret_basic',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      scope: SUPPORTED_SCOPES.join(' '),
+    }),
+  });
+  // BeeL holds the PKCE challenge and validates it at the token endpoint.
+  provider.skipLocalPkceValidation = true;
+  return provider;
 }
 
 /** Build the OAuth Authorization Server metadata clients use for discovery. */
