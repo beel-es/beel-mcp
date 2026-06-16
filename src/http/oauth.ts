@@ -94,6 +94,19 @@ function clientInformation(config: OAuthConfig, redirectUris?: string[]): OAuthC
 
 export function createProxyProvider(config: OAuthConfig): ProxyOAuthServerProvider {
   const verifier = createBeelTokenVerifier(config);
+  // Diagnostic fetch: log upstream OAuth calls (token/revoke) and their responses so
+  // a failing token exchange at BeeL is visible in the logs.
+  const loggingFetch: typeof fetch = async (input, init) => {
+    const res = await fetch(input as Parameters<typeof fetch>[0], init);
+    const url = String(input);
+    if (url.includes('/oauth2/')) {
+      const body = res.ok ? '' : await res.clone().text().catch(() => '');
+      process.stderr.write(
+        `[beel-mcp] upstream ${init?.method ?? 'GET'} ${url} -> ${res.status}${body ? ' ' + body.slice(0, 400) : ''}\n`,
+      );
+    }
+    return res;
+  };
   const provider = new ProxyOAuthServerProvider({
     endpoints: {
       authorizationUrl: `${config.issuer}/oauth2/authorize`,
@@ -102,6 +115,7 @@ export function createProxyProvider(config: OAuthConfig): ProxyOAuthServerProvid
     },
     verifyAccessToken: (token) => verifier.verifyAccessToken(token),
     getClient: async () => clientInformation(config),
+    fetch: loggingFetch,
   });
   // BeeL holds the PKCE challenge and validates it at the token endpoint.
   provider.skipLocalPkceValidation = true;
