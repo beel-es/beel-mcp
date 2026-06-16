@@ -18,9 +18,13 @@ JWKS, so **it needs no secrets at runtime**.
 | `BEEL_OAUTH_ISSUER` | **yes** | `https://app.beel.es` *(confirm — see ⚠️)* | Must equal the `iss` claim in BeeL's tokens. authorize/token/jwks/revoke derive from it as `<issuer>/oauth2/*`. |
 | `BEEL_BASE_URL` | **yes** | `https://app.beel.es/api` | API base the user token is forwarded to. |
 | `BEEL_PDF_DOMAINS` | no | `https://minio.beel.es,https://app.beel.es` | CSP `frame-src` allowlist for the PDF viewer panel. Set to wherever presigned invoice PDFs are served. |
-| `BEEL_OAUTH_CLIENT_SECRET` | **yes** | (the `beel-mcp` client secret) | The MCP server proxies the OAuth flow, so it authenticates to BeeL's token endpoint with this. Must equal the backend's `OAUTH2_CLIENT_SECRET`. |
 | `BEEL_OAUTH_CLIENT_ID` | no | `beel-mcp` | Pre-registered client id at BeeL (default `beel-mcp`). |
 | `BEEL_OAUTH_REDIRECT_URIS` | no | `https://claude.ai/api/mcp/auth_callback` | Connector callback(s) allowed; comma-separated. |
+| `BEEL_OAUTH_CLIENT_SECRET` | no | — | **Omit when the `beel-mcp` backend client is public (recommended).** Only set it if that client stays confidential (`client_secret_basic`); then it must equal the backend's `OAUTH2_CLIENT_SECRET`. |
+
+The MCP server is an **OAuth proxy with a DCR shim**: it exposes `/authorize`, `/token`,
+`/register` on its own domain. Clients (Claude) self-register and the user just pastes the
+URL and logs into BeeL — **no client_id/secret to enter** when the backend client is public.
 | `BEEL_DOCS_URL` | no | `https://docs.beel.es` | Docs source for the search tools (default already correct). |
 
 You can override individual OAuth endpoints if they don't follow the `<issuer>/oauth2/*`

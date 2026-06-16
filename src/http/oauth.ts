@@ -3,7 +3,7 @@ import type { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/p
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
-import type { OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth.js';
+import type { OAuthClientInformationFull, OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { KeyEnv, ResolvedConfig } from '../config.js';
 
 /**
@@ -74,26 +74,52 @@ export function loadOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthConf
  * so a pure resource-server pointing at an external AS isn't enough — this proxies.
  * PKCE is validated upstream by BeeL, not locally.
  */
+/**
+ * The pre-registered BeeL client, as MCP client information. Public when no
+ * client secret is configured (PKCE-only — the cleanest "paste URL and log in"
+ * UX); confidential (client_secret_basic) when BEEL_OAUTH_CLIENT_SECRET is set.
+ */
+function clientInformation(config: OAuthConfig, redirectUris?: string[]): OAuthClientInformationFull {
+  const info: OAuthClientInformationFull = {
+    client_id: config.clientId,
+    redirect_uris: redirectUris?.length ? redirectUris : config.redirectUris,
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    scope: SUPPORTED_SCOPES.join(' '),
+    token_endpoint_auth_method: config.clientSecret ? 'client_secret_basic' : 'none',
+  };
+  if (config.clientSecret) info.client_secret = config.clientSecret;
+  return info;
+}
+
 export function createProxyProvider(config: OAuthConfig): ProxyOAuthServerProvider {
+  const verifier = createBeelTokenVerifier(config);
   const provider = new ProxyOAuthServerProvider({
     endpoints: {
       authorizationUrl: `${config.issuer}/oauth2/authorize`,
       tokenUrl: `${config.issuer}/oauth2/token`,
       revocationUrl: `${config.issuer}/oauth2/revoke`,
     },
-    verifyAccessToken: (token) => createBeelTokenVerifier(config).verifyAccessToken(token),
-    getClient: async (clientId) => ({
-      client_id: clientId,
-      client_secret: config.clientSecret,
-      redirect_uris: config.redirectUris,
-      token_endpoint_auth_method: 'client_secret_basic',
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      scope: SUPPORTED_SCOPES.join(' '),
-    }),
+    verifyAccessToken: (token) => verifier.verifyAccessToken(token),
+    getClient: async () => clientInformation(config),
   });
   // BeeL holds the PKCE challenge and validates it at the token endpoint.
   provider.skipLocalPkceValidation = true;
+
+  // DCR shim: BeeL has no dynamic registration, so /register returns our fixed
+  // pre-registered client. This lets MCP clients (Claude) self-register, so the
+  // user just pastes the URL and logs in — no client_id/secret to enter.
+  Object.defineProperty(provider, 'clientsStore', {
+    configurable: true,
+    get() {
+      return {
+        getClient: async () => clientInformation(config),
+        registerClient: async (client: { redirect_uris?: string[] }) =>
+          clientInformation(config, client.redirect_uris),
+      };
+    },
+  });
+
   return provider;
 }
 

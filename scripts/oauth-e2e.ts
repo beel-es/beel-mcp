@@ -105,6 +105,22 @@ async function main() {
     Array.isArray(meta.scopes_supported) && (meta.scopes_supported as string[]).length > 5,
   );
 
+  // Test A2 — DCR shim: clients self-register, so no manual client_id/secret needed.
+  const regRes = await fetch(`${base}/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+      client_name: 'e2e',
+    }),
+  });
+  const reg = (await regRes.json().catch(() => ({}))) as Record<string, unknown>;
+  check(
+    'dcr: /register returns the pre-registered client (no manual creds)',
+    regRes.ok && reg.client_id === 'beel-mcp',
+    `status ${regRes.status} id ${reg.client_id}`,
+  );
+
   // Test B — unauthenticated request is rejected with a discovery pointer.
   const unauth = await fetch(`${base}/`, {
     method: 'POST',
