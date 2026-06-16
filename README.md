@@ -22,6 +22,8 @@ same docs source, different surface.
   woven into the relevant tool descriptions.
 - **Workflow prompts** — `issue-invoice`, `fix-invoice` — that encode the safe order of
   operations (validate NIF → choose F1/F2 → check VeriFactu gates → issue).
+- **Interactive PDF viewer (MCP Apps)** — calling `beel_generate_invoice_pdf` opens the
+  invoice PDF in a side panel in hosts that support MCP Apps (Claude, ChatGPT, …).
 
 ### What is *not* a tool (by policy)
 
@@ -103,6 +105,25 @@ npm run test:oauth   # end-to-end OAuth flow against a local JWKS (no BeeL login
 > **Sessions** are held in memory (single instance). Behind a load balancer, route by
 > the `mcp-session-id` header (sticky sessions) or add a shared session store.
 
+## Interactive PDF viewer (MCP Apps)
+
+`beel_generate_invoice_pdf` is an **MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
+when the agent calls it, the host renders the invoice PDF in a side panel. Mechanics:
+
+- The tool carries `_meta.ui.resourceUri = "ui://beel/invoice-pdf.html"` and returns the
+  PDF info as `structuredContent` (`download_url`, `file_name`, `expires_in_seconds`).
+- The `ui://beel/invoice-pdf.html` resource (mimetype `text/html;profile=mcp-app`) serves a
+  self-contained app (built from `src/ui/invoice-pdf-app.ts` with `@modelcontextprotocol/ext-apps`)
+  that receives the result via the app-bridge and shows the PDF in a sandboxed iframe.
+- Hosts that render MCP Apps today: Claude (claude.ai / Desktop via connectors), ChatGPT,
+  VS Code, Goose, Postman, MCPJam.
+
+The presigned PDF URL is a MinIO/S3 link, so its host must be allowed in the iframe CSP.
+Set `BEEL_PDF_DOMAINS` (comma-separated origins) per environment; default
+`https://minio.beel.es,https://app.beel.es`.
+
+The UI is bundled by `npm run build:ui` (part of `npm run build`) into `dist/ui/invoice-pdf.html`.
+
 ## Development
 
 ```bash
@@ -159,7 +180,12 @@ src/
     fetch.ts            # fetch + cache docs.beel.es/llms*.txt
     search.ts           # chunk + keyword scoring
   tools/                # api-tools (spec-derived) + docs-tools
-  resources/guardrails.ts
+  resources/
+    guardrails.ts       # fiscal guardrails as MCP resources
+    pdf-app.ts          # serves the ui:// PDF viewer resource (+ CSP)
+  ui/
+    registry.ts         # MCP Apps wiring (which tools get a UI panel, CSP domains)
+    invoice-pdf-app.ts  # browser app (bundled into dist/ui/invoice-pdf.html)
   prompts/workflows.ts
 ```
 
