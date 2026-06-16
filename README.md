@@ -10,6 +10,11 @@ operations. It also exposes a **docs search** tool over the BeeL documentation.
 It is the MCP sibling of the [`@beel_es/cli`](../beel-cli): same spec-driven philosophy,
 same docs source, different surface.
 
+**Two transports, one codebase:** `beel-mcp` (stdio, local/desktop with an API key) and
+`beel-mcp-http` (remote Streamable HTTP + OAuth, deployed at `mcp.beel.es`). Both expose
+the same tools, guardrails, docs search and PDF viewer. See [DEPLOY.md](./DEPLOY.md) for
+the remote deployment.
+
 ## What it provides
 
 - **~80 API tools** generated from `openapi/public-api.yaml` — invoices, customers,
