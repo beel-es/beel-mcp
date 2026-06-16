@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose';
 import type { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
@@ -157,6 +157,19 @@ export function createBeelTokenVerifier(config: OAuthConfig): OAuthTokenVerifier
       try {
         ({ payload } = await jwtVerify(token, jwks, { issuer: config.issuer }));
       } catch (err) {
+        // Diagnostic: log why a token was rejected and what it actually carried,
+        // so issuer/kid/exp mismatches are obvious in the server logs.
+        try {
+          const header = decodeProtectedHeader(token);
+          const claims = decodeJwt(token);
+          process.stderr.write(
+            `[beel-mcp] token verify FAILED: ${err instanceof Error ? err.message : String(err)} | ` +
+              `token.iss=${claims.iss} token.kid=${header.kid} token.aud=${JSON.stringify(claims.aud)} ` +
+              `token.exp=${claims.exp} | expected.iss=${config.issuer} jwks=${config.jwksUri}\n`,
+          );
+        } catch {
+          /* token not decodable */
+        }
         // jose throws generic errors (bad signature, unknown key, expired); map them
         // to InvalidTokenError so the bearer middleware answers 401, not 500.
         throw new InvalidTokenError(err instanceof Error ? err.message : 'Invalid access token');
