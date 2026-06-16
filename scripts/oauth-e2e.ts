@@ -7,6 +7,7 @@
  * Run: npx tsx scripts/oauth-e2e.ts
  */
 import http from 'node:http';
+import { decodeJwt } from 'jose';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -90,6 +91,9 @@ async function main() {
     'discovery: /authorize and /token are on the MCP server',
     String(asm.authorization_endpoint).startsWith(base) && String(asm.token_endpoint).startsWith(base),
   );
+  check('discovery: AS metadata advertises jwks_uri', String(asm.jwks_uri).startsWith(base));
+  const jwks = await (await fetch(`${base}/.well-known/jwks.json`)).json();
+  check('jwks: server publishes its signing key', Array.isArray(jwks.keys) && jwks.keys.length === 1);
 
   // DCR shim
   const reg = await fetch(`${base}/register`, {
@@ -126,7 +130,12 @@ async function main() {
   });
   const token = (await tokenRes.json()) as { access_token?: string };
   check('token: exchange succeeds', tokenRes.ok && Boolean(token.access_token), `status ${tokenRes.status}`);
-  check('token: issued token is OURS, not the upstream BeeL token', token.access_token !== UPSTREAM_TOKEN);
+  const claims = token.access_token ? decodeJwt(token.access_token) : {};
+  check(
+    'token: issued JWT is addressed to this server (iss/aud), not BeeL passthrough',
+    claims.iss === base && JSON.stringify(claims.aud ?? '').includes(base) && token.access_token !== UPSTREAM_TOKEN,
+    `iss=${claims.iss}`,
+  );
 
   // Use the opaque token: connect, list tools, call one — the API must receive the UPSTREAM token.
   const client = new Client({ name: 'oauth-e2e', version: '0' });

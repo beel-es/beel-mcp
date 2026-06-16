@@ -1,37 +1,51 @@
+import { decodeJwt, decodeProtectedHeader } from 'jose';
 import { describe, expect, it } from 'vitest';
-import { TokenStore } from '../src/http/token-store.js';
+import { TokenIssuer } from '../src/http/token-store.js';
 
-describe('TokenStore', () => {
-  it('issues opaque tokens distinct from the upstream and resolves back to it', () => {
-    const store = new TokenStore();
-    const issued = store.issue({
-      access_token: 'beel-upstream',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      scope: 'invoices:read sandbox',
-      refresh_token: 'beel-refresh',
-    });
+const ISSUER = 'https://mcp-test.beel.es';
+const upstream = {
+  access_token: 'beel-upstream',
+  token_type: 'Bearer',
+  expires_in: 3600,
+  scope: 'invoices:read sandbox',
+  refresh_token: 'beel-refresh',
+};
+
+describe('TokenIssuer', () => {
+  it('mints a signed JWT addressed to this server, mapping to the upstream token', async () => {
+    const issuer = new TokenIssuer(ISSUER, [ISSUER, `${ISSUER}/`]);
+    const issued = await issuer.issue(upstream, 'user-123');
 
     expect(issued.access_token).not.toBe('beel-upstream');
-    expect(issued.refresh_token).not.toBe('beel-refresh');
+    const claims = decodeJwt(issued.access_token);
+    expect(claims.iss).toBe(ISSUER); // iss = this server (what the client validates)
+    expect(claims.aud).toContain(ISSUER); // aud = the resource
+    expect(claims.sub).toBe('user-123');
+    expect(decodeProtectedHeader(issued.access_token).alg).toBe('RS256');
 
-    const auth = store.resolve(issued.access_token, 'beel-mcp');
-    expect(auth.token).toBe('beel-upstream'); // the upstream token is forwarded to the API
-    expect(auth.clientId).toBe('beel-mcp');
+    const auth = issuer.resolve(issued.access_token, 'beel-mcp');
+    expect(auth.token).toBe('beel-upstream'); // upstream token forwarded to the API
     expect(auth.scopes).toEqual(['invoices:read', 'sandbox']);
   });
 
-  it('maps our refresh token to the upstream one', () => {
-    const store = new TokenStore();
-    const issued = store.issue({ access_token: 'a', token_type: 'Bearer', refresh_token: 'beel-refresh' });
-    expect(store.upstreamRefresh(issued.refresh_token!)).toBe('beel-refresh');
-    expect(store.upstreamRefresh('unknown')).toBeUndefined();
+  it('publishes a JWKS with the signing public key', async () => {
+    const issuer = new TokenIssuer(ISSUER, [ISSUER]);
+    const { keys } = await issuer.jwks();
+    expect(keys).toHaveLength(1);
+    expect((keys[0] as { kty?: string }).kty).toBe('RSA');
   });
 
-  it('rejects unknown or expired access tokens', () => {
-    const store = new TokenStore();
-    expect(() => store.resolve('nope', 'beel-mcp')).toThrow();
-    const expired = store.issue({ access_token: 'a', token_type: 'Bearer', expires_in: -10 });
-    expect(() => store.resolve(expired.access_token, 'beel-mcp')).toThrow();
+  it('maps our refresh token to the upstream one', async () => {
+    const issuer = new TokenIssuer(ISSUER, [ISSUER]);
+    const issued = await issuer.issue(upstream, 'user-123');
+    expect(issuer.upstreamRefresh(issued.refresh_token!)).toBe('beel-refresh');
+    expect(issuer.upstreamRefresh('unknown')).toBeUndefined();
+  });
+
+  it('rejects unknown or expired tokens', async () => {
+    const issuer = new TokenIssuer(ISSUER, [ISSUER]);
+    expect(() => issuer.resolve('nope', 'beel-mcp')).toThrow();
+    const expired = await issuer.issue({ access_token: 'a', token_type: 'Bearer', expires_in: -10 }, 's');
+    expect(() => issuer.resolve(expired.access_token, 'beel-mcp')).toThrow();
   });
 });
