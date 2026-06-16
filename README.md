@@ -62,6 +62,47 @@ If no key is configured the server still starts and lists tools — it only erro
 API tool is actually called. POST calls send an `Idempotency-Key` automatically, so an
 agent retry never duplicates an invoice.
 
+## Remote mode (OAuth) — hosting at `mcp.beel.es`
+
+Besides the local stdio binary, the package ships a **remote HTTP server**
+(`beel-mcp-http`) that speaks the **Streamable HTTP** transport and acts as an
+**OAuth 2.1 Resource Server** in front of BeeL's authorization server. This is what
+you'd deploy at `https://mcp.beel.es` for a hosted, multi-tenant connector.
+
+How auth works:
+
+1. A client connects without a token → `401` with
+   `WWW-Authenticate: …resource_metadata=https://mcp.beel.es/.well-known/oauth-protected-resource/mcp`.
+2. The client reads that metadata, discovers BeeL's authorization server, and runs
+   the standard `authorization_code` + PKCE flow against `app.beel.es/oauth2/*`.
+3. The client retries with a Bearer **JWT** (RS256). The server validates it offline
+   via BeeL's JWKS (`/oauth2/jwks`), checks issuer/expiry/scopes, and **forwards the
+   token to the BeeL API** — so every session acts with its own user's credentials.
+   The environment (production vs sandbox) comes from the token's `environment` claim
+   (the `sandbox` scope), not a key prefix.
+
+```bash
+npm run start:http   # serves on :$PORT (default 3000)
+npm run test:oauth   # end-to-end OAuth flow against a local JWKS (no BeeL login needed)
+```
+
+### Remote env vars
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | HTTP port (default 3000). |
+| `MCP_PUBLIC_URL` | Public URL of this server (default `https://mcp.beel.es`), used in the advertised resource metadata. |
+| `BEEL_OAUTH_ISSUER` | BeeL OAuth issuer (default `https://app.beel.es`). The authorize/token/jwks/revoke URLs derive from it but can be overridden individually (`BEEL_OAUTH_AUTHORIZE_URL`, `…_TOKEN_URL`, `…_JWKS_URL`, `…_REVOKE_URL`). |
+| `BEEL_BASE_URL` | API base the validated token is forwarded to (default `https://app.beel.es/api`). |
+
+> **Client registration.** BeeL's OAuth client registration is currently manual
+> (it@beel.es); the server does not yet expose Dynamic Client Registration. Clients
+> that require DCR for "click & connect" need a pre-registered `client_id` or DCR added
+> to the BeeL auth server.
+>
+> **Sessions** are held in memory (single instance). Behind a load balancer, route by
+> the `mcp-session-id` header (sticky sessions) or add a shared session store.
+
 ## Development
 
 ```bash
@@ -95,9 +136,13 @@ commits the new spec to `develop`, and publishes a patch release to npm.
 ```
 src/
   index.ts              # stdio entry point
+  serve-http.ts         # remote HTTP (OAuth) entry point — beel-mcp-http
   server.ts             # wires tools / resources / prompts onto the MCP Server
   config.ts             # API key + env + base URL resolution
-  http/client.ts        # auth, idempotency, Beel-Active-Company, error normalisation
+  http/
+    client.ts           # auth, idempotency, Beel-Active-Company, error normalisation
+    oauth.ts            # JWKS token verifier, OAuth metadata, token -> config
+    serve.ts            # express app: discovery + bearer auth + session transports
   spec/
     load.ts             # parse the embedded OpenAPI doc
     refs.ts             # JSON-Pointer $ref resolution

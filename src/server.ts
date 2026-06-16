@@ -20,6 +20,17 @@ export interface ServerInfo {
   version: string;
 }
 
+export interface CreateServerOptions {
+  /**
+   * Supplies the credentials used for API calls. Stdio mode omits this and the
+   * server resolves a single key from the environment lazily. HTTP mode passes a
+   * provider that returns per-request, token-derived credentials.
+   */
+  getConfig?: () => ResolvedConfig;
+  /** Suppress the per-instance boot log (HTTP creates one server per request). */
+  quiet?: boolean;
+}
+
 function textResult(text: string, isError = false): CallToolResult {
   return { content: [{ type: 'text', text }], isError };
 }
@@ -33,14 +44,15 @@ function formatApiError(err: ApiError): string {
 }
 
 /** Build and wire the BeeL MCP server (transport-agnostic). */
-export function createServer(info: ServerInfo): Server {
+export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
   const apiByName = new Map<string, ApiTool>(apiTools.map((t) => [t.tool.name, t]));
 
   // Resolve credentials lazily so the server starts (and can list tools) without
-  // an API key; we only need it the first time an API tool actually runs.
+  // an API key; we only need it the first time an API tool actually runs. HTTP
+  // mode injects a provider returning per-request, token-derived credentials.
   let config: ResolvedConfig | null = null;
-  const getConfig = (): ResolvedConfig => (config ??= resolveConfig());
+  const getConfig = options.getConfig ?? ((): ResolvedConfig => (config ??= resolveConfig()));
 
   const server = new Server(info, {
     capabilities: { tools: {}, resources: {}, prompts: {} },
@@ -90,10 +102,12 @@ export function createServer(info: ServerInfo): Server {
   });
 
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
-  process.stderr.write(
-    `[beel-mcp] ${apiTools.length} API tools, ${docsTools.length} docs tools, ` +
-      `${policy.excluded.length} operations excluded by policy.\n`,
-  );
+  if (!options.quiet) {
+    process.stderr.write(
+      `[beel-mcp] ${apiTools.length} API tools, ${docsTools.length} docs tools, ` +
+        `${policy.excluded.length} operations excluded by policy.\n`,
+    );
+  }
 
   return server;
 }
