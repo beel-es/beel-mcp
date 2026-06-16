@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { decodeJwt } from 'jose';
 import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
 import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
@@ -8,7 +9,7 @@ import type {
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { KeyEnv, ResolvedConfig } from '../config.js';
-import { TokenStore } from './token-store.js';
+import { TokenIssuer } from './token-store.js';
 
 /**
  * OAuth configuration. The MCP server fronts BeeL's authorization server as a
@@ -86,21 +87,32 @@ function clientInformation(config: OAuthConfig, redirectUris?: string[]): OAuthC
   return info;
 }
 
+/** Best-effort subject for our token: the user id from the BeeL token, else the client id. */
+function subjectFrom(upstream: OAuthTokens, fallback: string): string {
+  try {
+    const claims = decodeJwt(upstream.access_token);
+    const sub = claims.user_id ?? claims.sub;
+    if (typeof sub === 'string' && sub) return sub;
+  } catch {
+    /* upstream token is not a JWT */
+  }
+  return fallback;
+}
+
 /**
  * The MCP server as an OAuth authorization-server facade in front of BeeL.
  *
  * - authorize: redirects to BeeL (inherited passthrough).
- * - token: exchanges the code with BeeL, then issues OUR OWN opaque token to the
- *   client (so there is no upstream iss/aud for the client to reject) while
- *   keeping the BeeL token internally to call the API.
- * - register: returns the fixed pre-registered client (BeeL has no DCR), so
- *   clients self-register and the user enters no credentials.
- * - verifyAccessToken: resolves our opaque token to the upstream BeeL token.
+ * - token: exchanges the code with BeeL, then mints OUR OWN signed JWT (iss = this
+ *   server, aud = the resource) for the client, keeping the BeeL token internally.
+ * - register: returns the fixed pre-registered client (BeeL has no DCR), so clients
+ *   self-register and the user enters no credentials.
+ * - verifyAccessToken: resolves our token to the upstream BeeL token for API calls.
  */
-class BeelOAuthProvider extends ProxyOAuthServerProvider {
+export class BeelOAuthProvider extends ProxyOAuthServerProvider {
   constructor(
     private readonly config: OAuthConfig,
-    private readonly store: TokenStore,
+    private readonly issuer: TokenIssuer,
   ) {
     super({
       endpoints: {
@@ -108,7 +120,7 @@ class BeelOAuthProvider extends ProxyOAuthServerProvider {
         tokenUrl: config.tokenEndpoint,
         revocationUrl: config.revocationEndpoint,
       },
-      // Never used: verifyAccessToken is overridden to use the token store.
+      // Never used: verifyAccessToken is overridden to use the token issuer.
       verifyAccessToken: () => Promise.reject(new Error('unused')),
       getClient: async () => clientInformation(config),
     });
@@ -141,7 +153,7 @@ class BeelOAuthProvider extends ProxyOAuthServerProvider {
       redirectUri,
       resource,
     );
-    return this.store.issue(upstream);
+    return this.issuer.issue(upstream, subjectFrom(upstream, this.config.clientId));
   }
 
   override async exchangeRefreshToken(
@@ -150,18 +162,26 @@ class BeelOAuthProvider extends ProxyOAuthServerProvider {
     scopes?: string[],
     resource?: URL,
   ): Promise<OAuthTokens> {
-    const upstreamRefresh = this.store.upstreamRefresh(refreshToken) ?? refreshToken;
+    const upstreamRefresh = this.issuer.upstreamRefresh(refreshToken) ?? refreshToken;
     const upstream = await super.exchangeRefreshToken(client, upstreamRefresh, scopes, resource);
-    return this.store.issue(upstream);
+    return this.issuer.issue(upstream, subjectFrom(upstream, this.config.clientId));
   }
 
   override verifyAccessToken(token: string): Promise<AuthInfo> {
-    return Promise.resolve(this.store.resolve(token, this.config.clientId));
+    return Promise.resolve(this.issuer.resolve(token, this.config.clientId));
+  }
+
+  /** JWKS document for clients to verify the tokens we issue. */
+  jwks(): Promise<{ keys: unknown[] }> {
+    return this.issuer.jwks();
   }
 }
 
-export function createOAuthProvider(config: OAuthConfig): ProxyOAuthServerProvider {
-  return new BeelOAuthProvider(config, new TokenStore());
+export function createOAuthProvider(config: OAuthConfig): BeelOAuthProvider {
+  // Our tokens are addressed to this server: iss = the server, aud = the resource
+  // (accept it with and without a trailing slash, since clients vary).
+  const url = config.resourceServerUrl;
+  return new BeelOAuthProvider(config, new TokenIssuer(url, [url, `${url}/`]));
 }
 
 /**

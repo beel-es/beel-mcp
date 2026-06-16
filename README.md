@@ -84,11 +84,12 @@ How auth works:
    (`/authorize`, `/token`, `/register`), which proxy to BeeL. `/register` returns the
    pre-registered public client, so the client self-registers (DCR) — the user just
    pastes the URL and logs into BeeL. PKCE is validated upstream by BeeL.
-3. On the token exchange the server gets BeeL's token but **issues its own opaque
-   token** to the client (so there's no upstream issuer/audience to reject) and keeps
-   the BeeL token internally. On each `/mcp` call it **forwards the BeeL token to the
-   API** — every session acts with its own user's credentials. Sandbox vs production
-   comes from the granted `sandbox` scope.
+3. On the token exchange the server gets BeeL's token but **mints its own signed JWT**
+   (`iss` = this server, `aud` = the resource, verifiable via the server's JWKS) for the
+   client, and keeps the BeeL token internally. The client validates that token against
+   the authorization server it used (this server), so the iss/aud match. On each `/mcp`
+   call the server **forwards the BeeL token to the API** — every session acts with its
+   own user's credentials. Sandbox vs production comes from the granted `sandbox` scope.
 
 ```bash
 npm run start:http   # serves on :$PORT (default 3000)
@@ -107,13 +108,13 @@ npm run test:oauth   # end-to-end OAuth flow with BeeL stubbed locally (no login
 | `BEEL_OAUTH_CLIENT_SECRET` | Only if the BeeL client is confidential; omit for a public (PKCE) client. |
 | `BEEL_OAUTH_REDIRECT_URIS` | Allowed connector callbacks, comma-separated (default Claude's). |
 
-> **Client registration.** BeeL's OAuth client registration is currently manual
-> (it@beel.es); the server does not yet expose Dynamic Client Registration. Clients
-> that require DCR for "click & connect" need a pre-registered `client_id` or DCR added
-> to the BeeL auth server.
+> **Client registration.** BeeL has no Dynamic Client Registration, so this server's
+> `/register` returns the fixed pre-registered `beel-mcp` (public) client — clients
+> self-register and the user enters no credentials. The `beel-mcp` client at BeeL must
+> be public (`client-authentication-methods: none`) and allow the connector's redirect URI.
 >
-> **Sessions** are held in memory (single instance). Behind a load balancer, route by
-> the `mcp-session-id` header (sticky sessions) or add a shared session store.
+> **Single instance.** The signing key, token map and sessions are in memory, so run one
+> replica (or add a shared key + store and sticky `mcp-session-id` routing behind a LB).
 
 ## Interactive PDF viewer (MCP Apps)
 
@@ -172,8 +173,8 @@ src/
   config.ts             # API key + env + base URL resolution
   http/
     client.ts           # auth, idempotency, Beel-Active-Company, error normalisation
-    oauth.ts            # OAuth proxy provider (mints opaque tokens, DCR shim) + config
-    token-store.ts      # opaque token -> upstream BeeL token mapping
+    oauth.ts            # OAuth proxy provider (mints signed JWTs, DCR shim) + config
+    token-store.ts      # signs our JWTs + maps them to the upstream BeeL token
     serve.ts            # express app: discovery + bearer auth + session transports
   spec/
     load.ts             # parse the embedded OpenAPI doc

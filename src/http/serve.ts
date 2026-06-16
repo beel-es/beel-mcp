@@ -40,6 +40,29 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   const resourceServerUrl = new URL(config.resourceServerUrl);
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
 
+  // We mint our own signed JWTs, so advertise our JWKS and serve the public key.
+  // Registered before mcpAuthRouter so this authorization-server metadata (which adds
+  // jwks_uri) takes precedence over the router's default.
+  const base = config.resourceServerUrl;
+  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+    res.json({
+      issuer: base,
+      authorization_endpoint: `${base}/authorize`,
+      token_endpoint: `${base}/token`,
+      registration_endpoint: `${base}/register`,
+      revocation_endpoint: `${base}/revoke`,
+      jwks_uri: `${base}/.well-known/jwks.json`,
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+      scopes_supported: SUPPORTED_SCOPES,
+    });
+  });
+  app.get('/.well-known/jwks.json', (_req, res) => {
+    void provider.jwks().then((jwks) => res.json(jwks));
+  });
+
   app.use(
     mcpAuthRouter({
       provider,
