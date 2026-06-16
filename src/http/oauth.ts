@@ -100,10 +100,28 @@ export function createProxyProvider(config: OAuthConfig): ProxyOAuthServerProvid
     const res = await fetch(input as Parameters<typeof fetch>[0], init);
     const url = String(input);
     if (url.includes('/oauth2/')) {
-      const body = res.ok ? '' : await res.clone().text().catch(() => '');
-      process.stderr.write(
-        `[beel-mcp] upstream ${init?.method ?? 'GET'} ${url} -> ${res.status}${body ? ' ' + body.slice(0, 400) : ''}\n`,
-      );
+      if (!res.ok) {
+        const body = await res.clone().text().catch(() => '');
+        process.stderr.write(
+          `[beel-mcp] upstream ${init?.method ?? 'GET'} ${url} -> ${res.status} ${body.slice(0, 400)}\n`,
+        );
+      } else if (url.includes('/token')) {
+        // Decode the issued access token to expose its iss/kid/exp — to spot an
+        // issuer mismatch between the upstream token and the proxy's advertised AS.
+        try {
+          const json = (await res.clone().json()) as { access_token?: string };
+          if (json.access_token) {
+            const claims = decodeJwt(json.access_token);
+            const header = decodeProtectedHeader(json.access_token);
+            process.stderr.write(
+              `[beel-mcp] issued token: iss=${claims.iss} kid=${header.kid} aud=${JSON.stringify(claims.aud)} ` +
+                `exp=${claims.exp} scope=${JSON.stringify(claims.scope)} | proxy issuer=${config.resourceServerUrl}\n`,
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     }
     return res;
   };

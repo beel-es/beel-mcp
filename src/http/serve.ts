@@ -36,6 +36,16 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   // proxy so the SDK's rate limiter reads the real client IP instead of throwing
   // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. Configurable hop count via TRUST_PROXY.
   app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+  // Diagnostic: log every request (except health) with whether it carries a Bearer,
+  // to see if the client reaches the MCP endpoint after obtaining a token.
+  app.use((req, _res, next) => {
+    if (req.path !== '/healthz') {
+      process.stderr.write(
+        `[beel-mcp] ${req.method} ${req.path} auth=${req.headers.authorization ? 'bearer' : 'none'}\n`,
+      );
+    }
+    next();
+  });
   app.use(express.json({ limit: '4mb' }));
 
   const verifier = createBeelTokenVerifier(config);
