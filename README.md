@@ -79,7 +79,7 @@ you'd deploy at `https://mcp.beel.es` for a hosted, multi-tenant connector.
 How auth works:
 
 1. A client connects without a token → `401` with
-   `WWW-Authenticate: …resource_metadata=https://mcp.beel.es/.well-known/oauth-protected-resource/mcp`.
+   `WWW-Authenticate: …resource_metadata=https://mcp.beel.es/.well-known/oauth-protected-resource`.
 2. The client reads that metadata, discovers BeeL's authorization server, and runs
    the standard `authorization_code` + PKCE flow against `app.beel.es/oauth2/*`.
 3. The client retries with a Bearer **JWT** (RS256). The server validates it offline

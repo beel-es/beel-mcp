@@ -64,7 +64,7 @@ URL must be HTTPS — MCP clients refuse plain HTTP.
 ## 5. Connect it in Claude
 
 Claude.ai (Pro/Max/Team/Enterprise) or Claude Desktop → **Settings → Connectors → Add
-custom connector** → URL `https://mcp.beel.es/mcp`. Claude discovers the OAuth config,
+custom connector** → URL `https://mcp.beel.es` (the MCP endpoint is the root). Claude discovers the OAuth config,
 you log in to BeeL, consent the scopes, and the tools appear — including the PDF viewer
 that renders emitted invoices in a side panel.
 
@@ -74,12 +74,12 @@ that renders emitted invoices in a side panel.
 curl https://mcp.beel.es/healthz
 # {"status":"ok","name":"beel-mcp","version":"..."}
 
-curl https://mcp.beel.es/.well-known/oauth-protected-resource/mcp
-# { "resource": "...", "authorization_servers": ["https://app.beel.es"], "scopes_supported": [...] }
+curl https://mcp.beel.es/.well-known/oauth-protected-resource
+# { "resource": "...", "authorization_servers": ["https://app.beel.es/api"], "scopes_supported": [...] }
 
-curl -i -X POST https://mcp.beel.es/mcp -H 'content-type: application/json' \
+curl -i -X POST https://mcp.beel.es/ -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
-# 401 + WWW-Authenticate: Bearer ... resource_metadata="https://mcp.beel.es/.well-known/oauth-protected-resource/mcp"
+# 401 + WWW-Authenticate: Bearer ... resource_metadata="https://mcp.beel.es/.well-known/oauth-protected-resource"
 ```
 
 ## Operational notes
