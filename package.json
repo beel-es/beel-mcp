@@ -4,7 +4,8 @@
   "description": "BeeL Model Context Protocol server — invoicing tools derived from the OpenAPI spec, docs search, and Spanish fiscal guardrails (VeriFactu, NIF, corrective invoices).",
   "type": "module",
   "bin": {
-    "beel-mcp": "./dist/index.js"
+    "beel-mcp": "./dist/index.js",
+    "beel-mcp-http": "./dist/serve-http.js"
   },
   "files": [
     "dist",
@@ -16,8 +17,11 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/serve-http.ts",
+    "start:http": "node dist/serve-http.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:oauth": "tsx scripts/oauth-e2e.ts",
     "typecheck": "tsc --noEmit",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
     "sync:spec": "node scripts/bundle-spec.mjs",
@@ -45,10 +49,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.0.0",
+    "jose": "^5.9.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@redocly/cli": "^1.25.0",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",

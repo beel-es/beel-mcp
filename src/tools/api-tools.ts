@@ -15,8 +15,11 @@ export interface ApiTool {
   operation: OperationSpec;
 }
 
-/** Build the curated set of API tools from the embedded spec. */
+let cached: { tools: ApiTool[]; policy: PolicyResult } | null = null;
+
+/** Build the curated set of API tools from the embedded spec (memoised — pure). */
 export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
+  if (cached) return cached;
   const doc = loadSpec();
   const manifest = buildManifest(doc);
   const policy = applyToolPolicy(manifest);
@@ -29,7 +32,8 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
       annotations: annotationsFor(operation),
     } satisfies Tool,
   }));
-  return { tools, policy };
+  cached = { tools, policy };
+  return cached;
 }
 
 function substitutePath(op: OperationSpec, args: Record<string, unknown>): string {
