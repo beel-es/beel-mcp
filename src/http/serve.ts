@@ -32,6 +32,10 @@ import {
  */
 export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthConfig()) {
   const app = express();
+  // Behind Cloudflare/Traefik (Dokploy), requests carry X-Forwarded-For. Trust the
+  // proxy so the SDK's rate limiter reads the real client IP instead of throwing
+  // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. Configurable hop count via TRUST_PROXY.
+  app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
   app.use(express.json({ limit: '4mb' }));
 
   const verifier = createBeelTokenVerifier(config);
