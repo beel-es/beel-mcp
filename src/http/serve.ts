@@ -5,13 +5,13 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import {
   getOAuthProtectedResourceMetadataUrl,
-  mcpAuthMetadataRouter,
+  mcpAuthRouter,
 } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { createServer, type ServerInfo } from '../server.js';
 import {
-  buildOAuthMetadata,
   configFromAuth,
   createBeelTokenVerifier,
+  createProxyProvider,
   loadOAuthConfig,
   SUPPORTED_SCOPES,
   type OAuthConfig,
@@ -40,9 +40,14 @@ export function createHttpApp(info: ServerInfo, config: OAuthConfig = loadOAuthC
   const resourceServerUrl = new URL(config.resourceServerUrl);
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
 
+  // The MCP server fronts BeeL's authorization server as an OAuth proxy: it exposes
+  // /authorize, /token, /revoke and the AS + protected-resource metadata on its own
+  // domain and forwards them upstream. MCP clients (Claude) expect the OAuth endpoints
+  // on the MCP server, so this proxy is required (a pure resource-server is not enough).
   app.use(
-    mcpAuthMetadataRouter({
-      oauthMetadata: buildOAuthMetadata(config),
+    mcpAuthRouter({
+      provider: createProxyProvider(config),
+      issuerUrl: resourceServerUrl,
       resourceServerUrl,
       scopesSupported: SUPPORTED_SCOPES,
       resourceName: 'BeeL MCP',
