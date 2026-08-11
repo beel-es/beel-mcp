@@ -41,6 +41,31 @@ export async function resolveClientIdentity(
   };
 }
 
+/**
+ * HMAC-SHA256 over `label|origin|verified` with the shared upstream client
+ * secret. The backend recomputes it before showing the identity: authorize
+ * params travel in the user's browser URL, so an unsigned "client_verified"
+ * could be forged by linking a victim straight to the backend authorize page.
+ */
+export async function signClientIdentity(
+  identity: ClientIdentity,
+  sharedSecret: string,
+): Promise<string> {
+  const payload = `${identity.label ?? ''}|${identity.origin ?? ''}|${identity.verified}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(sharedSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 function hostOf(url: string | undefined): string | undefined {
   if (!url) return undefined;
   try {

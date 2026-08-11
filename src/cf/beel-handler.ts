@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
-import { resolveClientIdentity } from './client-identity.js';
+import { resolveClientIdentity, signClientIdentity } from './client-identity.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -113,6 +113,9 @@ app.get('/authorize', async (c) => {
   if (identity.label) url.searchParams.set('client_label', identity.label);
   if (identity.origin) url.searchParams.set('client_origin', identity.origin);
   url.searchParams.set('client_verified', String(identity.verified));
+  if (upstream.clientSecret) {
+    url.searchParams.set('client_identity_sig', await signClientIdentity(identity, upstream.clientSecret));
+  }
   return c.redirect(url.href, 302);
 });
 
