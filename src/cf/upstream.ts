@@ -5,6 +5,7 @@
  */
 
 export interface UpstreamConfig {
+  issuer: string;
   authorizeUrl: string;
   tokenUrl: string;
   clientId: string;
@@ -22,6 +23,7 @@ export interface UpstreamTokens {
 export function upstreamConfig(env: Env): UpstreamConfig {
   const issuer = (env.BEEL_OAUTH_ISSUER ?? 'https://app.beel.es/api').replace(/\/$/, '');
   return {
+    issuer,
     authorizeUrl: `${issuer}/oauth2/authorize`,
     tokenUrl: `${issuer}/oauth2/token`,
     clientId: env.BEEL_OAUTH_CLIENT_ID ?? 'beel-mcp',

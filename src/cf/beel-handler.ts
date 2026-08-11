@@ -22,13 +22,13 @@ interface PendingAuth {
 const STATE_TTL_SECONDS = 1800;
 
 /**
- * Scopes requested upstream when the MCP client asks for none (Claude sends no
- * scope parameter). Must be a subset of the beel-mcp client registration in the
- * backend (Spring rejects unknown scopes with invalid_scope). `sandbox` is NOT
- * defaulted: connecting means working with your real (live) BeeL data.
- * TODO: add "companies:list" here once the backend client registration grants it.
+ * Fallback scopes requested upstream when the MCP client asks for none (Claude
+ * sends no scope parameter) and the backend discovery doesn't advertise its
+ * catalog. Must be a subset of the beel-mcp client registration (Spring rejects
+ * unknown scopes with invalid_scope). `sandbox` is NEVER defaulted: connecting
+ * means working with your real (live) BeeL data unless explicitly requested.
  */
-const DEFAULT_SCOPES = [
+const FALLBACK_SCOPES = [
   'invoices:read',
   'invoices:write',
   'customers:read',
@@ -42,7 +42,42 @@ const DEFAULT_SCOPES = [
   'nif:validate',
   'companies:read',
   'companies:write',
+  // NOT here: companies:list — the fallback must stay a subset of what the OLDEST
+  // deployed backend registers, or Spring fails the whole authorize with
+  // invalid_scope. New scopes arrive via scopes_supported in the discovery.
 ];
+
+/** Scopes never granted by default even if the catalog advertises them. */
+const NON_DEFAULT_SCOPES = new Set(['sandbox']);
+
+const SCOPES_CACHE_TTL_MS = 15 * 60 * 1000;
+let scopesCache: { scopes: string[]; fetchedAt: number } | null = null;
+
+/**
+ * The single source of truth for the scope catalog is the backend
+ * (`scopes_supported` in its AS discovery, derived from ApiKeyScope). Reading it
+ * here means the Worker never hardcodes knowledge of which scopes exist; the
+ * fallback only covers backends that predate the metadata.
+ */
+async function defaultScopes(issuer: string): Promise<string[]> {
+  if (scopesCache && Date.now() - scopesCache.fetchedAt < SCOPES_CACHE_TTL_MS) {
+    return scopesCache.scopes;
+  }
+  try {
+    const response = await fetch(`${issuer}/.well-known/oauth-authorization-server`);
+    if (response.ok) {
+      const metadata = (await response.json()) as { scopes_supported?: string[] };
+      const advertised = metadata.scopes_supported?.filter((s) => !NON_DEFAULT_SCOPES.has(s));
+      if (advertised?.length) {
+        scopesCache = { scopes: advertised, fetchedAt: Date.now() };
+        return advertised;
+      }
+    }
+  } catch {
+    /* fall through to the static fallback */
+  }
+  return FALLBACK_SCOPES;
+}
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -64,7 +99,9 @@ app.get('/authorize', async (c) => {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', upstream.clientId);
   url.searchParams.set('redirect_uri', new URL('/callback', c.req.url).href);
-  const requestedScopes = oauthReqInfo.scope.length ? oauthReqInfo.scope : DEFAULT_SCOPES;
+  const requestedScopes = oauthReqInfo.scope.length
+    ? oauthReqInfo.scope
+    : await defaultScopes(upstream.issuer);
   url.searchParams.set('scope', requestedScopes.join(' '));
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', challenge);
