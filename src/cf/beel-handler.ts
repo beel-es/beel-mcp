@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
-import { resolveClientIdentity, signClientIdentity } from './client-identity.js';
+import { IDENTITY_ASSERTION, createIdentityAssertion, resolveClientIdentity } from './client-identity.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -110,11 +110,11 @@ app.get('/authorize', async (c) => {
   // End-client identity for the consent screen: name is self-asserted (DCR),
   // origin is provable, verified only against the well-known-hosts allowlist.
   const identity = await resolveClientIdentity(c.env.OAUTH_PROVIDER, oauthReqInfo.clientId);
-  if (identity.label) url.searchParams.set('client_label', identity.label);
-  if (identity.origin) url.searchParams.set('client_origin', identity.origin);
-  url.searchParams.set('client_verified', String(identity.verified));
   if (upstream.clientSecret) {
-    url.searchParams.set('client_identity_sig', await signClientIdentity(identity, upstream.clientSecret));
+    url.searchParams.set(
+      IDENTITY_ASSERTION.PARAM,
+      await createIdentityAssertion(identity, upstream.clientSecret, upstream.issuer),
+    );
   }
   return c.redirect(url.href, 302);
 });

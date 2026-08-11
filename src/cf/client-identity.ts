@@ -1,3 +1,4 @@
+import { SignJWT } from 'jose';
 import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider';
 
 /**
@@ -41,29 +42,42 @@ export async function resolveClientIdentity(
   };
 }
 
+/** Claim names of the identity assertion (mirrored by the backend verifier). */
+export const IDENTITY_ASSERTION = {
+  PARAM: 'client_identity_assertion',
+  ISSUER: 'https://mcp.beel.es',
+  CLAIM_LABEL: 'client_label',
+  CLAIM_ORIGIN: 'client_origin',
+  CLAIM_VERIFIED: 'client_verified',
+  TTL_SECONDS: 300,
+} as const;
+
 /**
- * HMAC-SHA256 over `label|origin|verified` with the shared upstream client
- * secret. The backend recomputes it before showing the identity: authorize
- * params travel in the user's browser URL, so an unsigned "client_verified"
- * could be forged by linking a victim straight to the backend authorize page.
+ * Standard JWS (HS256) carrying the end-client identity, keyed with the shared
+ * upstream client secret. iss/aud/exp/jti bound: forging it requires the
+ * secret, replaying it dies with `exp`, and the audience pins it to the
+ * backend issuer. Authorize params travel in the user's browser URL — an
+ * unsigned "client_verified" could otherwise be forged by deep-linking a
+ * victim straight to the backend authorize page.
  */
-export async function signClientIdentity(
+export async function createIdentityAssertion(
   identity: ClientIdentity,
   sharedSecret: string,
+  audience: string,
 ): Promise<string> {
-  const payload = `${identity.label ?? ''}|${identity.origin ?? ''}|${identity.verified}`;
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(sharedSecret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  const key = new TextEncoder().encode(sharedSecret);
+  return new SignJWT({
+    [IDENTITY_ASSERTION.CLAIM_LABEL]: identity.label ?? null,
+    [IDENTITY_ASSERTION.CLAIM_ORIGIN]: identity.origin ?? null,
+    [IDENTITY_ASSERTION.CLAIM_VERIFIED]: identity.verified,
+  })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setIssuer(IDENTITY_ASSERTION.ISSUER)
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime(`${IDENTITY_ASSERTION.TTL_SECONDS}s`)
+    .setJti(crypto.randomUUID())
+    .sign(key);
 }
 
 function hostOf(url: string | undefined): string | undefined {
