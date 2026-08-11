@@ -44,6 +44,8 @@ export interface OperationSpec {
   successContentTypes: string[];
   /** The success response is a non-JSON binary (pdf/zip/xlsx/csv). */
   binaryResponse: boolean;
+  /** Marked `deprecated: true` in the spec (legacy pre-company surface). */
+  deprecated: boolean;
 }
 
 function asNode(value: unknown): SpecNode | undefined {
@@ -151,6 +153,7 @@ export function buildManifest(doc: SpecNode): OperationSpec[] {
         requestBody: buildRequestBody(doc, operation),
         successContentTypes,
         binaryResponse,
+        deprecated: operation.deprecated === true,
       });
     }
   }

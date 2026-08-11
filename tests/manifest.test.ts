@@ -22,6 +22,11 @@ describe('buildManifest', () => {
     expect(op.requestBody?.required).toBe(true);
   });
 
+  it('captures the deprecated flag from the spec', () => {
+    expect(byId('listInvoices').deprecated).toBe(true);
+    expect(byId('listCompanyInvoices').deprecated).toBe(false);
+  });
+
   it('resolves $ref-ed shared query parameters', () => {
     const names = byId('listInvoices').queryParams.map((p) => p.name);
     expect(names).toContain('page');

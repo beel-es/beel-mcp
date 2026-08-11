@@ -63,7 +63,7 @@ first (\`getInvoice\`). Editing or deleting a non-draft invoice will be rejected
   duplicate) → **ANULACIÓN**: \`voidInvoice\` (POST /invoices/{id}/void). Terminal,
   burns the número. Anulación does NOT fix errors.
 - The invoice **should exist but data is wrong** (amount, IVA rate, NIF, name,
-  post-issue discount, bad debt) → **RECTIFICATIVA**: \`createCorrectiveInvoice\`.
+  post-issue discount, bad debt) → **RECTIFICATIVA**: \`createCompanyCorrectiveInvoice\`.
 - A previous registro was **rejected by AEAT for a non-fiscal reason** (typo in a
   description) → **subsanación**, which BeeL retries automatically. No public endpoint.
 

@@ -28,12 +28,20 @@ export const pdfAppResource: Resource = {
   name: 'Visor de factura (PDF)',
   description:
     'Panel interactivo que muestra el PDF de una factura. Lo abre automáticamente ' +
-    'el host al llamar a beel_generate_invoice_pdf.',
+    'el host al llamar a beel_get_company_invoice_pdf.',
   mimeType: MCP_APP_MIME,
 };
 
+let injectedHtml: string | null = null;
+
+/** Inject the built HTML (Cloudflare Worker build embeds it as a text module). */
+export function setPdfAppHtml(html: string): void {
+  injectedHtml = html;
+}
+
 /** Read the built HTML; null if the UI bundle is missing (build step not run). */
 export function readPdfApp(): { text: string; frameDomains: string[] } | null {
+  if (injectedHtml) return { text: injectedHtml, frameDomains: pdfFrameDomains() };
   const path = resolveHtmlPath();
   if (!path) return null;
   return { text: readFileSync(path, 'utf8'), frameDomains: pdfFrameDomains() };

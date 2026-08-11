@@ -8,29 +8,30 @@ import { GUARDRAILS, guardrailUri } from './domain.js';
  * description, so the constraint travels with the tool the model is about to call.
  */
 const BY_OPERATION_ID: Record<string, string[]> = {
-  createInvoice: ['invoice-types', 'regime-keys', 'nif-validation', 'verifactu-gates'],
-  updateInvoice: ['invoice-state-machine'],
-  deleteInvoice: ['invoice-state-machine'],
-  voidInvoice: ['cancel-vs-rectify', 'invoice-state-machine'],
-  createCorrectiveInvoice: ['cancel-vs-rectify', 'invoice-types', 'invoice-state-machine'],
-  markInvoicePaid: ['invoice-state-machine'],
-  markInvoiceSent: ['invoice-state-machine'],
-  revertInvoiceToIssued: ['invoice-state-machine'],
-  scheduleInvoice: ['invoice-state-machine'],
+  createCompanyInvoice: ['invoice-types', 'regime-keys', 'nif-validation', 'verifactu-gates'],
+  patchCompanyInvoice: ['invoice-state-machine'],
+  deleteCompanyInvoice: ['invoice-state-machine'],
+  voidCompanyInvoice: ['cancel-vs-rectify', 'invoice-state-machine'],
+  createCompanyCorrectiveInvoice: ['cancel-vs-rectify', 'invoice-types', 'invoice-state-machine'],
+  issueCompanyInvoice: ['invoice-state-machine', 'verifactu-gates'],
+  setCompanyInvoiceStatus: ['invoice-state-machine'],
+  setCompanyInvoiceSchedule: ['invoice-state-machine'],
   validateNif: ['nif-validation'],
-  createCustomer: ['nif-validation'],
-  createCustomersBulk: ['nif-validation'],
-  updateVeriFactuConfiguration: ['verifactu-gates'],
-  getVeriFactuConfiguration: ['verifactu-gates'],
+  createCompanyCustomer: ['nif-validation'],
+  createCompanyCustomersBulk: ['nif-validation'],
+  updateCompanyVeriFactuConfiguration: ['verifactu-gates'],
+  getCompanyVeriFactuConfiguration: ['verifactu-gates'],
   createCompany: ['multi-nif', 'nif-validation'],
   listCompanies: ['multi-nif'],
 };
 
 const BY_TAG: Record<string, string[]> = {
-  Invoices: ['invoice-state-machine'],
-  InvoiceLifecycle: ['invoice-state-machine', 'cancel-vs-rectify'],
-  RecurringInvoices: ['invoice-types', 'regime-keys'],
-  ConfigurationVeriFactu: ['verifactu-gates'],
+  CompanyInvoices: ['invoice-state-machine'],
+  CompanyInvoiceLifecycle: ['invoice-state-machine', 'cancel-vs-rectify'],
+  CompanyProforma: ['invoice-state-machine'],
+  CompanyRecurringInvoices: ['invoice-types', 'regime-keys'],
+  CompanyVeriFactuConfiguration: ['verifactu-gates'],
+  Company: ['multi-nif'],
   PublicCompanies: ['multi-nif'],
 };
 

@@ -21,9 +21,9 @@ export interface ToolAnnotations {
  * issuing a registered invoice cannot be undone once it reaches AEAT.
  */
 const DESTRUCTIVE_OPERATION_IDS = new Set([
-  'voidInvoice',
-  'createCorrectiveInvoice',
-  'cancelRepresentation',
+  'voidCompanyInvoice',
+  'createCompanyCorrectiveInvoice',
+  'cancelCompanyRepresentation',
   'revokeCompanyApiKey',
 ]);
 

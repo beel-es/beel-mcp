@@ -21,6 +21,7 @@ export type ExclusionReason =
   | 'binary-response'
   | 'multipart-upload'
   | 'webhook-infrastructure'
+  | 'deprecated'
   | 'explicitly-excluded';
 
 export interface PolicyOptions {
@@ -46,6 +47,7 @@ function classify(op: OperationSpec, opts: Required<PolicyOptions>): ExclusionRe
   if (opts.includedOperationIds.has(op.operationId)) return null;
   if (opts.excludedOperationIds.has(op.operationId)) return 'explicitly-excluded';
   if (opts.excludedTags.has(op.tag)) return 'webhook-infrastructure';
+  if (op.deprecated) return 'deprecated';
   if (op.binaryResponse) return 'binary-response';
   if (op.requestBody && op.requestBody.contentType.includes('multipart')) return 'multipart-upload';
   return null;

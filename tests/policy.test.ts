@@ -10,9 +10,15 @@ const includedIds = new Set(tools.map((t) => t.operationId));
 const reasonFor = (id: string) => excluded.find((e) => e.op.operationId === id)?.reason;
 
 describe('tool policy', () => {
-  it('includes the core invoicing operations', () => {
-    for (const id of ['createInvoice', 'listInvoices', 'voidInvoice', 'createCorrectiveInvoice', 'validateNif']) {
+  it('includes the core company-scoped invoicing operations', () => {
+    for (const id of ['createCompanyInvoice', 'listCompanyInvoices', 'voidCompanyInvoice', 'validateNif']) {
       expect(includedIds.has(id)).toBe(true);
+    }
+  });
+
+  it('excludes deprecated legacy operations superseded by the company-scoped API', () => {
+    for (const id of ['createInvoice', 'listInvoices', 'voidInvoice', 'issueInvoice']) {
+      expect(reasonFor(id)).toBe('deprecated');
     }
   });
 
@@ -22,14 +28,13 @@ describe('tool policy', () => {
   });
 
   it('excludes binary downloads', () => {
-    expect(reasonFor('exportInvoicesExcel')).toBe('binary-response');
-    expect(reasonFor('downloadInvoicesPdfBulk')).toBe('binary-response');
-    expect(reasonFor('previewDraftInvoicePdf')).toBe('binary-response');
+    expect(reasonFor('createCompanyInvoiceExport')).toBe('binary-response');
+    expect(reasonFor('previewCompanyInvoicePdf')).toBe('binary-response');
   });
 
   it('excludes multipart uploads', () => {
-    expect(reasonFor('importCustomersCsvPreview')).toBe('multipart-upload');
-    expect(reasonFor('submitRepresentation')).toBe('multipart-upload');
+    expect(reasonFor('createCompanyCustomerImport')).toBe('multipart-upload');
+    expect(reasonFor('submitCompanyRepresentation')).toBe('multipart-upload');
   });
 
   it('every operation is either included or excluded, never both', () => {

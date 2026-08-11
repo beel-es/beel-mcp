@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { ResolvedConfig } from '../config.js';
 
 /** A normalised API error carrying BeeL's error envelope fields. */
@@ -65,7 +64,7 @@ export async function apiRequest(
   };
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
   if (hasBody) headers['Content-Type'] = 'application/json';
-  if (method === 'POST') headers['Idempotency-Key'] = randomUUID();
+  if (method === 'POST') headers['Idempotency-Key'] = crypto.randomUUID();
 
   const activeCompany = opts.activeCompany ?? config.activeCompany;
   if (activeCompany) headers['Beel-Active-Company'] = activeCompany;
