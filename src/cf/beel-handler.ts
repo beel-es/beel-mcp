@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
+import { resolveClientIdentity } from './client-identity.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -106,6 +107,12 @@ app.get('/authorize', async (c) => {
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', challenge);
   url.searchParams.set('code_challenge_method', 'S256');
+  // End-client identity for the consent screen: name is self-asserted (DCR),
+  // origin is provable, verified only against the well-known-hosts allowlist.
+  const identity = await resolveClientIdentity(c.env.OAUTH_PROVIDER, oauthReqInfo.clientId);
+  if (identity.label) url.searchParams.set('client_label', identity.label);
+  if (identity.origin) url.searchParams.set('client_origin', identity.origin);
+  url.searchParams.set('client_verified', String(identity.verified));
   return c.redirect(url.href, 302);
 });
 
