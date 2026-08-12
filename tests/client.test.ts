@@ -33,6 +33,14 @@ describe('idempotency key (fiscal duplicate protection)', () => {
     expect(keyOf(calls[0].init)).not.toBe(keyOf(calls[1].init));
   });
 
+  it('differs for the same body against different companies (multi-NIF safety)', async () => {
+    const calls = captureFetch();
+    const body = { total: 100 };
+    await apiRequest(config, { method: 'POST', path: '/v1/invoices', body, activeCompany: 'nif-A' });
+    await apiRequest(config, { method: 'POST', path: '/v1/invoices', body, activeCompany: 'nif-B' });
+    expect(keyOf(calls[0].init)).not.toBe(keyOf(calls[1].init));
+  });
+
   it('honours an explicit caller-supplied key', async () => {
     const calls = captureFetch();
     await apiRequest(config, { method: 'POST', path: '/v1/companies/x/invoices', body: { total: 100 }, idempotencyKey: 'my-key' });

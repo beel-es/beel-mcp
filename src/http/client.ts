@@ -35,13 +35,19 @@ export interface ApiResult {
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 
 /**
- * Deterministic idempotency key for a mutating call: SHA-256 over method+path+body.
- * Two byte-identical POSTs (an agent retry) yield the same key and collapse to one
- * backend operation; any change in the payload yields a new key. `crypto.subtle`
- * exists in both the Worker and modern Node.
+ * Deterministic idempotency key for a mutating call: SHA-256 over
+ * method+path+activeCompany+body. Two byte-identical POSTs (an agent retry)
+ * yield the same key and collapse to one backend operation; any change — payload
+ * OR the target NIF (Beel-Active-Company) — yields a new key, so the same body
+ * against two different companies never cross-suppresses on the multi-NIF path.
  */
-async function idempotencyKeyFor(method: string, path: string, body: unknown): Promise<string> {
-  const material = `${method} ${path}\n${body === undefined ? '' : JSON.stringify(body)}`;
+async function idempotencyKeyFor(
+  method: string,
+  path: string,
+  activeCompany: string | undefined,
+  body: unknown,
+): Promise<string> {
+  const material = `${method} ${path}\n${activeCompany ?? ''}\n${body === undefined ? '' : JSON.stringify(body)}`;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -76,6 +82,7 @@ export async function apiRequest(
     Authorization: `Bearer ${config.apiKey}`,
     Accept: 'application/json',
   };
+  const activeCompany = opts.activeCompany ?? config.activeCompany;
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
   if (hasBody) headers['Content-Type'] = 'application/json';
   // Idempotency-Key STABLE per logical operation, not per HTTP call: an agent that
@@ -85,10 +92,9 @@ export async function apiRequest(
   // byte-identical retry collapses to one operation.
   if (method === 'POST') {
     headers['Idempotency-Key'] =
-      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, opts.body));
+      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, activeCompany, opts.body));
   }
 
-  const activeCompany = opts.activeCompany ?? config.activeCompany;
   if (activeCompany) headers['Beel-Active-Company'] = activeCompany;
 
   const response = await fetch(url, {

@@ -58,6 +58,18 @@ const SCOPES_CACHE_TTL_MS = 15 * 60 * 1000;
 let scopesCache: { scopes: string[]; fetchedAt: number } | null = null;
 
 /**
+ * Least-privilege intersection of what the tools NEED with what the backend
+ * GRANTS (both minus non-default scopes like `sandbox`). Pure + exported so the
+ * fail-closed behaviour is unit-tested without the Worker runtime. Fails CLOSED:
+ * an empty intersection returns `needed` (the tool set), never the whole catalog.
+ */
+export function intersectScopes(needed: string[], grantable: string[]): string[] {
+  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
+  const scopes = needed.filter((s) => grantableSet.has(s));
+  return scopes.length ? scopes : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
+}
+
+/**
  * Scopes the consent screen should request by default = the intersection of
  *   (a) what the exposed tools actually need — least privilege, never asks for a
  *       scope no tool uses; derived from the tool manifest, and
@@ -82,11 +94,11 @@ async function defaultScopes(issuer: string): Promise<string[]> {
   } catch {
     /* keep the static fallback */
   }
-  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
-  const scopes = needed.filter((s) => grantableSet.has(s));
-  const result = scopes.length ? scopes : [...grantableSet];
-  scopesCache = { scopes: result, fetchedAt: Date.now() };
-  return result;
+  const scopes = intersectScopes(needed, grantable);
+  // Cache only when discovery actually contributed (grantable != fallback), so a
+  // transient discovery outage doesn't pin a degraded result for the full TTL.
+  if (grantable !== FALLBACK_SCOPES) scopesCache = { scopes, fetchedAt: Date.now() };
+  return scopes;
 }
 
 /**

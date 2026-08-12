@@ -12,6 +12,7 @@ import { resolveConfig, type ResolvedConfig } from './config.js';
 import { ApiError } from './http/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
+import { getSetupStatus, isWorkflowTool, workflowTools } from './tools/workflow-tools.js';
 import { guardrailResources, readGuardrailResource } from './resources/guardrails.js';
 import { pdfAppResource, readPdfApp } from './resources/pdf-app.js';
 import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './ui/registry.js';
@@ -65,7 +66,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...apiTools.map((t) => t.tool), ...docsTools],
+    tools: [...apiTools.map((t) => t.tool), ...docsTools, ...workflowTools],
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -74,6 +75,12 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     try {
       if (isDocsTool(name)) {
         return textResult(await executeDocsTool(name, args));
+      }
+      if (isWorkflowTool(name)) {
+        const status = await getSetupStatus(getConfig(), args);
+        const result = textResult(JSON.stringify(status, null, 2));
+        result.structuredContent = status as unknown as Record<string, unknown>;
+        return result;
       }
       const apiTool = apiByName.get(name);
       if (!apiTool) return textResult(`Unknown tool: ${name}`, true);
@@ -127,7 +134,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     process.stderr.write(
-      `[beel-mcp] ${apiTools.length} API tools, ${docsTools.length} docs tools, ` +
+      `[beel-mcp] ${apiTools.length} API tools, ${docsTools.length + workflowTools.length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }
