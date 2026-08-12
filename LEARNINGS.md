@@ -150,6 +150,30 @@ skill "cómo construir un MCP con Claude Code".
     "salta" (cae a default) así que ningún test rojo lo delata. Solo un e2e con las dos
     fases reales lo caza. Alinear la clave resolviendo el authorization por Y→X.
 
+## Revisión de calidad multi-agente (eliminar duplicación / no reinventar)
+
+35. **Reinventar lo que el framework ya da**: el `InMemoryOAuth2AuthorizationService` que
+    metí como quick-fix para arrancar era un BLOCKER de prod — el flujo de consent abarca
+    3-4 requests que deben hallar la misma authorization por state; en multi-réplica/rolling
+    cada una cae en una réplica distinta → degrada EN SILENCIO (claim sin estampar → token a
+    cuenta default = widening). Lo correcto: `JdbcOAuth2AuthorizationService` (persistente,
+    compartido) — que SAS ya trae. Los quick-fix "para arrancar" se vuelven deuda peligrosa.
+36. **El Jdbc store de SAS tiene un gotcha**: persiste el `Authentication` custom
+    (`UserAuthenticationToken`) como Principal; al leer, `AllowlistTypeIdResolver` lo rechaza
+    → 400 sin stacktrace. Fix real = un `@JsonCreator` Mixin registrado (no basta configurar
+    el ObjectMapper — el default ya trae los módulos). Mi primer diagnóstico fue erróneo; el
+    agente decompiló SAS y encontró la causa real. Lección: un IT de ROUND-TRIP (save→findByToken
+    con el principal+params reales) es obligatorio; el boot-IT no lo caza.
+37. **Duplicación real vs conceptos paralelos**: eliminadas de verdad — chip local→`Chip`
+    compartido, triple representación de entorno→un mapper, parseo JWT a mano→`jose.decodeJwt`,
+    tipo de entorno paralelo→modelo canónico, replay-guard Redis→`DeduplicationStore` (−156
+    líneas). NO forzada: el catálogo de scopes del consent vs api-keys son dos catálogos i18n
+    en namespaces/capas distintas (no strings duplicados) — acoplarlos era sobre-ingeniería;
+    se documentó el riesgo de drift y punto.
+38. **Un `git add -A` mientras un subagente edita el mismo árbol** mezcla su trabajo a medias
+    en tu commit (test rojo pusheado). En repos compartidos con agentes: `git add` selectivo,
+    o espera a que el agente cierre su commit.
+
 ## Diseño de tools (Anthropic)
 
 17. Menos tools, nombres con prefijo (`beel_*`), errores accionables (el server ya
