@@ -53,6 +53,18 @@ function classify(op: OperationSpec, opts: Required<PolicyOptions>): ExclusionRe
   return null;
 }
 
+/**
+ * Scopes an agent actually needs: the union of OAuth2 scopes across the tools the
+ * policy exposes. Least privilege — the consent screen then never asks for a scope
+ * no tool uses (e.g. webhooks, excluded as infrastructure) nor omits one it does.
+ */
+export function requiredScopes(operations: OperationSpec[]): string[] {
+  const { tools } = applyToolPolicy(operations);
+  const scopes = new Set<string>();
+  for (const tool of tools) for (const scope of tool.scopes) scopes.add(scope);
+  return [...scopes].sort();
+}
+
 export function applyToolPolicy(
   operations: OperationSpec[],
   options: PolicyOptions = {},

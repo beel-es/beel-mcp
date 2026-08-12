@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest } from '../src/spec/manifest.js';
-import { applyToolPolicy } from '../src/policy/tool-policy.js';
+import { applyToolPolicy, requiredScopes } from '../src/policy/tool-policy.js';
 
 const manifest = buildManifest(loadSpec());
 const { tools, excluded } = applyToolPolicy(manifest);
@@ -40,6 +40,17 @@ describe('tool policy', () => {
   it('every operation is either included or excluded, never both', () => {
     expect(tools.length + excluded.length).toBe(manifest.length);
     for (const e of excluded) expect(includedIds.has(e.op.operationId)).toBe(false);
+  });
+
+  it('requiredScopes is the union of scopes across exposed tools, least-privilege', () => {
+    const scopes = requiredScopes(manifest);
+    // Resources the MCP genuinely operates on must be requestable...
+    for (const s of ['invoices:read', 'invoices:write', 'products:read', 'companies:list', 'nif:validate']) {
+      expect(scopes).toContain(s);
+    }
+    // ...and it must not invent scopes no exposed tool declares.
+    const declared = new Set(tools.flatMap((t) => t.scopes));
+    for (const s of scopes) expect(declared.has(s)).toBe(true);
   });
 
   it('honours explicit include overrides', () => {

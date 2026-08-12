@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
 import { IDENTITY_ASSERTION, createIdentityAssertion, resolveClientIdentity } from './client-identity.js';
+import { loadSpec } from '../spec/load.js';
+import { buildManifest } from '../spec/manifest.js';
+import { requiredScopes } from '../policy/tool-policy.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -55,29 +58,35 @@ const SCOPES_CACHE_TTL_MS = 15 * 60 * 1000;
 let scopesCache: { scopes: string[]; fetchedAt: number } | null = null;
 
 /**
- * The single source of truth for the scope catalog is the backend
- * (`scopes_supported` in its AS discovery, derived from ApiKeyScope). Reading it
- * here means the Worker never hardcodes knowledge of which scopes exist; the
- * fallback only covers backends that predate the metadata.
+ * Scopes the consent screen should request by default = the intersection of
+ *   (a) what the exposed tools actually need — least privilege, never asks for a
+ *       scope no tool uses; derived from the tool manifest, and
+ *   (b) what the backend lets this client consent to — `scopes_supported` in its
+ *       AS discovery, derived from ApiKeyScope; excludes privileged scopes the
+ *       authorize endpoint would reject with invalid_scope.
+ * Both sides are single sources of truth (the spec's per-op security, and the
+ * backend catalog); the Worker hardcodes neither. Fallback only for old backends.
  */
 async function defaultScopes(issuer: string): Promise<string[]> {
   if (scopesCache && Date.now() - scopesCache.fetchedAt < SCOPES_CACHE_TTL_MS) {
     return scopesCache.scopes;
   }
+  const needed = requiredScopes(buildManifest(loadSpec()));
+  let grantable: string[] = FALLBACK_SCOPES;
   try {
     const response = await fetch(`${issuer}/.well-known/oauth-authorization-server`);
     if (response.ok) {
       const metadata = (await response.json()) as { scopes_supported?: string[] };
-      const advertised = metadata.scopes_supported?.filter((s) => !NON_DEFAULT_SCOPES.has(s));
-      if (advertised?.length) {
-        scopesCache = { scopes: advertised, fetchedAt: Date.now() };
-        return advertised;
-      }
+      if (metadata.scopes_supported?.length) grantable = metadata.scopes_supported;
     }
   } catch {
-    /* fall through to the static fallback */
+    /* keep the static fallback */
   }
-  return FALLBACK_SCOPES;
+  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
+  const scopes = needed.filter((s) => grantableSet.has(s));
+  const result = scopes.length ? scopes : [...grantableSet];
+  scopesCache = { scopes: result, fetchedAt: Date.now() };
+  return result;
 }
 
 const app = new Hono<{ Bindings: Env }>();

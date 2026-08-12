@@ -100,6 +100,31 @@ skill "cómo construir un MCP con Claude Code".
     porque yo sí pedía scopes; el conector de Claude falló porque no los pide. Cada
     cliente ejercita el contrato de forma distinta.
 
+## E2E local destapa lo que los tests unitarios y el mock no
+
+26. **MapStruct con `source` escalar `String` mapea TODOS los targets a la misma
+    expresión**: `@Mapping(target="scope", source="scopeValue")` +
+    `@Mapping(target="descriptionKey", expression=...)` generó `setScope(descriptionKey(...))`
+    → el scope salía con el prefijo i18n `oauth2.scope.`. Con un solo parámetro String,
+    escribir el mapper a mano (o `@Named`) evita la ambigüedad. Un test que assertara
+    los dos campos por separado lo habría cazado — el del agente solo miraba uno.
+27. **El mock miente por construcción**: mi mock devolvía `client_name:"Claude"` y scopes
+    limpios; el backend real devuelve el clientName del registro ("BeeL MCP") y, sin
+    resolver la aserción, `verified:false`. Los contratos entre dos agentes que trabajan
+    en paralelo solo se validan de verdad con ambos lados vivos.
+28. **El dato para verificar identidad no llega al endpoint que lo necesita**: el
+    consent-context se llama con `client_id`+`scope` pero la aserción firmada vive en el
+    authorization-request de Spring, localizable solo por `state` — que el frontend no
+    reenviaba. Diseñar el contrato mirando de dónde sale cada dato, no solo qué muestra.
+29. **Arranque local del backend, orden de secretos que hacen fail-fast** (cada uno aborta
+    el boot con mensaje claro, hay que ir añadiéndolos): `ENCRYPTION_SECRET_KEY` debe
+    decodificar a EXACTAMENTE 32 bytes base64 (AES-256) — `openssl rand -base64 32`, no un
+    literal a ojo; `EMAIL_PROVIDER` debe ser `smtp`/`resend` (no `noop`, no existe el bean);
+    todos los `STRIPE_*` obligatorios aunque sean dummy; declarar el bean
+    `OAuth2AuthorizationService` explícito al retirar la auto-config del authserver.
+    Signup exige `accept_terms:true`; verificar email por SQL (`UPDATE person SET
+    email_verified=true`) o cargar `db/seed.sql` (usuarios con datos, password `password123`).
+
 ## Diseño de tools (Anthropic)
 
 17. Menos tools, nombres con prefijo (`beel_*`), errores accionables (el server ya
