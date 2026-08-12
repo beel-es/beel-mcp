@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { decodeJwt } from 'jose';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
 import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
@@ -190,9 +191,7 @@ app.get('/callback', async (c) => {
 /** Best-effort subject from the BeeL access token (JWT), for grant bookkeeping. */
 function subjectFromJwt(token: string): string | null {
   try {
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    const claims = decodeJwt(token);
     const sub = claims.user_id ?? claims.sub;
     return typeof sub === 'string' && sub ? sub : null;
   } catch {
