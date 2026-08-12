@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
-import { IDENTITY_ASSERTION, createIdentityAssertion, resolveClientIdentity } from './client-identity.js';
+import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
 import { requiredScopes } from '../policy/tool-policy.js';
@@ -129,7 +129,11 @@ app.get('/authorize', async (c) => {
   // origin is provable, verified only against the well-known-hosts allowlist.
   // Signed with a DEDICATED HMAC key (not the OAuth client secret) and bound to
   // this client_id + redirect_uri so it can't be transplanted onto another request.
-  const identity = await resolveClientIdentity(c.env.OAUTH_PROVIDER, oauthReqInfo.clientId);
+  const identity = await resolveClientIdentity(
+    c.env.OAUTH_PROVIDER,
+    oauthReqInfo.clientId,
+    parseKnownClients(c.env.MCP_VERIFIED_CLIENTS),
+  );
   const hmacSecret = identityHmacSecret(c.env);
   if (hmacSecret) {
     url.searchParams.set(

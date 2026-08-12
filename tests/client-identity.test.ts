@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveClientIdentity } from '../src/cf/client-identity.js';
+import { DEFAULT_KNOWN_CLIENTS, parseKnownClients, resolveClientIdentity } from '../src/cf/client-identity.js';
 
 /** Minimal fake of the OAuthProvider's lookupClient for the identity resolver. */
 function provider(redirectUris: string[], clientName?: string) {
@@ -42,5 +42,31 @@ describe('client identity (verified badge allowlist)', () => {
   it('rejects the old wrong Cursor callback, accepts only the real one', async () => {
     expect((await resolveClientIdentity(provider(['https://cursor.com/api/auth/callback']), 'c')).verified).toBe(false);
     expect((await resolveClientIdentity(provider(['https://www.cursor.com/agents/mcp/oauth/callback']), 'c')).verified).toBe(true);
+  });
+});
+
+describe('parseKnownClients (env-configurable allowlist)', () => {
+  it('falls back to the default list when unset or malformed', () => {
+    expect(parseKnownClients(undefined)).toBe(DEFAULT_KNOWN_CLIENTS);
+    expect(parseKnownClients('not json')).toBe(DEFAULT_KNOWN_CLIENTS);
+    expect(parseKnownClients('{}')).toBe(DEFAULT_KNOWN_CLIENTS);
+  });
+
+  it('accepts a valid env override', () => {
+    const list = parseKnownClients('[{"prefix":"https://partner.example/mcp/callback","name":"Partner"}]');
+    expect(list).toEqual([{ prefix: 'https://partner.example/mcp/callback', name: 'Partner' }]);
+  });
+
+  it('drops entries that would weaken the bar (loopback / non-https), keeping only safe ones', () => {
+    const list = parseKnownClients(JSON.stringify([
+      { prefix: 'http://localhost:9000/callback', name: 'Evil Local' },
+      { prefix: 'http://partner.example/x', name: 'Insecure' },
+      { prefix: 'https://good.example/cb', name: 'Good' },
+    ]));
+    expect(list).toEqual([{ prefix: 'https://good.example/cb', name: 'Good' }]);
+  });
+
+  it('an env override made entirely of loopback entries falls back to the default (never empty-open)', () => {
+    expect(parseKnownClients('[{"prefix":"http://localhost:1/cb","name":"X"}]')).toBe(DEFAULT_KNOWN_CLIENTS);
   });
 });

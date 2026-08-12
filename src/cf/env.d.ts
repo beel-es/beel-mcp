@@ -21,6 +21,8 @@ interface Env {
   BEEL_OAUTH_CLIENT_SECRET?: string;
   /** Dedicated HMAC key for the client-identity assertion (key separation). */
   MCP_IDENTITY_HMAC_KEY?: string;
+  /** JSON array of {prefix,name} overriding the verified-clients allowlist. */
+  MCP_VERIFIED_CLIENTS?: string;
   BEEL_BASE_URL?: string;
   BEEL_DOCS_URL?: string;
 }

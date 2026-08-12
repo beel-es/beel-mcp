@@ -34,7 +34,19 @@ export interface ClientIdentity {
  * Post-CIMD (MCP spec 2025-11), identity can key off the client_id metadata origin
  * instead of this list; keep the shape ready for that dimension.
  */
-const KNOWN_CLIENTS: Array<{ prefix: string; name: string }> = [
+export interface KnownClient {
+  prefix: string;
+  name: string;
+}
+
+/**
+ * Built-in fallback. The live list is configurable via the `MCP_VERIFIED_CLIENTS`
+ * env var (a JSON array of {prefix,name}); editing it in the Cloudflare dashboard
+ * updates the allowlist without a code redeploy. Whatever the source, every prefix
+ * is re-validated (https, non-loopback) before it can grant a badge — a bad env
+ * entry can never lower the bar.
+ */
+export const DEFAULT_KNOWN_CLIENTS: KnownClient[] = [
   { prefix: 'https://claude.ai/api/mcp/auth_callback', name: 'Claude' },
   { prefix: 'https://claude.com/api/mcp/auth_callback', name: 'Claude' },
   { prefix: 'https://chatgpt.com/connector_platform_oauth_redirect', name: 'ChatGPT' },
@@ -45,7 +57,7 @@ const KNOWN_CLIENTS: Array<{ prefix: string; name: string }> = [
   { prefix: 'https://api.devin.ai/mcp/oauth/callback', name: 'Devin' },
 ];
 
-/** A redirect_uri is verifiable only if it's https on a non-loopback host. */
+/** A redirect_uri / prefix is verifiable only if it's https on a non-loopback host. */
 function isVerifiableCallback(url: string): boolean {
   try {
     const u = new URL(url);
@@ -57,18 +69,40 @@ function isVerifiableCallback(url: string): boolean {
   }
 }
 
+/**
+ * Parse the allowlist from `MCP_VERIFIED_CLIENTS` (JSON), falling back to the
+ * built-in default. Malformed JSON or entries, and any prefix that isn't a
+ * verifiable https host, are dropped — the env can extend the list, never weaken it.
+ */
+export function parseKnownClients(raw: string | undefined): KnownClient[] {
+  if (!raw) return DEFAULT_KNOWN_CLIENTS;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return DEFAULT_KNOWN_CLIENTS;
+  }
+  if (!Array.isArray(parsed)) return DEFAULT_KNOWN_CLIENTS;
+  const clients = parsed.filter(
+    (e): e is KnownClient =>
+      !!e && typeof e.prefix === 'string' && typeof e.name === 'string' && isVerifiableCallback(e.prefix),
+  );
+  return clients.length ? clients : DEFAULT_KNOWN_CLIENTS;
+}
+
 export async function resolveClientIdentity(
   provider: OAuthHelpers,
   clientId: string,
+  knownClients: KnownClient[] = DEFAULT_KNOWN_CLIENTS,
 ): Promise<ClientIdentity> {
   const client = await provider.lookupClient(clientId).catch(() => null);
   const redirectUris: string[] = client?.redirectUris ?? [];
   // Guardrail: a loopback/custom-scheme URI must never satisfy a prefix check,
   // even if it somehow shared a prefix. Only verifiable https callbacks qualify.
   const matched = redirectUris.find(
-    (u) => isVerifiableCallback(u) && KNOWN_CLIENTS.some((k) => u.startsWith(k.prefix)),
+    (u) => isVerifiableCallback(u) && knownClients.some((k) => u.startsWith(k.prefix)),
   );
-  const known = matched && KNOWN_CLIENTS.find((k) => matched.startsWith(k.prefix));
+  const known = matched && knownClients.find((k) => matched.startsWith(k.prefix));
   if (known && matched) {
     return { label: known.name, origin: hostOf(matched), verified: true, redirectUri: matched };
   }
