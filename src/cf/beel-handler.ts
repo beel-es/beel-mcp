@@ -4,7 +4,7 @@ import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.
 import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
-import { requiredScopes } from '../policy/tool-policy.js';
+import { intersectScopes, requiredScopes } from '../policy/tool-policy.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -52,22 +52,8 @@ const FALLBACK_SCOPES = [
 ];
 
 /** Scopes never granted by default even if the catalog advertises them. */
-const NON_DEFAULT_SCOPES = new Set(['sandbox']);
-
 const SCOPES_CACHE_TTL_MS = 15 * 60 * 1000;
 let scopesCache: { scopes: string[]; fetchedAt: number } | null = null;
-
-/**
- * Least-privilege intersection of what the tools NEED with what the backend
- * GRANTS (both minus non-default scopes like `sandbox`). Pure + exported so the
- * fail-closed behaviour is unit-tested without the Worker runtime. Fails CLOSED:
- * an empty intersection returns `needed` (the tool set), never the whole catalog.
- */
-export function intersectScopes(needed: string[], grantable: string[]): string[] {
-  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
-  const scopes = needed.filter((s) => grantableSet.has(s));
-  return scopes.length ? scopes : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
-}
 
 /**
  * Scopes the consent screen should request by default = the intersection of

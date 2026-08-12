@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { intersectScopes } from '../src/cf/beel-handler.js';
+import { intersectScopes } from '../src/policy/tool-policy.js';
 
 const NEEDED = ['invoices:read', 'invoices:write', 'companies:list', 'nif:validate'];
 

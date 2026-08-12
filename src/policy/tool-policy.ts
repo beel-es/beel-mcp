@@ -65,6 +65,21 @@ export function requiredScopes(operations: OperationSpec[]): string[] {
   return [...scopes].sort();
 }
 
+/** Scopes never requested by default even when the catalog grants them. */
+export const NON_DEFAULT_SCOPES = new Set(['sandbox']);
+
+/**
+ * Least-privilege intersection of what the tools NEED with what the backend
+ * GRANTS (both minus non-default scopes like `sandbox`). Pure — no Worker deps —
+ * so it's unit-testable from Node. Fails CLOSED: an empty intersection returns
+ * `needed` (the tool set), NEVER the whole grantable catalog.
+ */
+export function intersectScopes(needed: string[], grantable: string[]): string[] {
+  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
+  const scopes = needed.filter((s) => grantableSet.has(s));
+  return scopes.length ? scopes : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
+}
+
 export function applyToolPolicy(
   operations: OperationSpec[],
   options: PolicyOptions = {},
