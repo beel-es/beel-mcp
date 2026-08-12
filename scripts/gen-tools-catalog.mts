@@ -26,12 +26,17 @@ for (const { tool, operation } of tools) {
 const tags = [...byTag.keys()].sort((a, b) => a.localeCompare(b));
 let total = 0;
 const lines: string[] = [];
+
+// Solo el catálogo de tools por categoría (prompts y helper tools se escriben a mano en las
+// docs, leen mejor curados). Los Accordion han de ir dentro de un Accordions.
+lines.push('<Accordions type="single">');
+lines.push('');
 for (const tag of tags) {
   const rows = byTag.get(tag)!.sort((a, b) => a.name.localeCompare(b.name));
   total += rows.length;
   lines.push(`<Accordion title="${tag} (${rows.length})">`);
   lines.push('');
-  lines.push('| Tool | Descripción | Scopes |');
+  lines.push('| Tool | Description | Scopes |');
   lines.push('| --- | --- | --- |');
   for (const r of rows) {
     const scopes = r.scopes.length ? r.scopes.map((s) => `\`${s}\``).join(' ') : '—';
@@ -41,6 +46,7 @@ for (const tag of tags) {
   lines.push('</Accordion>');
   lines.push('');
 }
+lines.push('</Accordions>');
 
 console.error(`Tags: ${tags.length}, tools: ${total}`);
 console.log(lines.join('\n'));
