@@ -49,6 +49,16 @@ export const prompts: Prompt[] = [
     ],
   },
   {
+    name: 'setup-representation',
+    description:
+      'Guided flow to set up the AEAT fiscal representation (apoderamiento) a NIF needs to ' +
+      'issue Live with VeriFactu: generate the unsigned PDF, download it, sign it, upload the ' +
+      'signed copy, and confirm it is valid. Resolves the NIF_REPRESENTATION_REQUIRED blocker.',
+    arguments: [
+      { name: 'company', description: 'The NIF/company that needs the representation, if known.', required: false },
+    ],
+  },
+  {
     name: 'connect-payments',
     description:
       'Guided flow to connect a payment provider (Stripe): understand per-NIF-with-focus vs ' +
@@ -194,6 +204,38 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               '   specific NIFs, so prefer a per-NIF grant over account-wide when in doubt.',
               '',
               ctx ? `Context:\n${ctx}` : 'Tell me the email and the role you intend to give.',
+            ].join('\n'),
+          ),
+        ],
+      };
+    }
+    case 'setup-representation': {
+      return {
+        description: 'Set up the AEAT fiscal representation for a NIF',
+        messages: [
+          userMessage(
+            [
+              'Help me set up the AEAT fiscal representation (apoderamiento) a NIF needs so BeeL can',
+              'submit its invoices to VeriFactu on its behalf. Follow this order:',
+              '',
+              '1. Confirm the NIF: `beel_get_my_identity`, then `beel_list_companies` to pick the one',
+              '   that needs it. Put it in focus if your account manages several.',
+              '2. Confirm it is actually required: `beel_get_company_issuing_readiness`. The',
+              '   `NIF_REPRESENTATION_REQUIRED` blocker (only in production — sandbox does not need it)',
+              '   is the signal. If it is not there, the NIF may already be represented.',
+              '3. Check current state with `beel_get_company_representation` before creating a new one',
+              '   (avoid generating a second document if one is already pending or valid).',
+              '4. Generate the unsigned document with `beel_generate_company_representation`, then',
+              '   fetch it with `beel_download_company_representation_document`.',
+              '5. The document must be signed by the NIF holder (digital certificate / autofirma) and',
+              '   the SIGNED copy uploaded. Uploading a file is not available over the MCP, so direct',
+              '   me to do it in the BeeL web app (the NIF > Representation section). Search',
+              '   `beel_docs_search` ["representation"] for the exact steps if unsure.',
+              '6. Verify with `beel_get_company_representation` until its status is valid, then re-run',
+              '   `beel_get_company_issuing_readiness` to confirm the blocker is gone.',
+              '   Use `beel_cancel_company_representation` only to discard a wrong/pending document.',
+              '',
+              args.company ? `Target NIF/company: ${args.company}` : 'Tell me which NIF needs the representation.',
             ].join('\n'),
           ),
         ],

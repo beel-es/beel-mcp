@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getPrompt, prompts } from '../src/prompts/workflows.js';
 
-const NEW_PROMPTS = ['onboard-nif', 'invite-member', 'connect-payments', 'upgrade-integration'];
+const NEW_PROMPTS = ['onboard-nif', 'invite-member', 'connect-payments', 'upgrade-integration', 'setup-representation'];
 
 function guidance(name: string, args: Record<string, string> = {}): string {
   const result = getPrompt(name, args);
@@ -33,6 +33,20 @@ describe('guided workflow prompts', () => {
     }
     expect(text).toContain('B12345678');
     expect(text).toContain('Acme SL');
+  });
+
+  it('setup-representation encodes the flow and directs the signed upload off-MCP', () => {
+    const text = guidance('setup-representation', { company: 'B12345678' });
+    for (const tool of [
+      'beel_get_company_issuing_readiness',
+      'beel_generate_company_representation',
+      'beel_download_company_representation_document',
+      'beel_get_company_representation',
+    ]) {
+      expect(text).toContain(tool);
+    }
+    expect(text).toContain('NIF_REPRESENTATION_REQUIRED');
+    expect(text).toContain('B12345678');
   });
 
   it('invite-member explains roles and references the member tools', () => {
