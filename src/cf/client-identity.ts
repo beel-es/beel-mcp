@@ -21,13 +21,41 @@ export interface ClientIdentity {
   redirectUri?: string;
 }
 
-/** Callback-URL prefixes of well-known MCP hosts → canonical display name. */
+/**
+ * Callback-URL prefixes of well-known MCP hosts → canonical display name.
+ *
+ * ONLY web `https://` callbacks on a vendor-controlled domain belong here: those
+ * are the only redirect_uris an impostor cannot claim. Loopback callbacks
+ * (`http://localhost:PORT/...`, used by every CLI/editor — Claude Code, Codex,
+ * Gemini CLI, Cursor desktop, Zed, Windsurf, Goose, OpenCode…) and custom
+ * schemes (`cursor://`) are NEVER listed: any local app can bind a loopback port
+ * or register a scheme, so they can't earn the verified badge. Those clients still
+ * connect — they simply render as "not verified · <host>".
+ * Post-CIMD (MCP spec 2025-11), identity can key off the client_id metadata origin
+ * instead of this list; keep the shape ready for that dimension.
+ */
 const KNOWN_CLIENTS: Array<{ prefix: string; name: string }> = [
   { prefix: 'https://claude.ai/api/mcp/auth_callback', name: 'Claude' },
   { prefix: 'https://claude.com/api/mcp/auth_callback', name: 'Claude' },
   { prefix: 'https://chatgpt.com/connector_platform_oauth_redirect', name: 'ChatGPT' },
-  { prefix: 'https://cursor.com/api/auth/callback', name: 'Cursor' },
+  { prefix: 'https://www.cursor.com/agents/mcp/oauth/callback', name: 'Cursor' },
+  { prefix: 'https://vscode.dev/redirect', name: 'VS Code (GitHub Copilot)' },
+  { prefix: 'https://insiders.vscode.dev/redirect', name: 'VS Code Insiders' },
+  { prefix: 'https://antigravity.google/oauth-callback', name: 'Antigravity' },
+  { prefix: 'https://api.devin.ai/mcp/oauth/callback', name: 'Devin' },
 ];
+
+/** A redirect_uri is verifiable only if it's https on a non-loopback host. */
+function isVerifiableCallback(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]' && host !== '::1';
+  } catch {
+    return false;
+  }
+}
 
 export async function resolveClientIdentity(
   provider: OAuthHelpers,
@@ -35,7 +63,11 @@ export async function resolveClientIdentity(
 ): Promise<ClientIdentity> {
   const client = await provider.lookupClient(clientId).catch(() => null);
   const redirectUris: string[] = client?.redirectUris ?? [];
-  const matched = redirectUris.find((u) => KNOWN_CLIENTS.some((k) => u.startsWith(k.prefix)));
+  // Guardrail: a loopback/custom-scheme URI must never satisfy a prefix check,
+  // even if it somehow shared a prefix. Only verifiable https callbacks qualify.
+  const matched = redirectUris.find(
+    (u) => isVerifiableCallback(u) && KNOWN_CLIENTS.some((k) => u.startsWith(k.prefix)),
+  );
   const known = matched && KNOWN_CLIENTS.find((k) => matched.startsWith(k.prefix));
   if (known && matched) {
     return { label: known.name, origin: hostOf(matched), verified: true, redirectUri: matched };

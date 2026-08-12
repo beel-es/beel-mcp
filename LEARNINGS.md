@@ -125,6 +125,31 @@ skill "cómo construir un MCP con Claude Code".
     Signup exige `accept_terms:true`; verificar email por SQL (`UPDATE person SET
     email_verified=true`) o cargar `db/seed.sql` (usuarios con datos, password `password123`).
 
+## Seguridad (auditoría adversarial)
+
+30. **El núcleo aguantó, los flancos no**: el claim `account_id` era genuinamente
+    restrict-only (RS256, membership re-validada cada request, fallback a cuenta
+    default nunca al claim). Lo vulnerable era lo accesorio — firma de badge, reuso
+    de clave, single-use. Auditar el sistema entero, no solo la joya de la corona.
+31. **Idempotency-Key aleatoria por request = falsa protección**: un reintento del
+    agente creaba factura VeriFactu DUPLICADA (impacto fiscal/legal). La key debe ser
+    ESTABLE por operación lógica (hash método+path+body, o provista por el caller);
+    aleatoria-por-llamada anula justo lo que promete.
+32. **Una clave, un propósito**: firmar el badge de identidad con el MISMO secreto que
+    autentica el cliente OAuth ata dos superficies — un leak compromete ambas y la
+    rotación exige lock-step. Clave HMAC dedicada, rotable aparte (dual-key).
+33. **Una aserción firmada sin binding se transplanta**: `verified:true` válido 300s en
+    la URL del navegador se puede pegar a OTRA request de authorize (phishing del badge).
+    Bindear a `client_id`+`redirect_uri` y `jti` single-use; TTL corto (120s).
+
+34. **El `state` de la consent page de Spring AS ≠ el `state` del cliente OAuth**: SAS
+    redirige a la consent page con un identificador propio del authorization pendiente,
+    no con el state del cliente. Guardar la elección de consent por ese Y y luego
+    buscarla por `request.getState()` (=X, el del cliente) al emitir el token = mismatch
+    silencioso: el claim nunca se estampa, la feature queda inerte y la seguridad no
+    "salta" (cae a default) así que ningún test rojo lo delata. Solo un e2e con las dos
+    fases reales lo caza. Alinear la clave resolviendo el authorization por Y→X.
+
 ## Diseño de tools (Anthropic)
 
 17. Menos tools, nombres con prefijo (`beel_*`), errores accionables (el server ya
