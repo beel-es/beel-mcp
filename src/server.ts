@@ -46,6 +46,23 @@ function formatApiError(err: ApiError): string {
   return parts.join('\n');
 }
 
+/**
+ * One structured line per tool call for Cloudflare Workers Logs (and stderr in stdio).
+ * Deliberately carries NO arguments, tokens or PII — only which tool ran, whether it
+ * succeeded, the upstream status/error code, and latency. Emitted on stderr so it never
+ * pollutes the stdio JSON-RPC channel; Workers Logs captures stdout and stderr alike.
+ */
+function logToolCall(
+  tool: string,
+  outcome: 'ok' | 'error',
+  ms: number,
+  meta?: { status?: number; code?: string },
+): void {
+  console.error(
+    JSON.stringify({ evt: 'tool_call', tool, outcome, ms, ...meta }),
+  );
+}
+
 /** Build and wire the BeeL MCP server (transport-agnostic). */
 export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
@@ -72,18 +89,25 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs ?? {}) as Record<string, unknown>;
+    const startedAt = Date.now();
     try {
       if (isDocsTool(name)) {
-        return textResult(await executeDocsTool(name, args));
+        const result = textResult(await executeDocsTool(name, args));
+        logToolCall(name, 'ok', Date.now() - startedAt);
+        return result;
       }
       if (isWorkflowTool(name)) {
         const status = await getSetupStatus(getConfig(), args);
         const result = textResult(JSON.stringify(status, null, 2));
         result.structuredContent = status as unknown as Record<string, unknown>;
+        logToolCall(name, 'ok', Date.now() - startedAt);
         return result;
       }
       const apiTool = apiByName.get(name);
-      if (!apiTool) return textResult(`Unknown tool: ${name}`, true);
+      if (!apiTool) {
+        logToolCall(name, 'error', Date.now() - startedAt, { code: 'unknown_tool' });
+        return textResult(`Unknown tool: ${name}`, true);
+      }
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
       const result = textResult(JSON.stringify(data, null, 2));
       // MCP App tools (e.g. the PDF viewer) need the payload as structuredContent
@@ -91,9 +115,14 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
       if (apiTool.appResourceUri && data && typeof data === 'object' && !Array.isArray(data)) {
         result.structuredContent = data as Record<string, unknown>;
       }
+      logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {
-      if (err instanceof ApiError) return textResult(formatApiError(err), true);
+      if (err instanceof ApiError) {
+        logToolCall(name, 'error', Date.now() - startedAt, { status: err.status, code: err.code });
+        return textResult(formatApiError(err), true);
+      }
+      logToolCall(name, 'error', Date.now() - startedAt);
       return textResult(err instanceof Error ? err.message : String(err), true);
     }
   });
