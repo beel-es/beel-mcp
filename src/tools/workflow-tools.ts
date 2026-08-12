@@ -248,7 +248,7 @@ export async function getSetupStatus(
   let companies: CompanyReport[] = [];
   if (accountId) {
     const listData = await safe(() => call('listCompanies', { account_id: accountId }));
-    const items = asArray(asRecord(listData).data).map(asRecord);
+    const items = asArray(listData).map(asRecord);
     const scoped = filterId ? items.filter((c) => String(c.id ?? '') === filterId) : items;
     companies = await Promise.all(scoped.map((c) => reportForCompany(call, c)));
   }

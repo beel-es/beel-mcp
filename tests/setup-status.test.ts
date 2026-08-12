@@ -32,14 +32,14 @@ describe('beel_get_setup_status', () => {
   it('aggregates identity, companies and per-NIF readiness into a checklist', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1', name: 'Ada', email: 'ada@example.com' },
-      listCompanies: { data: [{ id: 'co-1', nif: 'B1', legal_name: 'One SL' }] },
+      listCompanies: [{ id: 'co-1', nif: 'B1', legal_name: 'One SL' }],
       getCompanyIssuingReadiness: { ready: false, blockers: ['SERIES_DEFAULT_NOT_FOUND'] },
       getCompanyDefaultSeries: [
         { document_type: 'F1', exists: false },
         { document_type: 'F2', exists: true },
       ],
       getCompanyVeriFactuConfiguration: { enabled: false, apply_by_default: false },
-      listCompanyPaymentConnections: { data: [] },
+      listCompanyPaymentConnections: [],
     });
 
     const status = await getSetupStatus(config, {}, caller);
@@ -59,11 +59,11 @@ describe('beel_get_setup_status', () => {
   it('marks a fully-configured NIF as ready', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1' },
-      listCompanies: { data: [{ id: 'co-1', nif: 'B9' }] },
+      listCompanies: [{ id: 'co-1', nif: 'B9' }],
       getCompanyIssuingReadiness: { ready: true, blockers: [] },
       getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
       getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true },
-      listCompanyPaymentConnections: { data: [{ status: 'ACTIVE' }] },
+      listCompanyPaymentConnections: [{ status: 'ACTIVE' }],
     });
 
     const status = await getSetupStatus(config, {}, caller);
@@ -77,10 +77,10 @@ describe('beel_get_setup_status', () => {
     const caller = fakeCaller(
       {
         getMyIdentity: { account_id: 'acc-1' },
-        listCompanies: { data: [{ id: 'co-1', nif: 'B1' }] },
+        listCompanies: [{ id: 'co-1', nif: 'B1' }],
         getCompanyIssuingReadiness: { ready: false, blockers: ['NIF_NOT_REGISTERED'] },
         getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
-        listCompanyPaymentConnections: { data: [] },
+        listCompanyPaymentConnections: [],
       },
       new Set(['getCompanyVeriFactuConfiguration']),
     );
@@ -104,11 +104,11 @@ describe('beel_get_setup_status', () => {
   it('respects the company_id filter', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1' },
-      listCompanies: { data: [{ id: 'co-1', nif: 'B1' }, { id: 'co-2', nif: 'B2' }] },
+      listCompanies: [{ id: 'co-1', nif: 'B1' }, { id: 'co-2', nif: 'B2' }],
       getCompanyIssuingReadiness: { ready: true, blockers: [] },
       getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
       getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: false },
-      listCompanyPaymentConnections: { data: [] },
+      listCompanyPaymentConnections: [],
     });
 
     const status = await getSetupStatus(config, { company_id: 'co-2' }, caller);
