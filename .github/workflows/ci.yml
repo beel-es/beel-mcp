@@ -26,5 +26,5 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | timeout 15 node dist/index.js \
-            | grep -q '"beel_create_invoice"' \
+            | grep -q '"beel_create_company_invoice"' \
             && echo "tools/list OK"
