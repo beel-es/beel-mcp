@@ -89,6 +89,15 @@ async function defaultScopes(issuer: string): Promise<string[]> {
   return result;
 }
 
+/**
+ * Dedicated HMAC secret for the identity assertion. Separate from the OAuth
+ * client secret (key separation) and independently rotatable. Falls back to the
+ * client secret only if the dedicated key isn't provisioned yet.
+ */
+function identityHmacSecret(env: Env): string | undefined {
+  return env.MCP_IDENTITY_HMAC_KEY || env.BEEL_OAUTH_CLIENT_SECRET || undefined;
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/healthz', (c) => c.json({ status: 'ok', name: 'beel-mcp', runtime: 'cloudflare' }));
@@ -118,11 +127,17 @@ app.get('/authorize', async (c) => {
   url.searchParams.set('code_challenge_method', 'S256');
   // End-client identity for the consent screen: name is self-asserted (DCR),
   // origin is provable, verified only against the well-known-hosts allowlist.
+  // Signed with a DEDICATED HMAC key (not the OAuth client secret) and bound to
+  // this client_id + redirect_uri so it can't be transplanted onto another request.
   const identity = await resolveClientIdentity(c.env.OAUTH_PROVIDER, oauthReqInfo.clientId);
-  if (upstream.clientSecret) {
+  const hmacSecret = identityHmacSecret(c.env);
+  if (hmacSecret) {
     url.searchParams.set(
       IDENTITY_ASSERTION.PARAM,
-      await createIdentityAssertion(identity, upstream.clientSecret, upstream.issuer),
+      await createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
+        clientId: oauthReqInfo.clientId,
+        redirectUri: identity.redirectUri,
+      }),
     );
   }
   return c.redirect(url.href, 302);

@@ -17,6 +17,8 @@ export interface ClientIdentity {
   origin?: string;
   /** True when the callback matches a well-known MCP host. */
   verified: boolean;
+  /** The client's registered redirect_uri, to bind the assertion to this request. */
+  redirectUri?: string;
 }
 
 /** Callback-URL prefixes of well-known MCP hosts → canonical display name. */
@@ -33,12 +35,16 @@ export async function resolveClientIdentity(
 ): Promise<ClientIdentity> {
   const client = await provider.lookupClient(clientId).catch(() => null);
   const redirectUris: string[] = client?.redirectUris ?? [];
-  const known = KNOWN_CLIENTS.find((k) => redirectUris.some((u) => u.startsWith(k.prefix)));
-  if (known) return { label: known.name, origin: hostOf(redirectUris[0]), verified: true };
+  const matched = redirectUris.find((u) => KNOWN_CLIENTS.some((k) => u.startsWith(k.prefix)));
+  const known = matched && KNOWN_CLIENTS.find((k) => matched.startsWith(k.prefix));
+  if (known && matched) {
+    return { label: known.name, origin: hostOf(matched), verified: true, redirectUri: matched };
+  }
   return {
     label: client?.clientName || undefined,
     origin: hostOf(redirectUris[0]),
     verified: false,
+    redirectUri: redirectUris[0],
   };
 }
 
@@ -49,27 +55,33 @@ export const IDENTITY_ASSERTION = {
   CLAIM_LABEL: 'client_label',
   CLAIM_ORIGIN: 'client_origin',
   CLAIM_VERIFIED: 'client_verified',
-  TTL_SECONDS: 300,
+  /** Binds the assertion to the exact request it was minted for (anti-transplant). */
+  CLAIM_CLIENT_ID: 'assert_client_id',
+  CLAIM_REDIRECT_URI: 'assert_redirect_uri',
+  TTL_SECONDS: 120,
 } as const;
 
 /**
- * Standard JWS (HS256) carrying the end-client identity, keyed with the shared
- * upstream client secret. iss/aud/exp/jti bound: forging it requires the
- * secret, replaying it dies with `exp`, and the audience pins it to the
- * backend issuer. Authorize params travel in the user's browser URL — an
- * unsigned "client_verified" could otherwise be forged by deep-linking a
- * victim straight to the backend authorize page.
+ * Standard JWS (HS256) carrying the end-client identity, keyed with a DEDICATED
+ * HMAC secret (NOT the OAuth client secret — key separation, independently
+ * rotatable). Bound to the specific authorization request via `assert_client_id`
+ * + `assert_redirect_uri` and a single-use `jti`, so a valid "verified" assertion
+ * cannot be transplanted onto a different authorize request or replayed: the
+ * backend cross-checks both claims against the pending request and burns the jti.
  */
 export async function createIdentityAssertion(
   identity: ClientIdentity,
-  sharedSecret: string,
+  hmacSecret: string,
   audience: string,
+  binding: { clientId: string; redirectUri: string | undefined },
 ): Promise<string> {
-  const key = new TextEncoder().encode(sharedSecret);
+  const key = new TextEncoder().encode(hmacSecret);
   return new SignJWT({
     [IDENTITY_ASSERTION.CLAIM_LABEL]: identity.label ?? null,
     [IDENTITY_ASSERTION.CLAIM_ORIGIN]: identity.origin ?? null,
     [IDENTITY_ASSERTION.CLAIM_VERIFIED]: identity.verified,
+    [IDENTITY_ASSERTION.CLAIM_CLIENT_ID]: binding.clientId,
+    [IDENTITY_ASSERTION.CLAIM_REDIRECT_URI]: binding.redirectUri ?? null,
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuer(IDENTITY_ASSERTION.ISSUER)
