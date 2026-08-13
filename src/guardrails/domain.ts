@@ -145,10 +145,10 @@ otherwise it is issued locally with \`verifactu.enabled: false\`:
 3. **The configuration \`enabled\` flag is on** (account-wide kill switch).
 
 Defaults: Stripe integrations auto-submit ON; manual API issuance uses the serie default.
-Sandbox keys still submit to AEAT's *sandbox* (real submissions, flagged test).
+TEST keys still submit to AEAT's own test environment (real submissions, flagged test).
 There is no public "submit now" endpoint — submission happens at issuance.
 
-Warning: production submissions are not batch-undoable. Disable auto-submit *before*
+Warning: LIVE submissions are not batch-undoable. Disable auto-submit *before*
 issuing a wave you don't want sent to AEAT.`,
   },
   {

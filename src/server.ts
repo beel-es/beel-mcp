@@ -79,7 +79,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     instructions:
       'BeeL is a Spanish invoicing API with VeriFactu compliance. Tools are derived from ' +
       'the public OpenAPI spec. Before mutating fiscal data, consult the beel://guardrails/* ' +
-      'resources and use beel_docs_search. Sandbox keys (beel_sk_test_) are safe to experiment with.',
+      'resources and use beel_docs_search. Test keys (beel_sk_test_) are safe to experiment with.',
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

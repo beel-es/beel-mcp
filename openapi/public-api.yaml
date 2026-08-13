@@ -5,7 +5,7 @@ info:
     Public invoicing API for self-employed professionals in Spain with VeriFactu regulatory compliance.
 
     Authenticate using API Keys (`Authorization: Bearer <key>`). Keys are scoped and environment-aware:
-    `beel_sk_live_*` targets production, `beel_sk_test_*` targets sandbox (no quota consumed, VeriFactu test mode).
+    `beel_sk_live_*` targets LIVE, `beel_sk_test_*` targets TEST (no quota consumed, VeriFactu test mode).
 
     POST endpoints accept an `Idempotency-Key` header (any unique client-generated string) to safely retry requests without creating duplicates.
 
@@ -667,7 +667,7 @@ paths:
                 conflict:
                   $ref: '#/components/examples/conflict-409'
         '422':
-          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
+          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). TEST applies the same gate as LIVE, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
           content:
             application/json:
               schema:
@@ -1793,7 +1793,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Original invoice cannot be rectified (invalid status); or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in production, where the operation reaches the real tax authority); or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`.'
+          description: 'Original invoice cannot be rectified (invalid status); or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in LIVE, where the operation reaches the real tax authority); or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`.'
           content:
             application/json:
               schema:
@@ -1883,7 +1883,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
+          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). TEST applies the same gate as LIVE, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
           content:
             application/json:
               schema:
@@ -9648,7 +9648,7 @@ paths:
         time, preventing webhooks from being skipped at runtime with
         `failure.payment.skip.missing_default_series`.
 
-        Environment (test/production) is resolved automatically from your request context — no input needed.
+        Environment (TEST/LIVE) is resolved automatically from your request context — no input needed.
       operationId: getDefaultSeriesStatus
       x-successor:
         method: GET
@@ -10275,18 +10275,18 @@ paths:
         creation flow:
 
         * **`TEST`** — created immediately, free. `201` + `CompanyCreatedData`.
-        * **`PROD` + account already production-active** (billing set up) —
-          created immediately as a production NIF. Real
+        * **`LIVE` + account already LIVE-active** (billing set up) —
+          created immediately as a LIVE NIF. Real
           emission stays blocked until the AEAT representation is signed for
           this NIF. `201` + `CompanyCreatedData`.
-        * **`PROD` + account with no card on file** — no company is created.
+        * **`LIVE` + account with no card on file** — no company is created.
           Returns `402` with `error.code=CHECKOUT_REQUIRED` and **no checkout
-          URL**: this endpoint never starts a charge (a production charge always
+          URL**: this endpoint never starts a charge (a LIVE charge always
           hangs off activating an existing, user-signalled company in Live), and
           an API key has no browser to return from a checkout with. Create the
           company (with `activate: false`, or in `TEST`) and activate it in Live
           via `POST /v1/companies/{company_id}/activations`.
-        * **`PROD` + account past due** — no company is created. Returns `402`
+        * **`LIVE` + account past due** — no company is created. Returns `402`
           with `error.code=PAYMENT_REQUIRED`. Nothing to sign up for here: the
           outstanding invoice has to be settled first.
 
@@ -10318,7 +10318,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '402':
           description: |
-            Payment required before creating a production NIF. No company is created and no
+            Payment required before creating a LIVE NIF. No company is created and no
             checkout is opened. Two distinct reasons, so branch on `error.code`:
 
             * `CHECKOUT_REQUIRED` — the account has **no card on file**. Nothing is owed; billing
@@ -10346,8 +10346,8 @@ paths:
               done; switching an environment on for it is a different act and has its own endpoint:
               `POST /v1/companies/{company_id}/activations`. The existing
               company's id travels in `error.details.company_id`, so no lookup is needed to call it.
-            * `NIF_PROD_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — the NIF is live in **another
-              account**. A NIF can only issue in production from one account (tax rule).
+            * `NIF_LIVE_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — the NIF is live in **another
+              account**. A NIF can only issue in LIVE from one account (tax rule).
           content:
             application/json:
               schema:
@@ -10575,7 +10575,7 @@ paths:
         Removes the NIF from your account: it stops appearing in the account and stops being
         billed. **Invoices already issued are kept in the database, but the company-scoped
         public API can no longer resolve them once the NIF is removed.** A NIF with a live
-        activation in Live cannot be removed (`409 COMPANY_ACTIVE_IN_PRODUCTION`), nor can the
+        activation in Live cannot be removed (`409 COMPANY_ACTIVE_IN_LIVE`), nor can the
         account's primary NIF (`400 CANNOT_DELETE_PRIMARY`).
 
         Leaving Live is a *scheduled* deactivation — the current cycle is charged and served in
@@ -10615,7 +10615,7 @@ paths:
           description: |
             The company cannot be deleted:
 
-            - `COMPANY_ACTIVE_IN_PRODUCTION` — it is active in Live. Deactivate it in Live and
+            - `COMPANY_ACTIVE_IN_LIVE` — it is active in Live. Deactivate it in Live and
               delete it from the effective date of that deactivation.
             - `COMPANY_HAS_INVOICES` — it has invoices in Live (issued, draft or proforma).
               Delete its drafts and proformas first; once it has issued, deactivate it instead.
@@ -10653,10 +10653,10 @@ paths:
         * `COMPANY_HAS_NO_NIF` — the company has no NIF yet (empty/provisioned shell).
         * `SERIES_DEFAULT_NOT_FOUND` — there is no default invoice series.
         * `ENV_MISMATCH` — the NIF has no VeriFactu configuration for the target
-          environment (e.g. set up only in TEST while issuing in production).
+          environment (e.g. set up only in TEST while issuing in LIVE).
         * `NIF_NOT_REGISTERED` — the NIF is not yet activated in the AEAT census for
           that environment.
-        * `NIF_REPRESENTATION_REQUIRED` — production VeriFactu emission needs a signed
+        * `NIF_REPRESENTATION_REQUIRED` — issuing in LIVE needs a signed
           AEAT representation, which is not yet in place.
 
         This does NOT cover the payer account's quota/subscription (a separate, global
@@ -11745,7 +11745,7 @@ paths:
         webhooks from being skipped at runtime with
         `failure.payment.skip.missing_default_series`.
 
-        Environment (test/production) is resolved automatically from your request context — no
+        Environment (TEST/LIVE) is resolved automatically from your request context — no
         input needed.
       security:
         - ApiKeyAuth: []
@@ -12084,7 +12084,7 @@ paths:
       description: |-
         Switches an existing NIF on in the mode carried in the body. This is how a NIF that already exists reaches Live: `POST /v1/accounts/{account_id}/companies` only creates one already switched on, so a NIF created in Test — which is how every provisioned account starts — has no other way there.
         The mode is explicit in the body and never taken from the key's environment, so a Test key can switch a NIF on in Live.
-        `TEST` is immediate and free. `PROD` is immediate when the account already has a card on file or an enterprise contract, and the NIF is added to the existing subscription. With no card on file it returns `402 CHECKOUT_REQUIRED`: capturing a card is a browser flow, so pass `success_url` and `cancel_url` to get a `checkout_url` to hand to the account holder.
+        `TEST` is immediate and free. `LIVE` is immediate when the account already has a card on file or an enterprise contract, and the NIF is added to the existing subscription. With no card on file it returns `402 CHECKOUT_REQUIRED`: capturing a card is a browser flow, so pass `success_url` and `cancel_url` to get a `checkout_url` to hand to the account holder.
         Idempotent: repeating the call neither opens a second checkout nor adds a second subscription item; it returns the existing activation with `already_active: true`. Sending the same `Idempotency-Key` to this route and to the nested one it replaces is the same operation, so it is replayed and never charged twice.
         It also cancels a pending switch-off. While the switch-off is pending the NIF is still on — it just carries an effective date — so switching it on again only removes that date, with nothing charged or credited, and answers `scheduled_deactivation_cancelled: true`.
         Requires the `companies:write` scope and access to the NIF. Switching on in Live also requires being the billing subject of the account (`403 NOT_BILLING_OWNER` otherwise).
@@ -12099,7 +12099,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ActivateCompanyRequest'
             example:
-              environment: PROD
+              environment: LIVE
       responses:
         '201':
           description: The NIF is switched on in that mode.
@@ -12124,7 +12124,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: '`NIF_PROD_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — another account already has this NIF in Live. A NIF can only invoice in Live from one account, so the other one has to switch it off first.'
+          description: '`NIF_LIVE_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — another account already has this NIF in Live. A NIF can only invoice in Live from one account, so the other one has to switch it off first.'
           content:
             application/json:
               schema:
@@ -12139,7 +12139,7 @@ paths:
       description: |-
         Switches the NIF off in that mode only; the other mode is untouched.
         In Live the switch-off is scheduled, not immediate: the cycle is paid up front, so the response carries an `effective_at` and the NIF keeps invoicing until then. Nothing is refunded. `effective_at` is the end of the current billing cycle, unless the NIF was switched on within that same cycle, in which case it is the end of the next one.
-        `TEST` and `PROD` under an enterprise contract are immediate and answer with no `effective_at`.
+        `TEST` and `LIVE` under an enterprise contract are immediate and answer with no `effective_at`.
         The activation is sealed rather than deleted, and only once `effective_at` arrives: the history survives, and in Live that sealing is what releases the NIF for another account. After it takes effect the NIF can neither issue nor correct invoices until switched on again.
         Idempotent: switching off a mode whose switch-off is already pending returns the same date with `already_scheduled: true`. Switching off a mode that was never on is a silent no-op.
         Requires the `companies:write` scope and access to the NIF. In Live it also requires being the billing subject of the account. A NIF you do not reach answers `403`, and so does a NIF that does not exist.
@@ -13079,6 +13079,7 @@ paths:
                       http_status: 503
                       duration_ms: 10238
                       error: Connection timeout
+                      failure_cause: timeout
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -13623,6 +13624,7 @@ paths:
                       http_status: 503
                       duration_ms: 10238
                       error: Connection timeout
+                      failure_cause: timeout
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -14036,7 +14038,7 @@ paths:
 
         The account is the one named in the path; the environment is not. With an
         API key the environment is derived from the key prefix (`beel_sk_live_*` =
-        production, `beel_sk_test_*` = sandbox); with a session cookie it follows
+        LIVE, `beel_sk_test_*` = TEST); with a session cookie it follows
         the active environment (`BeeL-Environment` header).
       operationId: listAccountEmailDeliveries
       security:
@@ -14244,8 +14246,8 @@ paths:
         recipient.
 
         The list is isolated by `(account, environment)`. With an API key the
-        environment is derived from the key prefix (`beel_sk_live_*` = production,
-        `beel_sk_test_*` = sandbox); with a session cookie it follows the active
+        environment is derived from the key prefix (`beel_sk_live_*` = LIVE,
+        `beel_sk_test_*` = TEST); with a session cookie it follows the active
         environment (`BeeL-Environment` header).
       operationId: listEmailDeliveries
       x-successor:
@@ -18984,8 +18986,8 @@ components:
           x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("environment")'
           description: |
             AEAT/VeriFactu environment to register this NIF against.
-            * `TEST` — Sandbox NIF, invoices reach VeriFactu test (default).
-            * `PROD` — Production NIF; requires the AEAT representation
+            * `TEST` — TEST NIF, invoices reach the VeriFactu test environment (default).
+            * `LIVE` — LIVE NIF; requires the AEAT representation
               model to be signed (POST /v1/accounts/{account_id}/companies/{company_id}/representation/submit)
               before real invoices can be issued.
 
@@ -19000,7 +19002,7 @@ components:
 
             Creating a company and activating it are two different acts. The NIF profile is free
             and always creatable; the activation is what seeds the invoice series, registers the
-            NIF and — in `PROD` — is what gets billed.
+            NIF and — in `LIVE` — is what gets billed.
 
             * `true` (default) — unchanged behaviour: the company is created and switched on in
               `aeat_environment`, with its default series seeded there.
@@ -19220,16 +19222,16 @@ components:
         in_prod:
           type: boolean
           description: |
-            Whether this company (NIF) is **activated in Live** (production), regardless
+            Whether this company (NIF) is **activated in LIVE**, regardless
             of whether the AEAT representation is already signed. Derived from the real
             activation fact — NOT from the stamped `environment` scalar — so it stays true
-            even for a NIF registered in production but not yet signed. Drives the UI's
-            "already in production" state (no spurious "add NIF" prompt when the
+            even for a NIF registered in LIVE but not yet signed. Drives the UI's
+            "already in LIVE" state (no spurious "add NIF" prompt when the
             account switches to Live).
         in_test:
           type: boolean
           description: |
-            Whether this company (NIF) is **activated in Test** (sandbox). Symmetric to
+            Whether this company (NIF) is **activated in TEST**. Symmetric to
             `in_prod` and derived from the same activation fact: activation is independent
             per mode, so a company may be activated in Test only, in Live only, in both, or
             in neither. A company that is not activated in the mode you are working in is
@@ -20171,13 +20173,31 @@ components:
         Mode a record lives in — its Test/Live twin. It decides where invoices, customers and
         quota are accounted.
 
-        For a company it also decides which AEAT its NIF is registered against: switching a
-        company on in `PROD` is what registers it with the real AEAT, so `aeat_environment`
-        is that same mode and uses this same enum.
+        **The API key you authenticate with already tells you the mode**, and the two always
+        agree — there is nothing to configure:
+
+        | API key prefix  | `environment` |
+        |-----------------|---------------|
+        | `beel_sk_test_` | `TEST`        |
+        | `beel_sk_live_` | `LIVE`        |
+
+        A `beel_sk_test_` key only ever sees and writes `TEST` records, and a `beel_sk_live_`
+        key only ever sees and writes `LIVE` ones. `TEST` data is free, is never sent to the
+        real AEAT and does not consume quota; `LIVE` data is billed and is registered against
+        the real AEAT.
+
+        For a company the mode also decides which AEAT its NIF is registered against:
+        switching a company on in `LIVE` is what registers it with the real AEAT, so
+        `aeat_environment` is that same mode and uses this same enum.
+
+        **Deprecated input alias.** `LIVE` used to be spelled `PROD`. Wherever this enum is
+        *accepted* (request bodies and query parameters), `PROD` is still read as `LIVE` so
+        live integrations do not break. It is never *emitted*: responses, webhook payloads and
+        every other output always say `LIVE`. Send `LIVE`.
       enum:
         - TEST
-        - PROD
-      example: PROD
+        - LIVE
+      example: LIVE
     MyCredential:
       type: object
       description: The credential this call was authenticated with. Lets a client discover, in a single request, what it is allowed to do and which environment it operates on, instead of learning it from a `403`.
@@ -21712,7 +21732,7 @@ components:
 
         The same rules as `PUT` apply: the fields that drive numbering (`code`, `format`,
         `counter_reset`, `initial_number`) are rejected once the series has issued
-        invoices, so renaming a series in production keeps working.
+        invoices, so renaming a series in LIVE keeps working.
       properties:
         document_type:
           $ref: '#/components/schemas/DocumentType'
@@ -21931,17 +21951,17 @@ components:
           $ref: '#/components/schemas/CompanySeriesNumbering'
     PaymentRequiredResponse:
       description: |
-        Returned with HTTP 402 when a production NIF cannot be created because
+        Returned with HTTP 402 when a LIVE NIF cannot be created because
         the account has no billing set up, or has an outstanding (past-due)
         payment. No company is created and **no checkout is ever opened here**:
-        a production charge hangs off activating a signalled company in Live.
+        a LIVE charge hangs off activating a signalled company in LIVE.
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
       example:
         success: false
         error:
           code: PAYMENT_REQUIRED
-          message: You have an outstanding payment. Settle it before creating a production company.
+          message: You have an outstanding payment. Settle it before creating a LIVE company.
         meta:
           timestamp: '2026-05-29T10:30:00Z'
           request_id: 4bf92f3577b34da6a3ce929d0e0e4736
@@ -22086,7 +22106,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/Environment'
           description: |
-            Mode the connection lives in (`beel_sk_test_*` → `TEST`, `beel_sk_live_*` → `PROD`).
+            Mode the connection lives in (`beel_sk_test_*` → `TEST`, `beel_sk_live_*` → `LIVE`).
             Test and Live connections are independent, so the same provider account may appear in
             both modes; this field tells them apart without inferring it from the key you asked
             with.
@@ -22141,6 +22161,36 @@ components:
         * `beel` — we did, because the endpoint stopped accepting anything at all for days.
           Reactivating requires the endpoint to pass a test delivery first (`POST
           /v1/webhooks/{webhook_id}/test`), so you unblock yourself without opening a ticket.
+    WebhookFailureCause:
+      type: string
+      nullable: true
+      enum:
+        - dns
+        - connection
+        - tls
+        - timeout
+        - http_client_error
+        - http_server_error
+        - invalid_url
+        - forbidden_target
+        - unknown
+      description: |
+        Why a delivery to your endpoint did not succeed. The `error` field is free text meant for
+        a human reading a log; this field is the machine-readable counterpart, so a change in
+        wording never changes your branching.
+
+        * `dns` — the endpoint's domain does not resolve.
+        * `connection` — the connection could not be opened (refused, host unreachable).
+        * `tls` — the endpoint's TLS certificate is not valid or not trusted.
+        * `timeout` — the endpoint accepted the connection but did not answer in time.
+        * `http_client_error` — the endpoint answered 4xx.
+        * `http_server_error` — the endpoint answered 5xx.
+        * `invalid_url` — the subscription URL is malformed and has no host to deliver to.
+        * `forbidden_target` — the URL points to a non-public network address, which we never
+          deliver to.
+        * `unknown` — the failure could not be classified.
+
+        New values may be added over time. Treat any value you do not recognise as `unknown`.
     WebhookSubscription:
       type: object
       required:
@@ -22171,7 +22221,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/WebhookDeactivationCause'
           description: |
-            Who turned this subscription off. Absent while it is active. `beel` means we paused it because the endpoint went 100 consecutive deliveries without a single success over more than 48 hours — reactivating it requires a successful test delivery first.
+            Who turned this subscription off. Absent while it is active. `beel` means we paused it because the endpoint went 25 consecutive deliveries without a single success over more than 48 hours — reactivating it requires a successful test delivery first.
         deactivated_at:
           type: string
           format: date-time
@@ -22182,6 +22232,11 @@ components:
           nullable: true
           description: |
             Last error seen in the current run of failed deliveries — what to fix. Cleared by the first successful delivery, together with the failure count.
+        last_error_cause:
+          allOf:
+            - $ref: '#/components/schemas/WebhookFailureCause'
+          description: |
+            Stable code for `last_error`. Cleared alongside it by the first successful delivery.
         consecutive_failures:
           type: integer
           description: |
@@ -22207,7 +22262,7 @@ components:
         - `verifactu.status.updated` — VeriFactu status changed (see `VeriFactuSubmissionStatus`)
         - `account.claimed` — A provisioned account was claimed by its holder
         - `company.created` — A NIF (company) was created inside a provisioned account
-        - `representation.signed` — Fiscal representation signed for a NIF (production invoicing enabled)
+        - `representation.signed` — Fiscal representation signed for a NIF (LIVE invoicing enabled)
 
         The `account.*` events are delivered only to the **provisioner** that created the
         account; a subscription on any other account never receives them.
@@ -22246,6 +22301,28 @@ components:
           default: own
           description: |
             Which accounts this subscription receives events from. Defaults to `own`. Same field name and values as the `account_relationship` carried by every event envelope.
+    WebhookTestResult:
+      type: object
+      properties:
+        delivery_success:
+          type: boolean
+          description: Whether your endpoint responded with HTTP 2xx.
+        http_status:
+          type: integer
+          nullable: true
+          description: HTTP status code returned by your endpoint. Null if the connection failed.
+        duration_ms:
+          type: integer
+          description: Round-trip time in milliseconds.
+        error:
+          type: string
+          nullable: true
+          description: Error message if the delivery failed (timeout, DNS, etc.).
+        failure_cause:
+          allOf:
+            - $ref: '#/components/schemas/WebhookFailureCause'
+          description: |
+            Why the delivery failed, as a stable code. Absent when `delivery_success` is true. Branch on this, never on the wording of `error`.
     WebhookSubscriptionWithSecret:
       allOf:
         - $ref: '#/components/schemas/WebhookSubscription'
@@ -22257,6 +22334,19 @@ components:
                 HMAC-SHA256 signing secret. **Only returned on creation and secret rotation.**
                 Store it securely — it cannot be retrieved again.
               example: whsec_a3f5b2e1c9d8f7e6b5a4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2
+            test_delivery:
+              allOf:
+                - $ref: '#/components/schemas/WebhookTestResult'
+              nullable: true
+              description: |
+                Outcome of a one-off signed test delivery sent to your URL as part of creating the
+                subscription, so you learn whether your endpoint answers without a second call.
+
+                It is **best effort and never blocks the subscription**: the subscription in `data`
+                exists and is active regardless of what this says, and the field is `null` when the
+                test could not be run at all. A failure here means your endpoint is not ready yet —
+                typically because you registered before deploying it — not that anything went wrong
+                with the registration. Only present on creation, never on secret rotation.
     WebhookEventAccountRelationship:
       type: string
       enum:
@@ -22486,7 +22576,7 @@ components:
         signed_at:
           type: string
           format: date-time
-          description: When the fiscal representation was signed (enabling production invoicing for this NIF).
+          description: When the fiscal representation was signed (enabling LIVE invoicing for this NIF).
     WebhookEvent:
       type: object
       description: Payload delivered to your endpoint on every webhook event.
@@ -22513,7 +22603,7 @@ components:
         livemode:
           type: boolean
           deprecated: true
-          description: 'Deprecated in favour of the `TEST`/`PROD` environment vocabulary: `livemode: true` is equivalent to environment `PROD`.'
+          description: 'Deprecated in favour of the `TEST`/`LIVE` environment vocabulary: `livemode: true` is equivalent to environment `LIVE`.'
         test:
           type: boolean
           nullable: true
@@ -22643,23 +22733,6 @@ components:
         delivered_at:
           type: string
           format: date-time
-    WebhookTestResult:
-      type: object
-      properties:
-        delivery_success:
-          type: boolean
-          description: Whether your endpoint responded with HTTP 2xx.
-        http_status:
-          type: integer
-          nullable: true
-          description: HTTP status code returned by your endpoint. Null if the connection failed.
-        duration_ms:
-          type: integer
-          description: Round-trip time in milliseconds.
-        error:
-          type: string
-          nullable: true
-          description: Error message if the delivery failed (timeout, DNS, etc.).
     RequestLogSummary:
       type: object
       description: Summary of an API request (list view).
