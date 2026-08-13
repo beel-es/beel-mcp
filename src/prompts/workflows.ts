@@ -70,7 +70,7 @@ export const prompts: Prompt[] = [
   {
     name: 'upgrade-integration',
     description:
-      'Update an existing BeeL API integration to current best practices: idempotency, API-key ' +
+      'Update an existing BeeL. API integration to current best practices: idempotency, API-key ' +
       'security, error handling, webhook signature verification, invoice lifecycle rules, and ' +
       'migrating off deprecated endpoints to the company-scoped API.',
     arguments: [
@@ -94,11 +94,11 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
         .filter(Boolean)
         .join('\n');
       return {
-        description: 'Issue a compliant BeeL invoice',
+        description: 'Issue a compliant BeeL. invoice',
         messages: [
           userMessage(
             [
-              'Help me issue a compliant invoice through the BeeL API. Follow this order:',
+              'Help me issue a compliant invoice through the BeeL. API. Follow this order:',
               '',
               '1. Read the `beel://guardrails/invoice-types` resource. Decide STANDARD (F1) vs',
               '   SIMPLIFIED (F2): F2 only if recipient unidentified AND total ≤ 3 000 €.',
@@ -119,7 +119,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
     }
     case 'fix-invoice': {
       return {
-        description: 'Fix an issued BeeL invoice',
+        description: 'Fix an issued BeeL. invoice',
         messages: [
           userMessage(
             [
@@ -150,7 +150,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
         messages: [
           userMessage(
             [
-              'Help me get a NIF operational in BeeL, end to end. Do NOT guess what is missing —',
+              'Help me get a NIF operational in BeeL., end to end. Do NOT guess what is missing —',
               'call the readiness/status tools and act on what they report. Follow this order:',
               '',
               '1. Confirm who I am: call `beel_get_my_identity` to get my account_id.',
@@ -191,7 +191,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
         messages: [
           userMessage(
             [
-              'Help me invite someone (a gestoría or a teammate) to my BeeL account. Order:',
+              'Help me invite someone (a gestoría or a teammate) to my BeeL. account. Order:',
               '',
               '1. Get my account with `beel_get_my_identity`, then see who is already in with',
               '   `beel_list_account_members` (avoid inviting an existing member twice).',
@@ -215,7 +215,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
         messages: [
           userMessage(
             [
-              'Help me set up the AEAT fiscal representation (apoderamiento) a NIF needs so BeeL can',
+              'Help me set up the AEAT fiscal representation (apoderamiento) a NIF needs so BeeL. can',
               'submit its invoices to VeriFactu on its behalf. Follow this order:',
               '',
               '1. Confirm the NIF: `beel_get_my_identity`, then `beel_list_companies` to pick the one',
@@ -229,7 +229,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               '   fetch it with `beel_download_company_representation_document`.',
               '5. The document must be signed by the NIF holder (digital certificate / autofirma) and',
               '   the SIGNED copy uploaded. Uploading a file is not available over the MCP, so direct',
-              '   me to do it in the BeeL web app (the NIF > Representation section). Search',
+              '   me to do it in the BeeL. web app (the NIF > Representation section). Search',
               '   `beel_docs_search` ["representation"] for the exact steps if unsure.',
               '6. Verify with `beel_get_company_representation` until its status is valid, then re-run',
               '   `beel_get_company_issuing_readiness` to confirm the blocker is gone.',
@@ -267,11 +267,11 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
     }
     case 'upgrade-integration': {
       return {
-        description: 'Bring an existing BeeL integration up to current best practices',
+        description: 'Bring an existing BeeL. integration up to current best practices',
         messages: [
           userMessage(
             [
-              'Help me update an existing BeeL API integration to current best practices. Review',
+              'Help me update an existing BeeL. API integration to current best practices. Review',
               'each area below, and use `beel_docs_search` for the exact rules and payloads:',
               '',
               '1. Idempotency: send an Idempotency-Key on invoice creation and other unsafe writes',
