@@ -192,8 +192,33 @@ app.get('/callback', async (c) => {
     },
   });
   await c.env.OAUTH_KV.delete(key);
-  return c.redirect(redirectTo, 302);
+  // El hop final al callback del cliente MCP (p.ej. claude.ai) NO puede ser un
+  // 302: iría dentro de la cadena de redirects del POST de consentimiento (que
+  // arranca en app.beel.es) y el `form-action` del CSP se aplica a TODA la
+  // cadena → bloquea cualquier host fuera de *.beel.es. Servimos un interstitial
+  // desde mcp.beel.es (sin ese CSP) que hace una navegación NUEVA vía JS: así la
+  // cadena del formulario termina en *.beel.es y el salto cross-origin queda
+  // fuera de form-action. Vale para cualquier cliente sin tocar el CSP.
+  return finalRedirect(redirectTo);
 });
+
+/**
+ * Corta la cadena de form-action: termina el submit en mcp.beel.es (200) y salta
+ * al destino con `location.replace` (navegación nueva, no gobernada por
+ * form-action). `<noscript>` cae a un enlace manual como último recurso.
+ */
+function finalRedirect(target: string): Response {
+  const jsUrl = JSON.stringify(target); // escapa para contexto JS
+  const hrefAttr = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const body = `<!doctype html><html lang="es"><head><meta charset="utf-8">`
+    + `<meta name="robots" content="noindex"><title>Conectando…</title></head>`
+    + `<body><script>location.replace(${jsUrl})</script>`
+    + `<noscript><a href="${hrefAttr}">Continuar</a></noscript></body></html>`;
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
 
 /** Best-effort subject from the BeeL access token (JWT), for grant bookkeeping. */
 function subjectFromJwt(token: string): string | null {
