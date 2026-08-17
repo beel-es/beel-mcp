@@ -36,16 +36,18 @@ function htmlShell(title, script) {
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: var(--font-sans, system-ui, sans-serif); }
+  /* Altura EXPLÍCITA: el host dimensiona el panel al contenido, así que flex:1
+     sobre height:100% colapsaría el visor a 0px. Fijamos la zona del PDF. */
+  html, body { margin: 0; font-family: var(--font-sans, system-ui, sans-serif); }
   body { display: flex; flex-direction: column; background: var(--background, Canvas); color: var(--foreground, CanvasText); }
   #bar { display: flex; align-items: center; gap: .75rem; padding: .6rem .9rem; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); font-size: .85rem; }
   #title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #meta { opacity: .6; white-space: nowrap; }
   #open { margin-left: auto; display: none; align-items: center; gap: .3rem; text-decoration: none; padding: .3rem .6rem; border-radius: .4rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); color: inherit; font-size: .8rem; }
   #open:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-  #frame-wrap { flex: 1; min-height: 0; }
-  #pdf { display: none; width: 100%; height: 100%; border: 0; }
-  #empty { flex: 1; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: .9rem; }
+  #frame-wrap { height: 640px; }
+  #pdf { display: none; width: 100%; height: 640px; border: 0; }
+  #empty { height: 640px; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: .9rem; }
 </style>
 </head>
 <body>

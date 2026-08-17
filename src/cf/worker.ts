@@ -55,8 +55,16 @@ export class BeelMcpAgent extends McpAgent<Env, Record<string, never>, Props> {
 // tokenExchangeCallback gets no `env`; the wrapper fetch below captures it per request.
 let currentEnv: Env | null = null;
 
+// Margen para que el access token del worker caduque ANTES que el de BeeL
+// (1h). Así el refresh del cliente MCP siempre dispara antes, y cada refresh
+// arrastra el token upstream vía tokenExchangeCallback. Sin esto, el token del
+// worker podía sobrevivir al de BeeL → 401 sin auto-refresh (había que reconectar).
+const UPSTREAM_SKEW_SECONDS = 300;
+const WORKER_ACCESS_TOKEN_TTL = 3600 - UPSTREAM_SKEW_SECONDS;
+
 const provider = new OAuthProvider({
   apiRoute: '/mcp',
+  accessTokenTTL: WORKER_ACCESS_TOKEN_TTL,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiHandler: BeelMcpAgent.serve('/mcp') as any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,7 +86,8 @@ const provider = new OAuthProvider({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? p.refreshToken,
       },
-      accessTokenTTL: tokens.expires_in,
+      // Mantener el token del worker por debajo del upstream también tras refrescar.
+      accessTokenTTL: Math.max(60, (tokens.expires_in ?? 3600) - UPSTREAM_SKEW_SECONDS),
     };
   },
 });
