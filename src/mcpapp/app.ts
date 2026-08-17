@@ -76,7 +76,14 @@ async function renderCanvases(lib: typeof PDFJS, bytes: ArrayBuffer): Promise<vo
 async function render(data: InvoicePdfAppData | undefined): Promise<void> {
   if (!data?.download_url) return;
   const url = proxied(data.download_url);
+  // `target="_blank"` está bloqueado en el sandbox: pedimos al HOST que abra el
+  // enlace fuera del iframe (openLink del app-bridge). href queda para menú
+  // contextual / accesibilidad, pero interceptamos el clic.
   openEl.href = url;
+  openEl.onclick = (e) => {
+    e.preventDefault();
+    void app.openLink({ url });
+  };
   openEl.style.display = 'inline-flex';
   if (data.file_name) titleEl.textContent = data.file_name;
   setStatus('Cargando factura…');
