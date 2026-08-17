@@ -66,6 +66,11 @@ function logToolCall(
 export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
   const apiByName = new Map<string, ApiTool>(apiTools.map((t) => [t.tool.name, t]));
+  // Lookup por operationId del CONTRATO: permite a los enrichers invocar otra
+  // operación por su id (ruta/params desde el spec), sin hardcodear paths.
+  const apiByOperationId = new Map<string, ApiTool>(
+    apiTools.map((t) => [t.operation.operationId, t]),
+  );
 
   // Resolve credentials lazily so the server starts (and can list tools) without
   // an API key; we only need it the first time an API tool actually runs. HTTP
@@ -108,11 +113,18 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
         return textResult(`Unknown tool: ${name}`, true);
       }
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
-      // Algunos tools enriquecen su payload (p.ej. embeber el PDF de la factura);
-      // el resto cae al JSON de texto. Registro en ./tools/tool-result.
+      // Algunos tools enriquecen su payload (p.ej. embeber el PDF de la factura
+      // + su imagen de preview); el resto cae al JSON de texto. Registro en
+      // ./tools/tool-result. El enricher recibe un GET autenticado de la sesión.
       const result =
-        (await enrichToolResult(apiTool.operation.operationId, data)) ??
-        textResult(JSON.stringify(data, null, 2));
+        (await enrichToolResult(apiTool.operation.operationId, data, {
+          args,
+          callOperation: (operationId, opArgs) => {
+            const op = apiByOperationId.get(operationId);
+            if (!op) throw new Error(`Unknown operation: ${operationId}`);
+            return executeApiTool(getConfig(), op.operation, opArgs);
+          },
+        })) ?? textResult(JSON.stringify(data, null, 2));
       logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {
