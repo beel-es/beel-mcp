@@ -1,6 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { enrichToolResult } from '../src/tools/tool-result.js';
 
+const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+const WEBP_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46]); // RIFF
+
+function stubFetch(map: Record<string, { body: Uint8Array; type: string; status?: number }>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const hit = map[url];
+      if (!hit) return new Response('not found', { status: 404 });
+      return new Response(hit.body, {
+        status: hit.status ?? 200,
+        headers: { 'content-type': hit.type },
+      });
+    }),
+  );
+}
+
 describe('enrichToolResult', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -8,33 +25,52 @@ describe('enrichToolResult', () => {
     expect(await enrichToolResult('listCompanyInvoices', { items: [] })).toBeNull();
   });
 
-  it('embeds the invoice PDF as an application/pdf resource', async () => {
-    const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(pdf, { status: 200 })),
-    );
-
+  it('embeds only the PDF resource when there is no preview image', async () => {
+    stubFetch({ 'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf' } });
     const result = await enrichToolResult('getCompanyInvoicePdf', {
       download_url: 'https://storage.beel.es/x.pdf',
       file_name: 'factura_A-2026-0041.pdf',
     });
+    const kinds = result?.content.map((c) => c.type);
+    expect(kinds).toEqual(['resource', 'text']);
+    const resource = result?.content.find((c) => c.type === 'resource') as any;
+    expect(resource.resource.mimeType).toBe('application/pdf');
+    expect(resource.resource.blob).toBe(btoa('%PDF'));
+  });
 
-    const resource = result?.content.find((c) => c.type === 'resource');
-    expect((resource as any)?.resource.mimeType).toBe('application/pdf');
-    expect((resource as any)?.resource.uri).toContain('factura_A-2026-0041.pdf');
-    expect((resource as any)?.resource.blob).toBe(btoa('%PDF'));
+  it('adds an inline image preview when preview_image_url is present', async () => {
+    stubFetch({
+      'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf' },
+      'https://storage.beel.es/x.webp': { body: WEBP_BYTES, type: 'image/webp' },
+    });
+    const result = await enrichToolResult('getCompanyInvoicePdf', {
+      download_url: 'https://storage.beel.es/x.pdf',
+      file_name: 'factura_A-2026-0041.pdf',
+      preview_image_url: 'https://storage.beel.es/x.webp',
+    });
+    const image = result?.content.find((c) => c.type === 'image') as any;
+    expect(image?.mimeType).toBe('image/webp');
+    expect(image?.data).toBe(btoa('RIFF'));
+    // El PDF real sigue adjunto.
+    expect(result?.content.some((c) => c.type === 'resource')).toBe(true);
+  });
+
+  it('still returns the PDF when the preview image download fails', async () => {
+    stubFetch({ 'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf' } });
+    const result = await enrichToolResult('getCompanyInvoicePdf', {
+      download_url: 'https://storage.beel.es/x.pdf',
+      preview_image_url: 'https://storage.beel.es/missing.webp',
+    });
+    expect(result?.content.some((c) => c.type === 'image')).toBe(false);
+    expect(result?.content.some((c) => c.type === 'resource')).toBe(true);
   });
 
   it('falls back to null when the payload has no download_url', async () => {
     expect(await enrichToolResult('getCompanyInvoicePdf', { foo: 1 })).toBeNull();
   });
 
-  it('falls back to null when the download fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('nope', { status: 403 })),
-    );
+  it('falls back to null when the PDF download fails', async () => {
+    stubFetch({ 'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf', status: 403 } });
     const result = await enrichToolResult('getCompanyInvoicePdf', {
       download_url: 'https://storage.beel.es/x.pdf',
     });

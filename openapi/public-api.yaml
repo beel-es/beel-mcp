@@ -16551,6 +16551,13 @@ components:
               description: Suggested filename for download
               example: factura_2025-001.pdf
               pattern: ^factura_.+\.pdf$
+            preview_image_url:
+              type: string
+              format: uri
+              nullable: true
+              description: >-
+                Pre-signed URL to a raster preview image of the invoice (all pages,
+                WebP), suitable for inline display. Null when no preview is available.
         meta:
           $ref: '#/components/schemas/ResponseMeta'
     Customer:
