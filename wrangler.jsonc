@@ -4,6 +4,10 @@
   "main": "src/cf/worker.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
+  // Genera la UI (dist/ui/invoice-pdf.html) ANTES de empaquetar: worker.ts la
+  // importa como módulo Text. Sin esto, el build de Cloudflare Workers Builds
+  // (que solo corre `wrangler versions upload`) falla con ENOENT.
+  "build": { "command": "node scripts/build-ui.mjs" },
   // The spec YAML and the built MCP-App HTML are embedded as text modules.
   "rules": [
     { "type": "Text", "globs": ["**/*.yaml", "**/*.html"], "fallthrough": true }
