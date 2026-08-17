@@ -6,6 +6,7 @@ import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolve
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
 import { intersectScopes, requiredScopes } from '../policy/tool-policy.js';
+import { pdfStorageHosts } from '../ui/registry.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -100,6 +101,45 @@ function identityHmacSecret(env: Env): string | undefined {
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/healthz', (c) => c.json({ status: 'ok', name: 'beel-mcp', runtime: 'cloudflare' }));
+
+/**
+ * Proxy de presigned PDFs para la MCP-App. La presigned URL apunta al storage
+ * (host cambiante) y viene firmada con `content-disposition=attachment` (fuerza
+ * descarga → el iframe no renderiza; y la firma impide reescribirla). Aquí la
+ * buscamos server-side y la RE-servimos `inline` desde mcp.beel.es, para que el
+ * iframe del panel la muestre y el `frame-src` del CSP confíe solo en nuestro
+ * dominio. Guard anti-SSRF: solo hosts de storage conocidos (pdfStorageHosts).
+ * No requiere auth: la capacidad ya es la firma de la propia presigned URL.
+ */
+app.get('/pdf', async (c) => {
+  const raw = c.req.query('u');
+  if (!raw) return c.text('Missing url', 400);
+  let target: URL;
+  try {
+    target = new URL(raw);
+  } catch {
+    return c.text('Invalid url', 400);
+  }
+  const allowed = pdfStorageHosts(c.env as unknown as NodeJS.ProcessEnv);
+  if (target.protocol !== 'https:' || !allowed.has(target.hostname.toLowerCase())) {
+    return c.text('Host not allowed', 403);
+  }
+  const upstream = await fetch(target.href);
+  if (!upstream.ok) {
+    return c.text(`Upstream ${upstream.status}`, upstream.status as 400);
+  }
+  // Re-servimos con NUESTRAS cabeceras: inline y content-type PDF, ignorando la
+  // `attachment` del origen. no-store: el enlace es efímero y personal.
+  return new Response(upstream.body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline',
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+});
 
 app.get('/authorize', async (c) => {
   const oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);

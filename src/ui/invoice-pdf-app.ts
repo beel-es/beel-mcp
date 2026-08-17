@@ -28,13 +28,22 @@ const metaEl = byId('meta');
 const openEl = byId<HTMLAnchorElement>('open');
 const emptyEl = byId('empty');
 
+/**
+ * El iframe NO puede apuntar a la presigned URL directa: su host de storage no
+ * está en el frame-src y viene con `attachment` (fuerza descarga). La enrutamos
+ * por el proxy del worker (mismo dominio del MCP), que la re-sirve `inline`.
+ */
+const PDF_PROXY = 'https://mcp.beel.es/pdf';
+const viaProxy = (url: string): string => `${PDF_PROXY}?u=${encodeURIComponent(url)}`;
+
 function render(data: PdfData | undefined): void {
   const url = data?.download_url;
   if (!url) return;
-  iframe.src = url;
+  const proxied = viaProxy(url);
+  iframe.src = proxied;
   iframe.style.display = 'block';
   emptyEl.style.display = 'none';
-  openEl.href = url;
+  openEl.href = proxied;
   openEl.style.display = 'inline-flex';
   if (data.file_name) titleEl.textContent = data.file_name;
   if (data.expires_in_seconds) {
