@@ -6,6 +6,8 @@ import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolve
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
 import { intersectScopes, requiredScopes } from '../policy/tool-policy.js';
+import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
+import { pdfProxyHandler } from './pdf-proxy.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -100,6 +102,9 @@ function identityHmacSecret(env: Env): string | undefined {
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/healthz', (c) => c.json({ status: 'ok', name: 'beel-mcp', runtime: 'cloudflare' }));
+
+// Proxy del PDF para el visor (inline + CORS, guard anti-SSRF).
+app.get(PDF_PROXY_PATH, pdfProxyHandler);
 
 app.get('/authorize', async (c) => {
   const oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);

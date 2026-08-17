@@ -4,9 +4,12 @@
   "main": "src/cf/worker.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
-  // The OpenAPI spec YAML is embedded as a text module.
+  // Genera el HTML del visor (dist/mcpapp/invoice-pdf.html) ANTES de empaquetar:
+  // worker.ts lo importa como módulo Text. pdf.js NO va aquí (se carga de cdnjs).
+  "build": { "command": "node scripts/build-mcpapp.mjs" },
+  // El spec YAML y el HTML del visor se embeben como módulos Text.
   "rules": [
-    { "type": "Text", "globs": ["**/*.yaml"], "fallthrough": true }
+    { "type": "Text", "globs": ["**/*.yaml", "**/*.html"], "fallthrough": true }
   ],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BeelMcpAgent"] }],
   "durable_objects": {
