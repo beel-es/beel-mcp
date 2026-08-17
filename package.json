@@ -56,6 +56,7 @@
     "express": "^5.0.0",
     "hono": "^4.13.1",
     "jose": "^5.10.0",
+    "pdfjs-dist": "^4.10.38",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

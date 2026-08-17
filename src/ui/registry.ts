@@ -26,14 +26,13 @@ export const UI_TOOLS: Record<string, string> = {
 };
 
 /**
- * Origin allowed in the iframe CSP `frame-src`. La MCP-App NO apunta el iframe
- * directo a la presigned URL (host de storage cambiante + `attachment` firmado que
- * fuerza descarga): apunta al proxy del propio worker (`https://mcp.beel.es/pdf`),
- * que re-sirve el PDF `inline`. Así el CSP solo confía en NUESTRO dominio estable.
- * Override por entorno con BEEL_PDF_FRAME_ORIGIN.
+ * Origen permitido en `connect-src` de la MCP-App. La app hace `fetch` de los
+ * bytes del PDF al proxy del worker (`https://mcp.beel.es/pdf`) y los pinta con
+ * pdf.js a canvas (el visor nativo no funciona en el sandbox). Solo confiamos en
+ * NUESTRO dominio estable. Override con BEEL_PDF_CONNECT_ORIGIN.
  */
-export function pdfFrameDomains(env: NodeJS.ProcessEnv = process.env): string[] {
-  const origin = env.BEEL_PDF_FRAME_ORIGIN?.trim();
+export function pdfConnectDomains(env: NodeJS.ProcessEnv = process.env): string[] {
+  const origin = env.BEEL_PDF_CONNECT_ORIGIN?.trim();
   return [origin && origin.length > 0 ? origin : 'https://mcp.beel.es'];
 }
 
