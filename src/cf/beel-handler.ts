@@ -124,7 +124,12 @@ app.get('/pdf', async (c) => {
   if (target.protocol !== 'https:' || !allowed.has(target.hostname.toLowerCase())) {
     return c.text('Host not allowed', 403);
   }
-  const upstream = await fetch(target.href);
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.href);
+  } catch {
+    return c.text('Upstream fetch failed', 502);
+  }
   if (!upstream.ok) {
     return c.text(`Upstream ${upstream.status}`, upstream.status as 400);
   }
