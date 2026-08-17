@@ -44,6 +44,10 @@ export interface OperationSpec {
   successContentTypes: string[];
   /** The success response is a non-JSON binary (pdf/zip/xlsx/csv). */
   binaryResponse: boolean;
+  /** Marked `deprecated: true` in the spec (legacy pre-company surface). */
+  deprecated: boolean;
+  /** OAuth2 scopes this operation requires (from its `security`). */
+  scopes: string[];
 }
 
 function asNode(value: unknown): SpecNode | undefined {
@@ -119,6 +123,21 @@ function buildResponseInfo(doc: SpecNode, operation: SpecNode): {
   return { successContentTypes: list, binaryResponse };
 }
 
+/** OAuth2 scopes required by an operation (union across its security requirements). */
+function buildScopes(operation: SpecNode): string[] {
+  const security = operation.security;
+  if (!Array.isArray(security)) return [];
+  const scopes = new Set<string>();
+  for (const requirement of security) {
+    const node = asNode(requirement);
+    if (!node) continue;
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) for (const s of value) if (typeof s === 'string') scopes.add(s);
+    }
+  }
+  return [...scopes];
+}
+
 /** Walk the spec's `paths` and produce one OperationSpec per operation with an operationId. */
 export function buildManifest(doc: SpecNode): OperationSpec[] {
   const operations: OperationSpec[] = [];
@@ -151,6 +170,8 @@ export function buildManifest(doc: SpecNode): OperationSpec[] {
         requestBody: buildRequestBody(doc, operation),
         successContentTypes,
         binaryResponse,
+        deprecated: operation.deprecated === true,
+        scopes: buildScopes(operation),
       });
     }
   }

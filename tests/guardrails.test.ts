@@ -10,21 +10,21 @@ const manifest = buildManifest(loadSpec());
 const byId = (id: string): OperationSpec => manifest.find((o) => o.operationId === id)!;
 
 describe('guardrail enrichment', () => {
-  it('attaches invoice-type and regime-key guardrails to createInvoice', () => {
-    const ids = guardrailsForOperation(byId('createInvoice'));
+  it('attaches invoice-type and regime-key guardrails to createCompanyInvoice', () => {
+    const ids = guardrailsForOperation(byId('createCompanyInvoice'));
     expect(ids).toContain('invoice-types');
     expect(ids).toContain('regime-keys');
   });
 
   it('attaches cancel-vs-rectify to void and corrective', () => {
-    expect(guardrailsForOperation(byId('voidInvoice'))).toContain('cancel-vs-rectify');
-    expect(guardrailsForOperation(byId('createCorrectiveInvoice'))).toContain('cancel-vs-rectify');
+    expect(guardrailsForOperation(byId('voidCompanyInvoice'))).toContain('cancel-vs-rectify');
+    expect(guardrailsForOperation(byId('createCompanyCorrectiveInvoice'))).toContain('cancel-vs-rectify');
   });
 
   it('injects a guardrails footer and the endpoint into the description', () => {
-    const desc = describeTool(byId('createInvoice'));
+    const desc = describeTool(byId('createCompanyInvoice'));
     expect(desc).toContain('Fiscal guardrails');
-    expect(desc).toContain('POST /v1/invoices');
+    expect(desc).toContain('POST /v1/companies/{company_id}/invoices');
     expect(desc).toContain(guardrailUri('invoice-types'));
   });
 });

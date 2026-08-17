@@ -1,0 +1,5 @@
+# La spec bundleada es un artefacto vendored del contrato del backend (fuente única:
+# <backend-repository>/backend/.../openapi). El worker la interpreta en runtime, así que
+# DEBE viajar en el repo, pero no se revisa a mano: se colapsa en el diff y no cuenta
+# en las estadísticas de lenguaje.
+openapi/public-api.yaml linguist-generated=true -diff

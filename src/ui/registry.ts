@@ -19,10 +19,10 @@ export const INVOICE_PDF_APP_URI = 'ui://beel/invoice-pdf.html';
 /**
  * operationId -> UI resource URI. Operations listed here get `_meta.ui.resourceUri`
  * on their tool and have their JSON payload echoed as `structuredContent` so the
- * panel can read it. `generateInvoicePdf` returns `{ download_url, file_name, … }`.
+ * panel can read it. `getCompanyInvoicePdf` returns `{ download_url, file_name, … }`.
  */
 export const UI_TOOLS: Record<string, string> = {
-  generateInvoicePdf: INVOICE_PDF_APP_URI,
+  getCompanyInvoicePdf: INVOICE_PDF_APP_URI,
 };
 
 /**

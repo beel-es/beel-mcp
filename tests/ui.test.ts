@@ -7,14 +7,14 @@ describe('MCP Apps PDF viewer', () => {
   const { tools } = buildApiTools();
   const toolByName = (name: string) => tools.find((t) => t.tool.name === name);
 
-  it('links beel_generate_invoice_pdf to the PDF viewer resource', () => {
-    const pdf = toolByName('beel_generate_invoice_pdf');
+  it('links beel_get_company_invoice_pdf to the PDF viewer resource', () => {
+    const pdf = toolByName('beel_get_company_invoice_pdf');
     expect(pdf?.appResourceUri).toBe(INVOICE_PDF_APP_URI);
     expect((pdf?.tool._meta as any)?.ui?.resourceUri).toBe(INVOICE_PDF_APP_URI);
   });
 
   it('does not attach a UI panel to ordinary tools', () => {
-    const list = toolByName('beel_list_invoices');
+    const list = toolByName('beel_list_company_invoices');
     expect(list?.appResourceUri).toBeUndefined();
     expect((list?.tool._meta as any)?.ui).toBeUndefined();
   });

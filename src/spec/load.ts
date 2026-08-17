@@ -32,7 +32,16 @@ function resolveSpecPath(): string {
 
 let cached: SpecNode | null = null;
 
-/** Parse and memoise the embedded OpenAPI document. */
+/**
+ * Inject the raw YAML instead of reading it from disk. Used by the Cloudflare
+ * Worker build, where the spec is embedded as a text module and there is no fs.
+ * Must be called before the first `loadSpec()`.
+ */
+export function setSpecSource(raw: string): void {
+  cached = parse(raw) as SpecNode;
+}
+
+/** Parse and memoise the embedded OpenAPI document (injected source, else disk). */
 export function loadSpec(): SpecNode {
   if (cached) return cached;
   const raw = readFileSync(resolveSpecPath(), 'utf8');
