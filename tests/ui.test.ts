@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { pdfAppResource } from '../src/resources/pdf-app.js';
-import { INVOICE_PDF_APP_URI, MCP_APP_MIME, pdfFrameDomains } from '../src/ui/registry.js';
+import {
+  INVOICE_PDF_APP_URI,
+  MCP_APP_MIME,
+  pdfConnectDomains,
+  pdfStorageHosts,
+} from '../src/ui/registry.js';
 
 describe('MCP Apps PDF viewer', () => {
   const { tools } = buildApiTools();
@@ -25,9 +30,20 @@ describe('MCP Apps PDF viewer', () => {
     expect(MCP_APP_MIME).toBe('text/html;profile=mcp-app');
   });
 
-  it('derives CSP frame domains with a sane default and env override', () => {
-    expect(pdfFrameDomains({} as NodeJS.ProcessEnv)).toContain('https://minio.beel.es');
-    const overridden = pdfFrameDomains({ BEEL_PDF_DOMAINS: 'https://a.test, https://b.test' } as NodeJS.ProcessEnv);
-    expect(overridden).toEqual(['https://a.test', 'https://b.test']);
+  it('derives CSP connect domains with a sane default and env override', () => {
+    expect(pdfConnectDomains({} as NodeJS.ProcessEnv)).toEqual(['https://mcp.beel.es']);
+    const overridden = pdfConnectDomains({
+      BEEL_PDF_CONNECT_ORIGIN: 'https://a.test',
+    } as NodeJS.ProcessEnv);
+    expect(overridden).toEqual(['https://a.test']);
+  });
+
+  it('guards the proxy allowlist (default hosts + env override)', () => {
+    expect(pdfStorageHosts({} as NodeJS.ProcessEnv).has('storage.beel.es')).toBe(true);
+    const overridden = pdfStorageHosts({
+      BEEL_PDF_STORAGE_HOSTS: 'only.test',
+    } as NodeJS.ProcessEnv);
+    expect(overridden.has('only.test')).toBe(true);
+    expect(overridden.has('storage.beel.es')).toBe(false);
   });
 });
