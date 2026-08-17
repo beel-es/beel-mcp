@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { ResolvedConfig } from '../config.js';
 
 /** A normalised API error carrying BeeL's error envelope fields. */
@@ -23,6 +22,8 @@ export interface ApiRequestOptions {
   body?: unknown;
   /** Override the active company for this single call (else the configured default). */
   activeCompany?: string;
+  /** Explicit idempotency key; when absent it is derived from method+path+body. */
+  idempotencyKey?: string;
 }
 
 export interface ApiResult {
@@ -32,6 +33,24 @@ export interface ApiResult {
 }
 
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+
+/**
+ * Deterministic idempotency key for a mutating call: SHA-256 over
+ * method+path+activeCompany+body. Two byte-identical POSTs (an agent retry)
+ * yield the same key and collapse to one backend operation; any change — payload
+ * OR the target NIF (Beel-Active-Company) — yields a new key, so the same body
+ * against two different companies never cross-suppresses on the multi-NIF path.
+ */
+async function idempotencyKeyFor(
+  method: string,
+  path: string,
+  activeCompany: string | undefined,
+  body: unknown,
+): Promise<string> {
+  const material = `${method} ${path}\n${activeCompany ?? ''}\n${body === undefined ? '' : JSON.stringify(body)}`;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 function buildUrl(baseUrl: string, path: string, query?: ApiRequestOptions['query']): URL {
   const url = new URL(baseUrl.replace(/\/$/, '') + path);
@@ -47,9 +66,9 @@ function buildUrl(baseUrl: string, path: string, query?: ApiRequestOptions['quer
 }
 
 /**
- * Issue a request against the BeeL API. Adds bearer auth, an Idempotency-Key on
- * POST (so an agent retry never duplicates an invoice/customer), and the
- * Beel-Active-Company header when a company is in scope. Errors are mapped to
+ * Issue a request against the BeeL API. Adds bearer auth, a STABLE Idempotency-Key
+ * on POST (derived from method+path+body so a retry never duplicates an invoice),
+ * and the Beel-Active-Company header when a company is in scope. Errors are mapped to
  * ApiError from the standard `{ success:false, error:{...}, meta:{request_id} }` envelope.
  */
 export async function apiRequest(
@@ -63,11 +82,19 @@ export async function apiRequest(
     Authorization: `Bearer ${config.apiKey}`,
     Accept: 'application/json',
   };
+  const activeCompany = opts.activeCompany ?? config.activeCompany;
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
   if (hasBody) headers['Content-Type'] = 'application/json';
-  if (method === 'POST') headers['Idempotency-Key'] = randomUUID();
+  // Idempotency-Key STABLE per logical operation, not per HTTP call: an agent that
+  // retries "create invoice" must reuse the key or the backend mints a duplicate
+  // (VeriFactu = a real fiscal document). A random-per-call key defeated that.
+  // Caller may pass an explicit key; else derive it from method+path+body so a
+  // byte-identical retry collapses to one operation.
+  if (method === 'POST') {
+    headers['Idempotency-Key'] =
+      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, activeCompany, opts.body));
+  }
 
-  const activeCompany = opts.activeCompany ?? config.activeCompany;
   if (activeCompany) headers['Beel-Active-Company'] = activeCompany;
 
   const response = await fetch(url, {

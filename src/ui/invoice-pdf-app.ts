@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * Browser app (MCP App) for the invoice PDF viewer. Runs inside the host's
- * sandboxed iframe. It receives the `beel_generate_invoice_pdf` tool result via
+ * sandboxed iframe. It receives the `beel_get_company_invoice_pdf` tool result via
  * the app-bridge (`ontoolresult`) and renders the presigned PDF URL in an iframe.
  *
  * Bundled to a self-contained script by scripts/build-ui.mjs and inlined into

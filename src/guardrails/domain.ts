@@ -63,7 +63,7 @@ first (\`getInvoice\`). Editing or deleting a non-draft invoice will be rejected
   duplicate) → **ANULACIÓN**: \`voidInvoice\` (POST /invoices/{id}/void). Terminal,
   burns the número. Anulación does NOT fix errors.
 - The invoice **should exist but data is wrong** (amount, IVA rate, NIF, name,
-  post-issue discount, bad debt) → **RECTIFICATIVA**: \`createCorrectiveInvoice\`.
+  post-issue discount, bad debt) → **RECTIFICATIVA**: \`createCompanyCorrectiveInvoice\`.
 - A previous registro was **rejected by AEAT for a non-fiscal reason** (typo in a
   description) → **subsanación**, which BeeL retries automatically. No public endpoint.
 
@@ -145,10 +145,10 @@ otherwise it is issued locally with \`verifactu.enabled: false\`:
 3. **The configuration \`enabled\` flag is on** (account-wide kill switch).
 
 Defaults: Stripe integrations auto-submit ON; manual API issuance uses the serie default.
-Sandbox keys still submit to AEAT's *sandbox* (real submissions, flagged test).
+TEST keys still submit to AEAT's own test environment (real submissions, flagged test).
 There is no public "submit now" endpoint — submission happens at issuance.
 
-Warning: production submissions are not batch-undoable. Disable auto-submit *before*
+Warning: LIVE submissions are not batch-undoable. Disable auto-submit *before*
 issuing a wave you don't want sent to AEAT.`,
   },
   {

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"],
+    "noEmit": true
+  },
+  "exclude": [
+    "dist",
+    "node_modules",
+    "tests",
+    // Node-only entrypoints and the legacy Express/OAuth layer (kept for stdio + reference)
+    "src/index.ts",
+    "src/serve-http.ts",
+    "src/http/oauth.ts",
+    "src/http/serve.ts",
+    "src/http/token-store.ts"
+  ],
+  "include": ["src"]
+}
