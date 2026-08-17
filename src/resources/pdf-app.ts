@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { Resource } from '@modelcontextprotocol/sdk/types.js';
-import { INVOICE_PDF_APP_URI, MCP_APP_MIME, pdfFrameDomains } from '../ui/registry.js';
+import { INVOICE_PDF_APP_URI, MCP_APP_MIME, pdfConnectDomains } from '../ui/registry.js';
 
 /**
  * Serves the invoice-PDF MCP App resource. The HTML is built by
@@ -40,9 +40,9 @@ export function setPdfAppHtml(html: string): void {
 }
 
 /** Read the built HTML; null if the UI bundle is missing (build step not run). */
-export function readPdfApp(): { text: string; frameDomains: string[] } | null {
-  if (injectedHtml) return { text: injectedHtml, frameDomains: pdfFrameDomains() };
+export function readPdfApp(): { text: string; connectDomains: string[] } | null {
+  if (injectedHtml) return { text: injectedHtml, connectDomains: pdfConnectDomains() };
   const path = resolveHtmlPath();
   if (!path) return null;
-  return { text: readFileSync(path, 'utf8'), frameDomains: pdfFrameDomains() };
+  return { text: readFileSync(path, 'utf8'), connectDomains: pdfConnectDomains() };
 }

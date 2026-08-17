@@ -124,7 +124,12 @@ app.get('/pdf', async (c) => {
   if (target.protocol !== 'https:' || !allowed.has(target.hostname.toLowerCase())) {
     return c.text('Host not allowed', 403);
   }
-  const upstream = await fetch(target.href);
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.href);
+  } catch {
+    return c.text('Upstream fetch failed', 502);
+  }
   if (!upstream.ok) {
     return c.text(`Upstream ${upstream.status}`, upstream.status as 400);
   }
@@ -137,6 +142,9 @@ app.get('/pdf', async (c) => {
       'Content-Disposition': 'inline',
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      // La MCP-App corre en un sandbox de origen opaco: sin CORS no puede leer
+      // los bytes con fetch() para pintarlos con pdf.js. GET simple → sin preflight.
+      'Access-Control-Allow-Origin': '*',
     },
   });
 });
