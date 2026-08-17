@@ -1,9 +1,7 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { McpAgent } from 'agents/mcp';
 import specYaml from '../../openapi/public-api.yaml';
-import invoicePdfHtml from '../../dist/ui/invoice-pdf.html';
 import { setSpecSource } from '../spec/load.js';
-import { setPdfAppHtml } from '../resources/pdf-app.js';
 import { createServer } from '../server.js';
 import type { KeyEnv, ResolvedConfig } from '../config.js';
 import { BeelAuthHandler } from './beel-handler.js';
@@ -22,7 +20,6 @@ import { refreshUpstream, upstreamConfig } from './upstream.js';
 // The Worker bundle has no filesystem: the spec and the MCP-App HTML are
 // embedded as text modules at build time (see `rules` in wrangler.jsonc).
 setSpecSource(specYaml);
-setPdfAppHtml(invoicePdfHtml);
 
 const SERVER_INFO = { name: 'beel-mcp', version: '0.2.0' };
 

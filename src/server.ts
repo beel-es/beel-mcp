@@ -14,8 +14,7 @@ import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.j
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { getSetupStatus, isWorkflowTool, workflowTools } from './tools/workflow-tools.js';
 import { guardrailResources, readGuardrailResource } from './resources/guardrails.js';
-import { pdfAppResource, readPdfApp } from './resources/pdf-app.js';
-import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './ui/registry.js';
+import { enrichToolResult } from './tools/tool-result.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
 
 export interface ServerInfo {
@@ -109,12 +108,11 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
         return textResult(`Unknown tool: ${name}`, true);
       }
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
-      const result = textResult(JSON.stringify(data, null, 2));
-      // MCP App tools (e.g. the PDF viewer) need the payload as structuredContent
-      // so the host can hand it to the UI panel.
-      if (apiTool.appResourceUri && data && typeof data === 'object' && !Array.isArray(data)) {
-        result.structuredContent = data as Record<string, unknown>;
-      }
+      // Algunos tools enriquecen su payload (p.ej. embeber el PDF de la factura);
+      // el resto cae al JSON de texto. Registro en ./tools/tool-result.
+      const result =
+        (await enrichToolResult(apiTool.operation.operationId, data)) ??
+        textResult(JSON.stringify(data, null, 2));
       logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {
@@ -128,26 +126,11 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: [...guardrailResources, pdfAppResource],
+    resources: guardrailResources,
   }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
-    if (uri === INVOICE_PDF_APP_URI) {
-      const app = readPdfApp();
-      if (!app) throw new Error('Invoice PDF app not built. Run `npm run build:ui`.');
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: MCP_APP_MIME,
-            text: app.text,
-            // CSP: la app hace fetch del PDF al proxy y lo pinta con pdf.js.
-            _meta: { ui: { csp: { connectDomains: app.connectDomains } } },
-          },
-        ],
-      };
-    }
     const body = readGuardrailResource(uri);
     if (body === null) throw new Error(`Unknown resource: ${uri}`);
     return { contents: [{ uri, mimeType: 'text/markdown', text: body }] };

@@ -15,10 +15,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsup && node scripts/build-ui.mjs",
-    "build:ui": "node scripts/build-ui.mjs",
-    "dev": "node scripts/build-ui.mjs && tsx src/index.ts",
-    "dev:http": "node scripts/build-ui.mjs && tsx src/serve-http.ts",
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/serve-http.ts",
     "start:http": "node dist/serve-http.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -56,7 +55,6 @@
     "express": "^5.0.0",
     "hono": "^4.13.1",
     "jose": "^5.10.0",
-    "pdfjs-dist": "^4.10.38",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
