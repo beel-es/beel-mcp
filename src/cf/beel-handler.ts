@@ -113,10 +113,14 @@ app.get('/authorize', async (c) => {
     expirationTtl: STATE_TTL_SECONDS,
   });
 
+  // El redirect que el WORKER envía al backend (no el downstream del cliente MCP):
+  // el backend ata la aserción de identidad contra ESTE valor + client_id=beel-mcp.
+  const upstreamRedirectUri = new URL('/callback', c.req.url).href;
+
   const url = new URL(upstream.authorizeUrl);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', upstream.clientId);
-  url.searchParams.set('redirect_uri', new URL('/callback', c.req.url).href);
+  url.searchParams.set('redirect_uri', upstreamRedirectUri);
   const requestedScopes = oauthReqInfo.scope.length
     ? oauthReqInfo.scope
     : await defaultScopes(upstream.issuer);
@@ -137,9 +141,12 @@ app.get('/authorize', async (c) => {
   if (hmacSecret) {
     url.searchParams.set(
       IDENTITY_ASSERTION.PARAM,
+      // Binding = lo que el backend ve en SU petición (proxy): client_id=beel-mcp
+      // y el redirect del worker. Los datos del cliente MCP downstream (Claude)
+      // viajan en los claims de DISPLAY (label/origin/verified), no en el binding.
       await createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
-        clientId: oauthReqInfo.clientId,
-        redirectUri: identity.redirectUri,
+        clientId: upstream.clientId,
+        redirectUri: upstreamRedirectUri,
       }),
     );
   }
