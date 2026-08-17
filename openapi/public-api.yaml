@@ -5,7 +5,7 @@ info:
     Public invoicing API for self-employed professionals in Spain with VeriFactu regulatory compliance.
 
     Authenticate using API Keys (`Authorization: Bearer <key>`). Keys are scoped and environment-aware:
-    `beel_sk_live_*` targets LIVE, `beel_sk_test_*` targets TEST (no quota consumed, VeriFactu test mode).
+    `beel_sk_live_*` targets production, `beel_sk_test_*` targets sandbox (no quota consumed, VeriFactu test mode).
 
     POST endpoints accept an `Idempotency-Key` header (any unique client-generated string) to safely retry requests without creating duplicates.
 
@@ -27,7 +27,7 @@ info:
     | --- | --- | --- |
     | Global | 2000 req / 60 s | Every request to the API |
     | Standard | 300 req / 60 s | `/v1/companies/{company_id}/customers`, `/v1/companies/{company_id}/invoices`, `/v1/customers`, `/v1/invoices`, `/v1/me`, `POST /v1/nif/validate` — each including its sub-paths |
-    | Strict | 5 req / 60 s | `/v1/companies/{company_id}/logo`, `POST /v1/accounts/{account_id}/companies/{company_id}/representation/generate`, `POST /v1/accounts/{account_id}/companies/{company_id}/representation/submit`, `POST /v1/accounts/{account_id}/invitations`, `POST /v1/companies/{company_id}/representation` — each including its sub-paths |
+    | Strict | 5 req / 60 s | `/v1/companies/{company_id}/logo`, `POST /v1/accounts/{account_id}/companies/{company_id}/representation/generate`, `POST /v1/accounts/{account_id}/companies/{company_id}/representation/submit`, `POST /v1/accounts/{account_id}/invitations`, `POST /v1/companies/{company_id}/invoices/{invoice_id}/send`, `POST /v1/companies/{company_id}/representation`, `POST /v1/invoices/bulk/send` — each including its sub-paths |
 
     Exceeding a limit returns `429` with the error code `RATE_LIMIT_EXCEEDED` and the `Retry-After`,
     `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers. Successful responses carry
@@ -100,11 +100,11 @@ tags:
   - name: CompanyProducts
     description: 'The product/service catalog of a NIF (company) as a sub-resource of the company itself, addressed by `/v1/companies/{company_id}/products`. The NIF in the path is the only source of context: the account that owns it is derived from it. It is the canonical form of the operations that `Products` still exposes under `/v1/products`, and searching is `?q=` on the collection instead of a path of its own.'
   - name: Members
-    description: Account member management (multi-NIF)
+    description: 'Account member management (multi-NIF). Members and their company grants are **shared between Test and Live**: a collaborator is the same person, with the same role and the same grants, in both environments — switching environment changes which data you see, not who may reach it. Reading them works with either API key; changing them requires a live API key or the dashboard (`403 LIVE_CREDENTIAL_REQUIRED` otherwise), because the change lands on the real account.'
   - name: Invitations
-    description: Member invitations — invite people to the account and revoke pending invites (multi-NIF)
+    description: 'Member invitations — invite people to the account and revoke pending invites (multi-NIF). Like members, invitations are **shared between Test and Live**: accepting one grants real access, so creating and revoking them requires a live API key or the dashboard (`403 LIVE_CREDENTIAL_REQUIRED` otherwise). Listing and retrieving work with either key.'
   - name: Accounts
-    description: Account provisioning for partners managing multiple accounts and NIFs
+    description: 'Account provisioning for partners managing multiple accounts and NIFs. The whole onboarding flow — provisioning, claim tokens and usage — works with either API key: the account is born inert (no NIF switched on, no keys, no owner), which is exactly what you are meant to rehearse in Test. Changing a managed account''s access level and ending its management require a live API key or the dashboard (`403 LIVE_CREDENTIAL_REQUIRED` otherwise): both act on an account that may already be invoicing, and ending management cannot be undone.'
   - name: Provisioning
     description: 'Lifecycle view for accounts you provisioned: track their activation state and manage the access level you hold over them.'
   - name: ConfigurationTax
@@ -667,7 +667,7 @@ paths:
                 conflict:
                   $ref: '#/components/examples/conflict-409'
         '422':
-          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). TEST applies the same gate as LIVE, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
+          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
           content:
             application/json:
               schema:
@@ -1793,7 +1793,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Original invoice cannot be rectified (invalid status); or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in LIVE, where the operation reaches the real tax authority); or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`.'
+          description: 'Original invoice cannot be rectified (invalid status); or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in production, where the operation reaches the real tax authority); or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`.'
           content:
             application/json:
               schema:
@@ -1883,7 +1883,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). TEST applies the same gate as LIVE, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
+          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
           content:
             application/json:
               schema:
@@ -1971,7 +1971,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Document is not a proforma, or its status does not allow conversion, or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
+          description: Document is not a proforma, or its status does not allow conversion, or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
           content:
             application/json:
               schema:
@@ -2728,6 +2728,14 @@ paths:
           description: Filter by exact external reference (client-supplied order/cart/contract id).
           schema:
             type: string
+        - name: rectified_invoice_id
+          in: query
+          description: |
+            Return the corrective invoices that correct this invoice. Accepts the id of an
+            issued invoice; a single invoice can have several partial correctives.
+          schema:
+            type: string
+            format: uuid
         - name: taxable_base_min
           in: query
           description: Minimum taxable base
@@ -2903,7 +2911,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
+          description: Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
           content:
             application/json:
               schema:
@@ -3470,6 +3478,55 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+  /v1/companies/{company_id}/invoices/{invoice_id}/preview:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'NIF (company) the operation acts on. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A NIF you do not reach answers `403`, and so does a NIF that does not exist, so the existence of a NIF in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+      - name: invoice_id
+        in: path
+        required: true
+        description: Invoice ID
+        schema:
+          $ref: '#/components/schemas/UUID'
+    get:
+      operationId: getCompanyInvoicePreview
+      tags:
+        - CompanyInvoiceDelivery
+      summary: Get the preview image URL of an invoice
+      description: |
+        Returns a temporary pre-signed URL to a preview image (WebP) of the invoice, suitable for
+        inline rendering. The image is generated and cached on first request, so a later call
+        returns the cached image. The URL expires in five minutes and only allows `GET`.
+      security:
+        - ApiKeyAuth: []
+        - OAuth2:
+            - invoices:read
+      responses:
+        '200':
+          description: Preview image URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoicePreviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this NIF (company), or does not hold the required
+            access over it. A NIF that does not exist answers the same way.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /v1/companies/{company_id}/invoices/{invoice_id}/pdf/preview:
     parameters:
       - name: company_id
@@ -3685,7 +3742,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
+          description: Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`).
           content:
             application/json:
               schema:
@@ -6796,6 +6853,8 @@ paths:
         '201':
           description: |
             Import completed. Returns the outcome per record, in the same format as the preview.
+            `statistics.imported` is how many customers were actually created; every other counter
+            classifies the submitted rows.
           content:
             application/json:
               schema:
@@ -6871,7 +6930,9 @@ paths:
                   $ref: '#/components/schemas/CustomerImportSource'
       responses:
         '200':
-          description: Preview completed. Nothing was written.
+          description: |
+            Preview completed. Nothing was written, so `statistics.imported` is always `0` here;
+            `statistics.importable` is what a real import would create.
           content:
             application/json:
               schema:
@@ -8423,7 +8484,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -8452,7 +8513,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -8542,7 +8603,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -8569,7 +8630,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -8695,7 +8756,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '422':
           description: Validation error. `error.code` is `OWNER_ROLE_NOT_ASSIGNABLE` (`account_role` was `OWNER`; returned to every caller, owners included), `GRANTS_ONLY_FOR_MEMBER` (grants provided with account_role other than MEMBER) or `GRANT_COMPANY_NOT_IN_ACCOUNT` (a grant's company does not belong to the account).
           content:
@@ -8776,7 +8837,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '404':
           description: No revocable invitation found with that id in the account. Returned both when the invitation does not exist and when it exists but is not in PENDING state (state is not disclosed).
           content:
@@ -8979,7 +9040,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /v1/accounts/{account_id}/management:
@@ -9010,7 +9071,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /v1/accounts/{account_id}/claim-tokens:
@@ -9648,7 +9709,7 @@ paths:
         time, preventing webhooks from being skipped at runtime with
         `failure.payment.skip.missing_default_series`.
 
-        Environment (TEST/LIVE) is resolved automatically from your request context — no input needed.
+        Environment (test/production) is resolved automatically from your request context — no input needed.
       operationId: getDefaultSeriesStatus
       x-successor:
         method: GET
@@ -10275,18 +10336,18 @@ paths:
         creation flow:
 
         * **`TEST`** — created immediately, free. `201` + `CompanyCreatedData`.
-        * **`LIVE` + account already LIVE-active** (billing set up) —
-          created immediately as a LIVE NIF. Real
+        * **`PROD` + account already production-active** (billing set up) —
+          created immediately as a production NIF. Real
           emission stays blocked until the AEAT representation is signed for
           this NIF. `201` + `CompanyCreatedData`.
-        * **`LIVE` + account with no card on file** — no company is created.
+        * **`PROD` + account with no card on file** — no company is created.
           Returns `402` with `error.code=CHECKOUT_REQUIRED` and **no checkout
-          URL**: this endpoint never starts a charge (a LIVE charge always
+          URL**: this endpoint never starts a charge (a production charge always
           hangs off activating an existing, user-signalled company in Live), and
           an API key has no browser to return from a checkout with. Create the
           company (with `activate: false`, or in `TEST`) and activate it in Live
           via `POST /v1/companies/{company_id}/activations`.
-        * **`LIVE` + account past due** — no company is created. Returns `402`
+        * **`PROD` + account past due** — no company is created. Returns `402`
           with `error.code=PAYMENT_REQUIRED`. Nothing to sign up for here: the
           outstanding invoice has to be settled first.
 
@@ -10318,7 +10379,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '402':
           description: |
-            Payment required before creating a LIVE NIF. No company is created and no
+            Payment required before creating a production NIF. No company is created and no
             checkout is opened. Two distinct reasons, so branch on `error.code`:
 
             * `CHECKOUT_REQUIRED` — the account has **no card on file**. Nothing is owed; billing
@@ -10346,8 +10407,8 @@ paths:
               done; switching an environment on for it is a different act and has its own endpoint:
               `POST /v1/companies/{company_id}/activations`. The existing
               company's id travels in `error.details.company_id`, so no lookup is needed to call it.
-            * `NIF_LIVE_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — the NIF is live in **another
-              account**. A NIF can only issue in LIVE from one account (tax rule).
+            * `NIF_PROD_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — the NIF is live in **another
+              account**. A NIF can only issue in production from one account (tax rule).
           content:
             application/json:
               schema:
@@ -10575,7 +10636,7 @@ paths:
         Removes the NIF from your account: it stops appearing in the account and stops being
         billed. **Invoices already issued are kept in the database, but the company-scoped
         public API can no longer resolve them once the NIF is removed.** A NIF with a live
-        activation in Live cannot be removed (`409 COMPANY_ACTIVE_IN_LIVE`), nor can the
+        activation in Live cannot be removed (`409 COMPANY_ACTIVE_IN_PRODUCTION`), nor can the
         account's primary NIF (`400 CANNOT_DELETE_PRIMARY`).
 
         Leaving Live is a *scheduled* deactivation — the current cycle is charged and served in
@@ -10615,7 +10676,7 @@ paths:
           description: |
             The company cannot be deleted:
 
-            - `COMPANY_ACTIVE_IN_LIVE` — it is active in Live. Deactivate it in Live and
+            - `COMPANY_ACTIVE_IN_PRODUCTION` — it is active in Live. Deactivate it in Live and
               delete it from the effective date of that deactivation.
             - `COMPANY_HAS_INVOICES` — it has invoices in Live (issued, draft or proforma).
               Delete its drafts and proformas first; once it has issued, deactivate it instead.
@@ -10643,20 +10704,36 @@ paths:
             - companies:read
       summary: Get issuing readiness
       description: |
-        Returns whether this company (NIF) is fiscally ready to ISSUE invoices, and
-        if not, exactly what is missing. Readiness is a per-NIF property, evaluated
-        independently for each company under the account (whether it has 1 or N NIFs).
+        Returns whether this company (NIF) can issue its STANDARD invoice right now, in
+        this environment — and if not, exactly what is missing. Readiness is a per-NIF
+        property, evaluated independently for each company under the account (whether it
+        has 1 or N NIFs).
+
+        Issuing ANY fiscal document requires the company to be activated in the
+        environment of that document, whether or not it goes to VeriFactu: without a live
+        activation the answer is not ready, with `COMPANY_NOT_ACTIVATED`.
+
+        On top of that, the evaluation inherits the company's own VeriFactu intent: the
+        VeriFactu capability chain (AEAT census, signed representation) is only required
+        when the company applies VeriFactu by default (its `apply_by_default` setting in
+        this environment; absent means `false`) — the same derivation invoice creation
+        uses when `verifactu_enabled` is omitted. A company with VeriFactu off is `ready`
+        with a NIF, a default series and a live activation, even if its NIF is not in the
+        census. Issuing a specific invoice WITH `verifactu_enabled: true` still enforces
+        the full chain at emission time regardless of this answer.
 
         `ready` is `true` only when there are no `blockers`. Each blocker is a stable
         code:
 
         * `COMPANY_HAS_NO_NIF` — the company has no NIF yet (empty/provisioned shell).
         * `SERIES_DEFAULT_NOT_FOUND` — there is no default invoice series.
-        * `ENV_MISMATCH` — the NIF has no VeriFactu configuration for the target
-          environment (e.g. set up only in TEST while issuing in LIVE).
-        * `NIF_NOT_REGISTERED` — the NIF is not yet activated in the AEAT census for
-          that environment.
-        * `NIF_REPRESENTATION_REQUIRED` — issuing in LIVE needs a signed
+        * `COMPANY_NOT_ACTIVATED` — the company is not activated in this environment, so
+          it cannot issue fiscal documents there at all (VeriFactu aside).
+        * `ENV_MISMATCH` — VeriFactu is intended but the NIF is not activated in the
+          target environment (e.g. set up only in TEST while issuing in production).
+        * `NIF_NOT_REGISTERED` — VeriFactu is intended but the NIF is not yet activated
+          in the AEAT census for that environment.
+        * `NIF_REPRESENTATION_REQUIRED` — production VeriFactu emission needs a signed
           AEAT representation, which is not yet in place.
 
         This does NOT cover the payer account's quota/subscription (a separate, global
@@ -11745,7 +11822,7 @@ paths:
         webhooks from being skipped at runtime with
         `failure.payment.skip.missing_default_series`.
 
-        Environment (TEST/LIVE) is resolved automatically from your request context — no
+        Environment (test/production) is resolved automatically from your request context — no
         input needed.
       security:
         - ApiKeyAuth: []
@@ -12084,7 +12161,7 @@ paths:
       description: |-
         Switches an existing NIF on in the mode carried in the body. This is how a NIF that already exists reaches Live: `POST /v1/accounts/{account_id}/companies` only creates one already switched on, so a NIF created in Test — which is how every provisioned account starts — has no other way there.
         The mode is explicit in the body and never taken from the key's environment, so a Test key can switch a NIF on in Live.
-        `TEST` is immediate and free. `LIVE` is immediate when the account already has a card on file or an enterprise contract, and the NIF is added to the existing subscription. With no card on file it returns `402 CHECKOUT_REQUIRED`: capturing a card is a browser flow, so pass `success_url` and `cancel_url` to get a `checkout_url` to hand to the account holder.
+        `TEST` is immediate and free. `PROD` is immediate when the account already has a card on file or an enterprise contract, and the NIF is added to the existing subscription. With no card on file it returns `402 CHECKOUT_REQUIRED`: capturing a card is a browser flow, so pass `success_url` and `cancel_url` to get a `checkout_url` to hand to the account holder.
         Idempotent: repeating the call neither opens a second checkout nor adds a second subscription item; it returns the existing activation with `already_active: true`. Sending the same `Idempotency-Key` to this route and to the nested one it replaces is the same operation, so it is replayed and never charged twice.
         It also cancels a pending switch-off. While the switch-off is pending the NIF is still on — it just carries an effective date — so switching it on again only removes that date, with nothing charged or credited, and answers `scheduled_deactivation_cancelled: true`.
         Requires the `companies:write` scope and access to the NIF. Switching on in Live also requires being the billing subject of the account (`403 NOT_BILLING_OWNER` otherwise).
@@ -12099,7 +12176,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ActivateCompanyRequest'
             example:
-              environment: LIVE
+              environment: PROD
       responses:
         '201':
           description: The NIF is switched on in that mode.
@@ -12124,7 +12201,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: '`NIF_LIVE_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — another account already has this NIF in Live. A NIF can only invoice in Live from one account, so the other one has to switch it off first.'
+          description: '`NIF_PROD_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — another account already has this NIF in Live. A NIF can only invoice in Live from one account, so the other one has to switch it off first.'
           content:
             application/json:
               schema:
@@ -12139,7 +12216,7 @@ paths:
       description: |-
         Switches the NIF off in that mode only; the other mode is untouched.
         In Live the switch-off is scheduled, not immediate: the cycle is paid up front, so the response carries an `effective_at` and the NIF keeps invoicing until then. Nothing is refunded. `effective_at` is the end of the current billing cycle, unless the NIF was switched on within that same cycle, in which case it is the end of the next one.
-        `TEST` and `LIVE` under an enterprise contract are immediate and answer with no `effective_at`.
+        `TEST` and `PROD` under an enterprise contract are immediate and answer with no `effective_at`.
         The activation is sealed rather than deleted, and only once `effective_at` arrives: the history survives, and in Live that sealing is what releases the NIF for another account. After it takes effect the NIF can neither issue nor correct invoices until switched on again.
         Idempotent: switching off a mode whose switch-off is already pending returns the same date with `already_scheduled: true`. Switching off a mode that was never on is a silent no-op.
         Requires the `companies:write` scope and access to the NIF. In Live it also requires being the billing subject of the account. A NIF you do not reach answers `403`, and so does a NIF that does not exist.
@@ -14038,7 +14115,7 @@ paths:
 
         The account is the one named in the path; the environment is not. With an
         API key the environment is derived from the key prefix (`beel_sk_live_*` =
-        LIVE, `beel_sk_test_*` = TEST); with a session cookie it follows
+        production, `beel_sk_test_*` = sandbox); with a session cookie it follows
         the active environment (`BeeL-Environment` header).
       operationId: listAccountEmailDeliveries
       security:
@@ -14246,8 +14323,8 @@ paths:
         recipient.
 
         The list is isolated by `(account, environment)`. With an API key the
-        environment is derived from the key prefix (`beel_sk_live_*` = LIVE,
-        `beel_sk_test_*` = TEST); with a session cookie it follows the active
+        environment is derived from the key prefix (`beel_sk_live_*` = production,
+        `beel_sk_test_*` = sandbox); with a session cookie it follows the active
         environment (`BeeL-Environment` header).
       operationId: listEmailDeliveries
       x-successor:
@@ -15809,7 +15886,13 @@ components:
         - lines
       properties:
         type:
-          $ref: '#/components/schemas/InvoiceType'
+          allOf:
+            - $ref: '#/components/schemas/InvoiceType'
+          description: |
+            Invoice type to create. `CORRECTIVE` is **not** accepted here: a corrective
+            invoice is always created from the invoice it corrects, via
+            `POST /v1/companies/{company_id}/invoices/{invoice_id}/corrective`, which is
+            where its rectification type and VeriFactu code (R1–R5) are declared.
         series_id:
           type: string
           format: uuid
@@ -15989,43 +16072,16 @@ components:
           type: string
           maxLength: 1000
           example: Payment by bank transfer. Includes technical support for 30 days.
-        rectified_invoice_id:
-          type: string
-          format: uuid
-          description: Required if type is "CORRECTIVE"
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        rectification_reason:
-          type: string
-          maxLength: 500
-          description: Required if type is "CORRECTIVE"
-          example: Amount correction due to calculation error in hours
         external_ref:
-          type: string
-          maxLength: 255
+          allOf:
+            - $ref: '#/components/schemas/ExternalRef'
           x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("external_reference")'
           description: |
-            Client-supplied identifier from an external system (order, cart, contract…).
-            Stored as-is, echoed back on read, and filterable via GET /v1/invoices?external_ref=.
-            Optional. Enforced UNIQUE per issuer for live standard/simplified invoices:
-            creating a second invoice with the same reference returns 409
-            (INVOICE_DUPLICATE_EXTERNAL_REFERENCE); deleting the existing one lets you recreate.
-            This is a business key, NOT the Idempotency-Key (which guards request retries).
-
             This field was previously named `external_reference`. The old name is still accepted as
             an alias for backwards compatibility and will be withdrawn in a future major version —
             send `external_ref`.
-          example: ORD-2025-0042
         metadata:
-          type: object
-          additionalProperties: true
-          description: |
-            Your own key/value pairs to cross-reference this invoice with records in
-            your system (order ids, tenants, internal codes). Namespace them to avoid
-            clashing with the system keys BeeL adds on payment-generated invoices.
-          example:
-            external_order_id: ORD-2025-0042
-            tenant: acme
-            project_code: PROJ-123
+          $ref: '#/components/schemas/InvoiceMetadata'
         options:
           $ref: '#/components/schemas/InvoiceProcessingOptions'
       example:
@@ -16498,6 +16554,10 @@ components:
             `422 SERIES_DEFAULT_NOT_FOUND`; a series of the wrong type fails with
             `422 SERIES_INCOMPATIBLE_DOC_TYPE`.
           example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        external_ref:
+          $ref: '#/components/schemas/ExternalRef'
+        metadata:
+          $ref: '#/components/schemas/InvoiceMetadata'
         options:
           $ref: '#/components/schemas/InvoiceProcessingOptions'
       example:
@@ -16515,6 +16575,9 @@ components:
               regime_key: '01'
             irpf_rate: 15
         notes: Rectification agreed with the customer on 2025-01-20
+        external_ref: ORD-2025-0042
+        metadata:
+          project_code: PROJ-123
         options:
           verifactu_enabled: false
           issue_directly: true
@@ -16551,13 +16614,6 @@ components:
               description: Suggested filename for download
               example: factura_2025-001.pdf
               pattern: ^factura_.+\.pdf$
-            preview_image_url:
-              type: string
-              format: uri
-              nullable: true
-              description: >-
-                Pre-signed URL to a raster preview image of the invoice (all pages,
-                WebP), suitable for inline display. Null when no preview is available.
         meta:
           $ref: '#/components/schemas/ResponseMeta'
     Customer:
@@ -17237,7 +17293,17 @@ components:
           minimum: 0
           maximum: 100
           multipleOf: 0.01
-          description: Equivalence surcharge percentage (optional)
+          description: |
+            Equivalence surcharge percentage (optional).
+
+            Must be coherent with `main_tax.regime_key`: a surcharge > 0 is
+            only valid under regime `18`. When `regime_key` is omitted it is
+            derived automatically (`18` with a surcharge > 0, `01` otherwise).
+            An explicit `regime_key` that does not admit a surcharge combined
+            with a surcharge > 0 is rejected with a 422
+            (`SURCHARGE_REQUIRES_REGIME`), and an explicit regime `18` without
+            a surcharge > 0 is rejected with a 422
+            (`REGIME_REQUIRES_SURCHARGE`).
           example: 5.2
         irpf_rate:
           type: number
@@ -17293,7 +17359,17 @@ components:
           minimum: 0
           maximum: 100
           multipleOf: 0.01
-          description: Equivalence surcharge percentage (optional)
+          description: |
+            Equivalence surcharge percentage (optional).
+
+            Must be coherent with `main_tax.regime_key`: a surcharge > 0 is
+            only valid under regime `18`. When `regime_key` is omitted it is
+            derived automatically (`18` with a surcharge > 0, `01` otherwise).
+            An explicit `regime_key` that does not admit a surcharge combined
+            with a surcharge > 0 is rejected with a 422
+            (`SURCHARGE_REQUIRES_REGIME`), and an explicit regime `18` without
+            a surcharge > 0 is rejected with a 422
+            (`REGIME_REQUIRES_SURCHARGE`).
           example: 5.2
         irpf_rate:
           type: number
@@ -18469,6 +18545,12 @@ components:
       description: |
         Aggregated validation statistics.
         Compatible with all source types (bulk JSON, CSV and Holded Excel).
+
+        Every field except `imported` counts rows of the submitted file/payload, classified by
+        outcome: each row falls into exactly one of `valid`, `with_warnings`, `with_errors`,
+        `duplicates` and `invalid_nifs`, so those five add up to `total_processed`.
+        `imported` is the only field that counts writes to the database, so it is the field to
+        read to know whether an import worked.
       properties:
         total_processed:
           type: integer
@@ -18496,8 +18578,12 @@ components:
           example: 1
         imported:
           type: integer
-          description: Customers actually imported (only if is_dry_run=false)
-          example: 0
+          description: |
+            Customers actually created in the database by this request.
+            Always `0` when `is_dry_run=true` (a preview writes nothing). On a real import it is
+            the number of rows that reached the database — normally `importable`, and lower when a
+            row was rejected on write (it is then reported under `duplicates` or `with_errors`).
+          example: 8
         success_rate:
           type: number
           format: float
@@ -18993,8 +19079,8 @@ components:
           x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("environment")'
           description: |
             AEAT/VeriFactu environment to register this NIF against.
-            * `TEST` — TEST NIF, invoices reach the VeriFactu test environment (default).
-            * `LIVE` — LIVE NIF; requires the AEAT representation
+            * `TEST` — Sandbox NIF, invoices reach VeriFactu test (default).
+            * `PROD` — Production NIF; requires the AEAT representation
               model to be signed (POST /v1/accounts/{account_id}/companies/{company_id}/representation/submit)
               before real invoices can be issued.
 
@@ -19009,7 +19095,7 @@ components:
 
             Creating a company and activating it are two different acts. The NIF profile is free
             and always creatable; the activation is what seeds the invoice series, registers the
-            NIF and — in `LIVE` — is what gets billed.
+            NIF and — in `PROD` — is what gets billed.
 
             * `true` (default) — unchanged behaviour: the company is created and switched on in
               `aeat_environment`, with its default series seeded there.
@@ -19229,16 +19315,16 @@ components:
         in_prod:
           type: boolean
           description: |
-            Whether this company (NIF) is **activated in LIVE**, regardless
+            Whether this company (NIF) is **activated in Live** (production), regardless
             of whether the AEAT representation is already signed. Derived from the real
             activation fact — NOT from the stamped `environment` scalar — so it stays true
-            even for a NIF registered in LIVE but not yet signed. Drives the UI's
-            "already in LIVE" state (no spurious "add NIF" prompt when the
+            even for a NIF registered in production but not yet signed. Drives the UI's
+            "already in production" state (no spurious "add NIF" prompt when the
             account switches to Live).
         in_test:
           type: boolean
           description: |
-            Whether this company (NIF) is **activated in TEST**. Symmetric to
+            Whether this company (NIF) is **activated in Test** (sandbox). Symmetric to
             `in_prod` and derived from the same activation fact: activation is independent
             per mode, so a company may be activated in Test only, in Live only, in both, or
             in neither. A company that is not activated in the mode you are working in is
@@ -20180,31 +20266,13 @@ components:
         Mode a record lives in — its Test/Live twin. It decides where invoices, customers and
         quota are accounted.
 
-        **The API key you authenticate with already tells you the mode**, and the two always
-        agree — there is nothing to configure:
-
-        | API key prefix  | `environment` |
-        |-----------------|---------------|
-        | `beel_sk_test_` | `TEST`        |
-        | `beel_sk_live_` | `LIVE`        |
-
-        A `beel_sk_test_` key only ever sees and writes `TEST` records, and a `beel_sk_live_`
-        key only ever sees and writes `LIVE` ones. `TEST` data is free, is never sent to the
-        real AEAT and does not consume quota; `LIVE` data is billed and is registered against
-        the real AEAT.
-
-        For a company the mode also decides which AEAT its NIF is registered against:
-        switching a company on in `LIVE` is what registers it with the real AEAT, so
-        `aeat_environment` is that same mode and uses this same enum.
-
-        **Deprecated input alias.** `LIVE` used to be spelled `PROD`. Wherever this enum is
-        *accepted* (request bodies and query parameters), `PROD` is still read as `LIVE` so
-        live integrations do not break. It is never *emitted*: responses, webhook payloads and
-        every other output always say `LIVE`. Send `LIVE`.
+        For a company it also decides which AEAT its NIF is registered against: switching a
+        company on in `PROD` is what registers it with the real AEAT, so `aeat_environment`
+        is that same mode and uses this same enum.
       enum:
         - TEST
-        - LIVE
-      example: LIVE
+        - PROD
+      example: PROD
     MyCredential:
       type: object
       description: The credential this call was authenticated with. Lets a client discover, in a single request, what it is allowed to do and which environment it operates on, instead of learning it from a `403`.
@@ -20398,6 +20466,30 @@ components:
           type: string
           nullable: true
           description: Failure detail, present only when `status` is FAILED.
+    ExternalRef:
+      type: string
+      maxLength: 255
+      description: |
+        Client-supplied identifier from an external system (order, cart, contract…).
+        Stored as-is, echoed back on read, and filterable via GET /v1/invoices?external_ref=.
+        Optional. Enforced UNIQUE per issuer for live standard/simplified invoices:
+        creating a second invoice with the same reference returns 409
+        (INVOICE_DUPLICATE_EXTERNAL_REFERENCE); deleting the existing one lets you recreate.
+        Corrective invoices are exempt from that uniqueness: a corrective carries the same
+        order reference as the invoice it corrects, so both can coexist.
+        This is a business key, NOT the Idempotency-Key (which guards request retries).
+      example: ORD-2025-0042
+    InvoiceMetadata:
+      type: object
+      additionalProperties: true
+      description: |
+        Your own key/value pairs to cross-reference this invoice with records in
+        your system (order ids, tenants, internal codes). Namespace them to avoid
+        clashing with the system keys BeeL adds on payment-generated invoices.
+      example:
+        external_order_id: ORD-2025-0042
+        tenant: acme
+        project_code: PROJ-123
     FieldDeserializationError:
       type: object
       required:
@@ -20686,6 +20778,34 @@ components:
             $ref: '#/components/schemas/UUID'
         filters:
           $ref: '#/components/schemas/InvoiceExportFilters'
+    InvoicePreviewResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - image_url
+            - expires_in_seconds
+          properties:
+            image_url:
+              type: string
+              format: uri
+              description: Pre-signed URL to the invoice preview image (WebP), for inline rendering (valid for 5 minutes)
+              example: https://minio.beel.es/beel-invoices/invoices/user-uuid/factura-uuid_preview.webp?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...
+            expires_in_seconds:
+              type: integer
+              description: Seconds until the URL expires
+              example: 300
+              minimum: 1
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
     SetInvoiceStatusRequest:
       type: object
       description: |
@@ -21143,6 +21263,13 @@ components:
           description: |
             Equivalence surcharge percentage. Send `null` to state that none
             applies (equivalent to `0`).
+
+            The merged result must be coherent with the regime key: if this
+            PATCH does not send `main_tax.regime_key`, the stored regime is
+            adjusted automatically (`18` when the merged surcharge is > 0,
+            `01` when it is not). With an explicit `regime_key` in this PATCH,
+            an incoherent combination is rejected with a 422
+            (`SURCHARGE_REQUIRES_REGIME` / `REGIME_REQUIRES_SURCHARGE`).
           example: 5.2
         irpf_rate:
           type: number
@@ -21739,7 +21866,7 @@ components:
 
         The same rules as `PUT` apply: the fields that drive numbering (`code`, `format`,
         `counter_reset`, `initial_number`) are rejected once the series has issued
-        invoices, so renaming a series in LIVE keeps working.
+        invoices, so renaming a series in production keeps working.
       properties:
         document_type:
           $ref: '#/components/schemas/DocumentType'
@@ -21830,8 +21957,14 @@ components:
     IssuingReadinessData:
       type: object
       description: |
-        Issuing-readiness of a company (NIF): whether it can ISSUE invoices and, if not,
-        exactly what is missing. `ready` is true only when `blockers` is empty.
+        Issuing-readiness of a company (NIF): whether it can issue its STANDARD invoice
+        right now, in this environment, and — if not — exactly what is missing. `ready`
+        is true only when `blockers` is empty. Issuing any fiscal document requires the
+        company to be activated in that environment (`COMPANY_NOT_ACTIVATED` otherwise),
+        whether or not it goes to VeriFactu. The VeriFactu capability chain (census,
+        signature) is only demanded on top of that when the company applies VeriFactu by
+        default; with VeriFactu off, a NIF, a default series and a live activation are
+        enough to be ready.
       properties:
         ready:
           type: boolean
@@ -21844,9 +21977,38 @@ components:
             enum:
               - COMPANY_HAS_NO_NIF
               - SERIES_DEFAULT_NOT_FOUND
+              - COMPANY_NOT_ACTIVATED
               - ENV_MISMATCH
               - NIF_NOT_REGISTERED
               - NIF_REPRESENTATION_REQUIRED
+        verifactu:
+          type: object
+          description: |
+            The compliance question, separate from the operational `ready` above: would
+            this NIF pass a VeriFactu emission right now? Relevant when you issue with an
+            explicit `verifactu_enabled: true`, or before switching the company's
+            `apply_by_default` on. For a company that already applies VeriFactu by
+            default, `verifactu.ready` coincides with `ready` (same evaluation).
+          properties:
+            ready:
+              type: boolean
+              description: |
+                true only when the company is operationally `ready` AND its VeriFactu
+                capability chain is clean. An operational blocker (missing NIF or default
+                series) makes this false even if the chain itself is complete.
+            blockers:
+              type: array
+              description: |
+                ONLY the incremental VeriFactu capability stages, in order and mutually
+                exclusive — one reason at a time, without repeating the operational
+                blockers (NIF/series) listed above. `NIF_REPRESENTATION_REQUIRED` only
+                appears where a signed representation is actually demanded (production).
+              items:
+                type: string
+                enum:
+                  - ENV_MISMATCH
+                  - NIF_NOT_REGISTERED
+                  - NIF_REPRESENTATION_REQUIRED
     CompanySeriesNumbering:
       type: object
       description: |
@@ -21958,17 +22120,17 @@ components:
           $ref: '#/components/schemas/CompanySeriesNumbering'
     PaymentRequiredResponse:
       description: |
-        Returned with HTTP 402 when a LIVE NIF cannot be created because
+        Returned with HTTP 402 when a production NIF cannot be created because
         the account has no billing set up, or has an outstanding (past-due)
         payment. No company is created and **no checkout is ever opened here**:
-        a LIVE charge hangs off activating a signalled company in LIVE.
+        a production charge hangs off activating a signalled company in Live.
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
       example:
         success: false
         error:
           code: PAYMENT_REQUIRED
-          message: You have an outstanding payment. Settle it before creating a LIVE company.
+          message: You have an outstanding payment. Settle it before creating a production company.
         meta:
           timestamp: '2026-05-29T10:30:00Z'
           request_id: 4bf92f3577b34da6a3ce929d0e0e4736
@@ -22113,7 +22275,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/Environment'
           description: |
-            Mode the connection lives in (`beel_sk_test_*` → `TEST`, `beel_sk_live_*` → `LIVE`).
+            Mode the connection lives in (`beel_sk_test_*` → `TEST`, `beel_sk_live_*` → `PROD`).
             Test and Live connections are independent, so the same provider account may appear in
             both modes; this field tells them apart without inferring it from the key you asked
             with.
@@ -22269,7 +22431,7 @@ components:
         - `verifactu.status.updated` — VeriFactu status changed (see `VeriFactuSubmissionStatus`)
         - `account.claimed` — A provisioned account was claimed by its holder
         - `company.created` — A NIF (company) was created inside a provisioned account
-        - `representation.signed` — Fiscal representation signed for a NIF (LIVE invoicing enabled)
+        - `representation.signed` — Fiscal representation signed for a NIF (production invoicing enabled)
 
         The `account.*` events are delivered only to the **provisioner** that created the
         account; a subscription on any other account never receives them.
@@ -22583,7 +22745,7 @@ components:
         signed_at:
           type: string
           format: date-time
-          description: When the fiscal representation was signed (enabling LIVE invoicing for this NIF).
+          description: When the fiscal representation was signed (enabling production invoicing for this NIF).
     WebhookEvent:
       type: object
       description: Payload delivered to your endpoint on every webhook event.
@@ -22610,7 +22772,7 @@ components:
         livemode:
           type: boolean
           deprecated: true
-          description: 'Deprecated in favour of the `TEST`/`LIVE` environment vocabulary: `livemode: true` is equivalent to environment `LIVE`.'
+          description: 'Deprecated in favour of the `TEST`/`PROD` environment vocabulary: `livemode: true` is equivalent to environment `PROD`.'
         test:
           type: boolean
           nullable: true
@@ -23103,6 +23265,20 @@ components:
               message: Data cannot be processed
               details:
                 field: Specific error description
+            meta:
+              timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ForbiddenLiveCredentialRequired:
+      description: 'Every cause listed under the plain `403` above, plus one specific to writes on the account''s control plane: `LIVE_CREDENTIAL_REQUIRED`, returned when the call is made with a test API key (`beel_sk_test_…`). Members, invitations and grants are shared between Test and Live, so changing them is always a real change to the real account — there is no sandbox rehearsal of it. The same applies to changing a managed account''s access level and to ending its management: both act on an account that may already be invoicing. Use your live API key or the dashboard; reading these resources keeps working with either key, and so does the whole account provisioning flow (provisioning and claim tokens), which creates an inert account and is what you are meant to rehearse in Test. Accounts that have no live mode manage their people from the dashboard.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: LIVE_CREDENTIAL_REQUIRED
+              message: This operation changes the real account; it requires a live API key or a dashboard session.
             meta:
               timestamp: '2025-01-15T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
