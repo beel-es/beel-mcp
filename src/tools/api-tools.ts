@@ -8,14 +8,11 @@ import { toolName } from '../spec/derive.js';
 import { applyToolPolicy, type PolicyResult } from '../policy/tool-policy.js';
 import { annotationsFor } from '../policy/annotations.js';
 import { describeTool } from '../guardrails/enrich.js';
-import { UI_TOOLS } from '../ui/registry.js';
 
 /** A registered API tool: its MCP definition plus the operation it invokes. */
 export interface ApiTool {
   tool: Tool;
   operation: OperationSpec;
-  /** If set, the tool renders this MCP App (ui:// resource) and emits structuredContent. */
-  appResourceUri?: string;
 }
 
 let cached: { tools: ApiTool[]; policy: PolicyResult } | null = null;
@@ -27,16 +24,13 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
   const manifest = buildManifest(doc);
   const policy = applyToolPolicy(manifest);
   const tools = policy.tools.map((operation): ApiTool => {
-    const appResourceUri = UI_TOOLS[operation.operationId];
     const tool: Tool = {
       name: toolName(operation.operationId),
       description: describeTool(operation),
       inputSchema: buildInputSchema(operation, doc),
       annotations: annotationsFor(operation),
     };
-    // MCP Apps: link the tool to its UI panel so the host renders it on call.
-    if (appResourceUri) tool._meta = { ui: { resourceUri: appResourceUri } };
-    return { operation, tool, appResourceUri };
+    return { operation, tool };
   });
   cached = { tools, policy };
   return cached;
