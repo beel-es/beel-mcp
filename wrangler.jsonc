@@ -4,13 +4,9 @@
   "main": "src/cf/worker.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
-  // Genera la UI (dist/ui/invoice-pdf.html) ANTES de empaquetar: worker.ts la
-  // importa como módulo Text. Sin esto, el build de Cloudflare Workers Builds
-  // (que solo corre `wrangler versions upload`) falla con ENOENT.
-  "build": { "command": "node scripts/build-ui.mjs" },
-  // The spec YAML and the built MCP-App HTML are embedded as text modules.
+  // The OpenAPI spec YAML is embedded as a text module.
   "rules": [
-    { "type": "Text", "globs": ["**/*.yaml", "**/*.html"], "fallthrough": true }
+    { "type": "Text", "globs": ["**/*.yaml"], "fallthrough": true }
   ],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BeelMcpAgent"] }],
   "durable_objects": {
