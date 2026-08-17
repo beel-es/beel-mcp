@@ -33,17 +33,22 @@ export async function enrichToolResult(
 }
 
 // ---------------------------------------------------------------------------
-// PDF de factura: embeber el binario como recurso MCP `application/pdf` para que
-// lo pinte el visor NATIVO del host. Evita el sandbox de MCP Apps (que no
-// renderiza PDFs) y no necesita pdf.js ni proxy.
+// PDF de factura. El chat de Claude NO renderiza PDFs inline (el visor nativo
+// solo los ofrece como adjunto). Por eso devolvemos DOS cosas honestas:
+//   1. una IMAGEN de vista previa (WebP con todas las páginas apiladas), que el
+//      host SÍ pinta inline — es una *vista previa*, no el PDF;
+//   2. el PDF real como recurso `application/pdf` para abrir/descargar íntegro.
+// La imagen sale de `preview_image_url` (presigned que ya genera el backend); si
+// no viene, se omite y queda solo el PDF adjunto.
 // ---------------------------------------------------------------------------
 
-interface PresignedFile {
+interface InvoicePdf {
   download_url: string;
   file_name?: string;
+  preview_image_url?: string | null;
 }
 
-function isPresignedFile(data: unknown): data is PresignedFile {
+function isInvoicePdf(data: unknown): data is InvoicePdf {
   return (
     !!data &&
     typeof data === 'object' &&
@@ -51,24 +56,42 @@ function isPresignedFile(data: unknown): data is PresignedFile {
   );
 }
 
-async function embedInvoicePdf(data: unknown): Promise<CallToolResult | null> {
-  if (!isPresignedFile(data)) return null;
-  const res = await fetch(data.download_url).catch(() => null);
+/** Descarga una URL y la devuelve como base64 + su content-type; null si falla. */
+async function fetchAsBase64(url: string): Promise<{ blob: string; mimeType: string } | null> {
+  const res = await fetch(url).catch(() => null);
   if (!res || !res.ok) return null;
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+  return { blob: base64(await res.arrayBuffer()), mimeType };
+}
+
+async function embedInvoicePdf(data: unknown): Promise<CallToolResult | null> {
+  if (!isInvoicePdf(data)) return null;
+  const pdf = await fetchAsBase64(data.download_url);
+  if (!pdf) return null; // el PDF es el núcleo: sin él, cae al render por defecto
   const fileName = data.file_name ?? 'factura.pdf';
-  return {
-    content: [
-      {
-        type: 'resource',
-        resource: {
-          uri: `beel://invoice/${fileName}`,
-          mimeType: 'application/pdf',
-          blob: base64(await res.arrayBuffer()),
-        },
-      },
-      { type: 'text', text: `Factura ${fileName} adjunta.` },
-    ],
-  };
+
+  const content: CallToolResult['content'] = [];
+
+  // Vista previa inline (imagen). Honesto: es una previsualización, no el PDF.
+  const preview = data.preview_image_url ? await fetchAsBase64(data.preview_image_url) : null;
+  if (preview) {
+    content.push({ type: 'image', data: preview.blob, mimeType: preview.mimeType });
+  }
+
+  // El PDF real, para abrir/descargar íntegro (todas las páginas, texto real).
+  content.push({
+    type: 'resource',
+    resource: { uri: `beel://invoice/${fileName}`, mimeType: 'application/pdf', blob: pdf.blob },
+  });
+
+  content.push({
+    type: 'text',
+    text: preview
+      ? `Vista previa de ${fileName} (imagen). El PDF real va adjunto para abrir o descargar.`
+      : `PDF ${fileName} adjunto para abrir o descargar.`,
+  });
+
+  return { content };
 }
 
 /** ArrayBuffer -> base64 por chunks (btoa con spread revienta en buffers grandes). */
