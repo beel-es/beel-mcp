@@ -1,4 +1,5 @@
 import type { ResolvedConfig } from '../config.js';
+import { ContentType, HttpHeader, bearerAuthHeader } from '../shared/http.js';
 
 /** A normalised API error carrying BeeL's error envelope fields. */
 export class ApiError extends Error {
@@ -79,12 +80,12 @@ export async function apiRequest(
   const url = buildUrl(config.baseUrl, opts.path, opts.query);
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${config.apiKey}`,
-    Accept: 'application/json',
+    [HttpHeader.Authorization]: bearerAuthHeader(config.apiKey),
+    [HttpHeader.Accept]: ContentType.Json,
   };
   const activeCompany = opts.activeCompany ?? config.activeCompany;
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
-  if (hasBody) headers['Content-Type'] = 'application/json';
+  if (hasBody) headers[HttpHeader.ContentType] = ContentType.Json;
   // Idempotency-Key STABLE per logical operation, not per HTTP call: an agent that
   // retries "create invoice" must reuse the key or the backend mints a duplicate
   // (VeriFactu = a real fiscal document). A random-per-call key defeated that.

@@ -4,6 +4,8 @@
  * This module owns that second leg: authorize URL, PKCE, code exchange, refresh.
  */
 
+import { ContentType, HttpHeader, basicAuthHeader } from '../shared/http.js';
+
 export interface UpstreamConfig {
   issuer: string;
   authorizeUrl: string;
@@ -51,13 +53,13 @@ export async function pkcePair(): Promise<{ verifier: string; challenge: string 
 }
 
 async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Promise<UpstreamTokens> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  const headers: Record<string, string> = { [HttpHeader.ContentType]: ContentType.Form };
   if (config.clientSecret) {
-    // Cliente CONFIDENCIAL: client_secret_basic (secreto en la cabecera
-    // Authorization, no en el cuerpo). Es el método que registra BeeL para
-    // beel-mcp; enviarlo en el cuerpo (client_secret_post) daba 401 por método
-    // no soportado. Con Basic, client_id va SOLO en la cabecera (no en el body).
-    headers.Authorization = `Basic ${btoa(`${config.clientId}:${config.clientSecret}`)}`;
+    // Cliente CONFIDENCIAL: client_secret_basic (secreto en la cabecera, no en
+    // el cuerpo). Es el método que registra BeeL para beel-mcp; enviarlo en el
+    // cuerpo (client_secret_post) daba 401 por método no soportado. Con Basic,
+    // el client_id va SOLO en la cabecera (no en el body).
+    headers[HttpHeader.Authorization] = basicAuthHeader(config.clientId, config.clientSecret);
   } else {
     // Cliente público (sin secreto): PKCE (S256) es la protección.
     params.set('client_id', config.clientId);
