@@ -142,8 +142,8 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
             uri,
             mimeType: MCP_APP_MIME,
             text: app.text,
-            // CSP must allow the presigned PDF host inside the sandboxed iframe.
-            _meta: { ui: { csp: { frameDomains: app.frameDomains } } },
+            // CSP: la app hace fetch del PDF al proxy y lo pinta con pdf.js.
+            _meta: { ui: { csp: { connectDomains: app.connectDomains } } },
           },
         ],
       };

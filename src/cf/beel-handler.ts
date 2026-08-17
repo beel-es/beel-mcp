@@ -142,6 +142,9 @@ app.get('/pdf', async (c) => {
       'Content-Disposition': 'inline',
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      // La MCP-App corre en un sandbox de origen opaco: sin CORS no puede leer
+      // los bytes con fetch() para pintarlos con pdf.js. GET simple → sin preflight.
+      'Access-Control-Allow-Origin': '*',
     },
   });
 });

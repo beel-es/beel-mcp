@@ -11,10 +11,32 @@
  */
 import { build } from 'esbuild';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+
+/**
+ * pdf.js corre su parser en un Web Worker. En el sandbox no hay cargas externas,
+ * así que bundleamos el worker a un IIFE, lo inyectamos como base64 y la app lo
+ * materializa como blob URL. Así el visor es 100% self-contained.
+ */
+async function pdfWorkerBase64() {
+  const entry = require.resolve('pdfjs-dist/build/pdf.worker.min.mjs');
+  const out = await build({
+    entryPoints: [entry],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['es2020'],
+    minify: true,
+    write: false,
+    logLevel: 'warning',
+  });
+  return Buffer.from(out.outputFiles[0].text, 'utf8').toString('base64');
+}
 
 /** One entry per MCP App. */
 const APPS = [
@@ -45,9 +67,10 @@ function htmlShell(title, script) {
   #meta { opacity: .6; white-space: nowrap; }
   #open { margin-left: auto; display: none; align-items: center; gap: .3rem; text-decoration: none; padding: .3rem .6rem; border-radius: .4rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); color: inherit; font-size: .8rem; }
   #open:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-  #frame-wrap { height: 640px; }
-  #pdf { display: none; width: 100%; height: 640px; border: 0; }
-  #empty { height: 640px; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: .9rem; }
+  /* Contenedor scrollable de páginas (canvas renderizados por pdf.js). */
+  #pages { height: 640px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: color-mix(in srgb, currentColor 6%, transparent); }
+  #pages canvas { max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.18); border-radius: 2px; }
+  #status { display: flex; align-items: center; justify-content: center; text-align: center; padding: .5rem 1rem; opacity: .6; font-size: .85rem; }
 </style>
 </head>
 <body>
@@ -56,14 +79,14 @@ function htmlShell(title, script) {
     <span id="meta"></span>
     <a id="open" target="_blank" rel="noopener noreferrer">Abrir ↗</a>
   </header>
-  <div id="frame-wrap">
-    <iframe id="pdf" title="Factura PDF"></iframe>
-  </div>
-  <div id="empty">Esperando la factura…</div>
+  <div id="pages"></div>
+  <div id="status">Esperando la factura…</div>
   <script>${script}</script>
 </body>
 </html>`;
 }
+
+const pdfWorkerB64 = await pdfWorkerBase64();
 
 for (const app of APPS) {
   const result = await build({
@@ -75,6 +98,7 @@ for (const app of APPS) {
     minify: true,
     write: false,
     logLevel: 'warning',
+    define: { __PDF_WORKER_B64__: JSON.stringify(pdfWorkerB64) },
   });
   const script = result.outputFiles[0].text;
   const outPath = resolve(root, app.out);
