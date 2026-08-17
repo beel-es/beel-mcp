@@ -8,6 +8,7 @@ import { toolName } from '../spec/derive.js';
 import { applyToolPolicy, type PolicyResult } from '../policy/tool-policy.js';
 import { annotationsFor } from '../policy/annotations.js';
 import { describeTool } from '../guardrails/enrich.js';
+import { APP_BINDINGS } from '../mcpapp/binding.js';
 
 /** A registered API tool: its MCP definition plus the operation it invokes. */
 export interface ApiTool {
@@ -30,6 +31,9 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
       inputSchema: buildInputSchema(operation, doc),
       annotations: annotationsFor(operation),
     };
+    // MCP Apps: si la operación tiene un visor asociado, el host lo renderiza al llamarla.
+    const appResourceUri = APP_BINDINGS[operation.operationId];
+    if (appResourceUri) tool._meta = { ui: { resourceUri: appResourceUri } };
     return { operation, tool };
   });
   cached = { tools, policy };

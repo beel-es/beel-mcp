@@ -15,6 +15,8 @@ import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { getSetupStatus, isWorkflowTool, workflowTools } from './tools/workflow-tools.js';
 import { guardrailResources, readGuardrailResource } from './resources/guardrails.js';
 import { enrichToolResult } from './tools/tool-result.js';
+import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
+import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
 
 export interface ServerInfo {
@@ -66,11 +68,6 @@ function logToolCall(
 export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
   const apiByName = new Map<string, ApiTool>(apiTools.map((t) => [t.tool.name, t]));
-  // Lookup por operationId del CONTRATO: permite a los enrichers invocar otra
-  // operación por su id (ruta/params desde el spec), sin hardcodear paths.
-  const apiByOperationId = new Map<string, ApiTool>(
-    apiTools.map((t) => [t.operation.operationId, t]),
-  );
 
   // Resolve credentials lazily so the server starts (and can list tools) without
   // an API key; we only need it the first time an API tool actually runs. HTTP
@@ -113,18 +110,12 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
         return textResult(`Unknown tool: ${name}`, true);
       }
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
-      // Algunos tools enriquecen su payload (p.ej. embeber el PDF de la factura
-      // + su imagen de preview); el resto cae al JSON de texto. Registro en
-      // ./tools/tool-result. El enricher recibe un GET autenticado de la sesión.
+      // Algunos tools enriquecen su payload (p.ej. el PDF de la factura: datos
+      // para el visor + adjunto); el resto cae al JSON de texto. Registro en
+      // ./tools/tool-result.
       const result =
-        (await enrichToolResult(apiTool.operation.operationId, data, {
-          args,
-          callOperation: (operationId, opArgs) => {
-            const op = apiByOperationId.get(operationId);
-            if (!op) throw new Error(`Unknown operation: ${operationId}`);
-            return executeApiTool(getConfig(), op.operation, opArgs);
-          },
-        })) ?? textResult(JSON.stringify(data, null, 2));
+        (await enrichToolResult(apiTool.operation.operationId, data)) ??
+        textResult(JSON.stringify(data, null, 2));
       logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {
@@ -138,11 +129,26 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: guardrailResources,
+    resources: [...guardrailResources, invoicePdfAppResource],
   }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
+    if (uri === INVOICE_PDF_APP_URI) {
+      const app = readInvoicePdfApp();
+      if (!app) throw new Error('Invoice PDF app not built. Run `npm run build:mcpapp`.');
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: MCP_APP_MIME,
+            text: app.html,
+            // CSP: pdf.js desde cdnjs (resourceDomains) + fetch del PDF por el proxy.
+            _meta: { ui: { csp: app.csp } },
+          },
+        ],
+      };
+    }
     const body = readGuardrailResource(uri);
     if (body === null) throw new Error(`Unknown resource: ${uri}`);
     return { contents: [{ uri, mimeType: 'text/markdown', text: body }] };
