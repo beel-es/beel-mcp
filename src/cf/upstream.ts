@@ -51,11 +51,20 @@ export async function pkcePair(): Promise<{ verifier: string; challenge: string 
 }
 
 async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Promise<UpstreamTokens> {
-  params.set('client_id', config.clientId);
-  if (config.clientSecret) params.set('client_secret', config.clientSecret);
+  const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  if (config.clientSecret) {
+    // Cliente CONFIDENCIAL: client_secret_basic (secreto en la cabecera
+    // Authorization, no en el cuerpo). Es el método que registra BeeL para
+    // beel-mcp; enviarlo en el cuerpo (client_secret_post) daba 401 por método
+    // no soportado. Con Basic, client_id va SOLO en la cabecera (no en el body).
+    headers.Authorization = `Basic ${btoa(`${config.clientId}:${config.clientSecret}`)}`;
+  } else {
+    // Cliente público (sin secreto): PKCE (S256) es la protección.
+    params.set('client_id', config.clientId);
+  }
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers,
     body: params.toString(),
   });
   const text = await response.text();
