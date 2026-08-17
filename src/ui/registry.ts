@@ -26,15 +26,32 @@ export const UI_TOOLS: Record<string, string> = {
 };
 
 /**
- * Hosts allowed in the iframe CSP `frame-src` for rendering the PDF. The download
- * URL is a presigned MinIO/S3 link (e.g. minio.beel.es); override per environment
- * with BEEL_PDF_DOMAINS (comma-separated origins).
+ * Origin allowed in the iframe CSP `frame-src`. La MCP-App NO apunta el iframe
+ * directo a la presigned URL (host de storage cambiante + `attachment` firmado que
+ * fuerza descarga): apunta al proxy del propio worker (`https://mcp.beel.es/pdf`),
+ * que re-sirve el PDF `inline`. Así el CSP solo confía en NUESTRO dominio estable.
+ * Override por entorno con BEEL_PDF_FRAME_ORIGIN.
  */
 export function pdfFrameDomains(env: NodeJS.ProcessEnv = process.env): string[] {
-  const fromEnv = env.BEEL_PDF_DOMAINS?.split(',')
-    .map((d) => d.trim())
+  const origin = env.BEEL_PDF_FRAME_ORIGIN?.trim();
+  return [origin && origin.length > 0 ? origin : 'https://mcp.beel.es'];
+}
+
+/**
+ * Hosts de storage que el proxy `/pdf` puede buscar (guard anti-SSRF: sin esto,
+ * el proxy sería un open-relay hacia cualquier host). Son los endpoints públicos
+ * de MinIO/S3 desde los que salen las presigned URLs. Override con
+ * BEEL_PDF_STORAGE_HOSTS (hostnames separados por coma, sin esquema).
+ */
+export function pdfStorageHosts(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const fromEnv = env.BEEL_PDF_STORAGE_HOSTS?.split(',')
+    .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
-  return fromEnv && fromEnv.length > 0
-    ? fromEnv
-    : ['https://minio.beel.es', 'https://app.beel.es'];
+  const defaults = [
+    'bucket-production-f776.up.railway.app',
+    'storage.beel.es',
+    'minio.beel.es',
+    'app.beel.es',
+  ];
+  return new Set(fromEnv && fromEnv.length > 0 ? fromEnv : defaults);
 }
