@@ -13,10 +13,21 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 /**
+ * Contexto que el handler pasa al enricher: los argumentos del tool y un ejecutor
+ * de OTRAS operaciones del contrato por `operationId`. Las RUTAS viven solo en el
+ * spec OpenAPI (única fuente de verdad); el enricher nunca hardcodea paths — pide
+ * una operación por su id y el spec resuelve la ruta, params y auth de la sesión.
+ */
+export interface EnricherContext {
+  args: Record<string, unknown>;
+  callOperation: (operationId: string, args: Record<string, unknown>) => Promise<unknown>;
+}
+
+/**
  * Transforma el payload crudo de un tool en un `CallToolResult`. Devuelve `null`
  * para delegar en el render por defecto (JSON de texto).
  */
-export type ResultEnricher = (data: unknown) => Promise<CallToolResult | null>;
+export type ResultEnricher = (data: unknown, ctx: EnricherContext) => Promise<CallToolResult | null>;
 
 /** operationId (contrato OpenAPI) -> enricher. Único punto de registro. */
 export const RESULT_ENRICHERS: Record<string, ResultEnricher> = {
@@ -27,9 +38,10 @@ export const RESULT_ENRICHERS: Record<string, ResultEnricher> = {
 export async function enrichToolResult(
   operationId: string | undefined,
   data: unknown,
+  ctx: EnricherContext,
 ): Promise<CallToolResult | null> {
   const enricher = operationId ? RESULT_ENRICHERS[operationId] : undefined;
-  return enricher ? enricher(data) : null;
+  return enricher ? enricher(data, ctx) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,14 +50,13 @@ export async function enrichToolResult(
 //   1. una IMAGEN de vista previa (WebP con todas las páginas apiladas), que el
 //      host SÍ pinta inline — es una *vista previa*, no el PDF;
 //   2. el PDF real como recurso `application/pdf` para abrir/descargar íntegro.
-// La imagen sale de `preview_image_url` (presigned que ya genera el backend); si
-// no viene, se omite y queda solo el PDF adjunto.
+// La imagen se obtiene del endpoint dedicado GET .../invoices/{id}/preview
+// (genera-si-falta); si falla, se omite y queda solo el PDF adjunto.
 // ---------------------------------------------------------------------------
 
 interface InvoicePdf {
   download_url: string;
   file_name?: string;
-  preview_image_url?: string | null;
 }
 
 function isInvoicePdf(data: unknown): data is InvoicePdf {
@@ -64,7 +75,25 @@ async function fetchAsBase64(url: string): Promise<{ blob: string; mimeType: str
   return { blob: base64(await res.arrayBuffer()), mimeType };
 }
 
-async function embedInvoicePdf(data: unknown): Promise<CallToolResult | null> {
+/** operationId del preview de factura (ruta y params definidos en el spec OpenAPI). */
+const INVOICE_PREVIEW_OPERATION = 'getCompanyInvoicePreview';
+
+/** URL presignada de la imagen de preview vía la operación dedicada; null si falla. */
+async function fetchPreviewUrl(ctx: EnricherContext): Promise<string | null> {
+  const { company_id, invoice_id } = ctx.args;
+  if (typeof company_id !== 'string' || typeof invoice_id !== 'string') return null;
+  try {
+    const data = (await ctx.callOperation(INVOICE_PREVIEW_OPERATION, {
+      company_id,
+      invoice_id,
+    })) as { image_url?: string } | null;
+    return data?.image_url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function embedInvoicePdf(data: unknown, ctx: EnricherContext): Promise<CallToolResult | null> {
   if (!isInvoicePdf(data)) return null;
   const pdf = await fetchAsBase64(data.download_url);
   if (!pdf) return null; // el PDF es el núcleo: sin él, cae al render por defecto
@@ -73,7 +102,8 @@ async function embedInvoicePdf(data: unknown): Promise<CallToolResult | null> {
   const content: CallToolResult['content'] = [];
 
   // Vista previa inline (imagen). Honesto: es una previsualización, no el PDF.
-  const preview = data.preview_image_url ? await fetchAsBase64(data.preview_image_url) : null;
+  const previewUrl = await fetchPreviewUrl(ctx);
+  const preview = previewUrl ? await fetchAsBase64(previewUrl) : null;
   if (preview) {
     content.push({ type: 'image', data: preview.blob, mimeType: preview.mimeType });
   }
