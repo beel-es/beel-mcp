@@ -59,7 +59,7 @@ Requires Node ≥ 20. Run via `npx` (no install needed):
 
 | Variable | Purpose |
 |---|---|
-| `BEEL_API_KEY` | API key. The prefix selects the environment: `beel_sk_test_` → sandbox, `beel_sk_live_` → production. **Sandbox is safe to experiment with.** |
+| `BEEL_API_KEY` | API key. The prefix selects the environment: `beel_sk_test_` → Test, `beel_sk_live_` → Live. **Test is safe to experiment with.** |
 | `BEEL_ACTIVE_COMPANY` | (Optional) Company UUID for multi-NIF accounts. Sent as `Beel-Active-Company`. List companies with `beel_list_companies`. |
 | `BEEL_BASE_URL` | (Optional) Override the API base URL (default `https://app.beel.es/api`). |
 | `BEEL_DOCS_URL` | (Optional) Override the docs source (default `https://docs.beel.es`), e.g. a local `beel-api-docs-standalone` instance. |
@@ -89,7 +89,8 @@ How auth works:
    client, and keeps the BeeL token internally. The client validates that token against
    the authorization server it used (this server), so the iss/aud match. On each `/mcp`
    call the server **forwards the BeeL token to the API** — every session acts with its
-   own user's credentials. Sandbox vs production comes from the granted `sandbox` scope.
+   own user's credentials. Test vs Live comes from the granted `sandbox` scope (the scope name is the OAuth
+   identifier, not the environment label).
 
 ```bash
 npm run start:http   # serves on :$PORT (default 3000)
