@@ -7,11 +7,20 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+#: Grafias publicas retiradas del entorno. Se siguen aceptando para que un `.env`
+#: escrito antes del renombrado arranque igual: con un `Literal` cerrado, el cambio
+#: de vocabulario se convertiria en una caida al iniciar, y quien ya tiene el
+#: servidor en marcha no se entera hasta que deja de levantar.
+#: Vive fuera de la clase porque pydantic trata los atributos con guion bajo como
+#: privados del modelo.
+LEGACY_ENVIRONMENTS = {"sandbox": "test", "production": "live", "prod": "live"}
+
+
 class Settings(BaseSettings):
     """Configuracion del servidor MCP.
 
-    BeeL usa la misma base URL para sandbox y production. La diferencia real
-    viene dada por el prefijo de la API key (`beel_sk_test_` vs `beel_sk_live_`).
+    BeeL usa la misma base URL para los dos entornos. La diferencia real viene
+    dada por el prefijo de la API key (`beel_sk_test_` vs `beel_sk_live_`).
     """
 
     model_config = SettingsConfigDict(
@@ -25,8 +34,8 @@ class Settings(BaseSettings):
         default="https://app.beel.es/api",
         alias="BEEL_BASE_URL",
     )
-    beel_environment: Literal["sandbox", "production"] = Field(
-        default="sandbox",
+    beel_environment: Literal["test", "live"] = Field(
+        default="test",
         alias="BEEL_ENVIRONMENT",
     )
     beel_timeout_seconds: float = Field(
@@ -53,6 +62,14 @@ class Settings(BaseSettings):
         ge=50_000,
         le=10_000_000,
     )
+
+    @field_validator("beel_environment", mode="before")
+    @classmethod
+    def _accept_legacy_environment(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        return LEGACY_ENVIRONMENTS.get(normalized, normalized)
 
     @field_validator("beel_base_url")
     @classmethod

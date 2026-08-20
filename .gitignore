@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 .ruff_cache/
 .pytest_cache/
+
+# Dependencias de Node: nunca se versionan (un binario de workerd pasa de 100 MB
+# y GitHub rechaza el push entero).
+node_modules/
+.DS_Store
