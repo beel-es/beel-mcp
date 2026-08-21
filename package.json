@@ -3,15 +3,6 @@
   "version": "0.1.0",
   "description": "MCP server for the BeeL invoicing API \u2014 VeriFactu-compliant electronic invoicing tools for LLM agents, derived from the public OpenAPI contract.",
   "type": "module",
-  "bin": {
-    "beel-mcp": "./dist/index.js"
-  },
-  "files": [
-    "dist",
-    "openapi",
-    "LICENSE",
-    "README.md"
-  ],
   "engines": {
     "node": ">=20"
   },
@@ -24,7 +15,6 @@
     "typecheck": "tsc --noEmit",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
     "sync:spec": "node scripts/bundle-spec.mjs",
-    "prepublishOnly": "npm run build",
     "spec:lock": "node scripts/spec-lock.mjs --write",
     "spec:verify": "node scripts/spec-lock.mjs",
     "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",
@@ -50,10 +40,7 @@
     "beel"
   ],
   "license": "MIT",
-  "private": false,
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.3",
     "@modelcontextprotocol/ext-apps": "^1.7.4",

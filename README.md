@@ -1,7 +1,6 @@
 # BeeL MCP server — VeriFactu-compliant invoicing for AI agents
 
 [![CI](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@beel_es/mcp.svg)](https://www.npmjs.com/package/@beel_es/mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI agent issue **legally
@@ -21,42 +20,54 @@ It is not a generated wrapper around an API. Three things make it usable by a mo
   miss, both as documentation the model reads and as pre-flight checks that stop a
   non-compliant request before it becomes a fiscal document.
 
-Two transports, one codebase: a local **stdio** binary (`npx @beel_es/mcp`, API key) and a
-hosted **remote server** at `https://mcp.beel.es/mcp` (Streamable HTTP + OAuth, one login
-per user, no key to paste).
+One codebase, two transports: the hosted **remote server** at
+`https://mcp.beel.es/mcp` (Streamable HTTP + OAuth — one login per user, nothing to
+install), and a **local stdio** server built from this repository for headless use, where
+an API key works and a browser-based login does not.
 
 ## Quick start
 
-### Remote (recommended)
+Add **`https://mcp.beel.es/mcp`** as a connector in Claude, ChatGPT, Cursor or VS Code and
+log in with your BeeL account. Nothing to install and no API key to handle: the server acts
+with your own credentials, and the OAuth flow is discovered from the URL.
 
-Add **`https://mcp.beel.es/mcp`** as a connector in Claude, ChatGPT, Cursor or VS Code
-and log in with your BeeL account. Nothing to install and no API key to handle: the
-server acts with your own credentials, and the OAuth flow is discovered automatically
-from the URL.
+```bash
+# Claude Code
+claude mcp add --transport http beel https://mcp.beel.es/mcp
+```
 
-### Local (stdio)
+That is the whole setup for interactive use. Read on only if you need the local server.
 
-Requires Node ≥ 20.
+## Running it locally
+
+Use the local server when OAuth cannot: a scheduled job that issues invoices, a CI
+pipeline, or any headless process where no one is present to complete a browser login.
+It authenticates with an API key instead.
+
+Requires Node ≥ 20. Build it from this repository:
+
+```bash
+git clone https://github.com/beel-es/beel-mcp.git
+cd beel-mcp
+npm ci && npm run build
+```
+
+Then point your client at the built entry point:
 
 ```jsonc
 // Claude Desktop / Claude Code MCP config
 {
   "mcpServers": {
     "beel": {
-      "command": "npx",
-      "args": ["-y", "@beel_es/mcp"],
+      "command": "node",
+      "args": ["/absolute/path/to/beel-mcp/dist/index.js"],
       "env": { "BEEL_API_KEY": "beel_sk_test_xxx" }
     }
   }
 }
 ```
 
-```bash
-# Claude Code
-claude mcp add beel --env BEEL_API_KEY=beel_sk_test_xxx -- npx -y @beel_es/mcp
-```
-
-Keys prefixed `beel_sk_test_` are safe to experiment with. `beel_sk_live_` issues real
+Keys prefixed `beel_sk_test_` are safe to experiment with; `beel_sk_live_` issues real
 fiscal documents.
 
 ## What it provides
@@ -141,7 +152,7 @@ of silently switching a fiscal check off.
 
 ## Configuration
 
-### Local (stdio)
+### Local server only
 
 | Variable | Purpose |
 |---|---|

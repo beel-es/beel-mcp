@@ -10,8 +10,8 @@ in the subject line — those are escalated immediately.
 
 ## Scope
 
-In scope: this MCP server (`@beel_es/mcp`), the remote deployment at
-`mcp.beel.es`, and the OAuth flow between them and the BeeL API.
+In scope: this MCP server, the remote deployment at `mcp.beel.es`, and the OAuth flow
+between them and the BeeL API.
 
 Out of scope: the BeeL API and web application (report those the same way, they
 are simply handled by a different team), and findings that require an attacker to
