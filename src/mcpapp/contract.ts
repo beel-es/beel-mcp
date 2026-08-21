@@ -1,11 +1,14 @@
 /**
- * Contrato de la MCP App del visor de factura — ÚNICA fuente de nombres, URIs y
- * dominios CSP. Cualquier otra capa (recurso, binding, app browser, build) los
- * importa de aquí; nadie hardcodea literales duplicados.
+ * Contrato de la MCP App del visor de factura: nombres, URIs y dominios CSP que
+ * comparten el recurso, el binding, la app de navegador y el build. Los valores
+ * propios del visor viven aquí; los que comparte con el resto del servidor
+ * vienen de shared/defaults.ts, que es la única fuente global.
  */
 
+import { BEEL_DEFAULTS } from '../shared/defaults.js';
+
 /** Dominio público del worker (sirve el proxy del PDF). */
-export const APP_ORIGIN = 'https://mcp.beel.es';
+export const APP_ORIGIN = BEEL_DEFAULTS.publicUrl;
 
 /** CDN de Cloudflare que sirve pdf.js (self-hosted por Cloudflare, no inline). */
 export const PDFJS_CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
