@@ -10,6 +10,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .wrangler/
-# Deployment-specific Wrangler configs (KV ids, routes, storage hosts)
-wrangler.*.local.jsonc
 .dev.vars

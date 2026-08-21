@@ -1,7 +1,7 @@
 name: Sync OpenAPI spec & publish
 
-# INTERNAL ONLY — this workflow reads a private backend repository with a deploy
-# key and must never be copied into the public mirror. See INTERNAL.md.
+# Reads the backend repository (private) with a deploy key. Its triggers both
+# require write access, so a fork can never run it or reach the secrets.
 
 # Keeps the embedded spec in sync with the backend. Trigger options:
 #  - repository_dispatch (event_type: openapi-updated) fired by the backend repo

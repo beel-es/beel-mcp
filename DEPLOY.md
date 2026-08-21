@@ -25,11 +25,12 @@ hand-roll this part; a previous iteration did, and spent eight commits on it.
 npx wrangler kv namespace create OAUTH_KV
 ```
 
-Put the id it prints into `kv_namespaces[0].id`. The checked-in `wrangler.jsonc` is a
-template with a placeholder, and deliberately carries no routes, no namespace ids and no
-storage hosts: those are infrastructure, not source. Keep your own values either in that
-file (in a private repo) or in a separate config passed with
-`wrangler deploy -c wrangler.prod.jsonc`.
+Put the id it prints into `kv_namespaces[0].id`, and set `routes` to your own hostname.
+
+`wrangler.jsonc` holds the deployment's non-secret configuration — the namespace id, the
+route, and the public `vars`. None of it is a credential: a KV namespace id is useless
+without a Cloudflare API token. Real secrets never go in this file; they are set with
+`wrangler secret put` and live only in Cloudflare.
 
 ## 3. Register the OAuth client at BeeL
 
