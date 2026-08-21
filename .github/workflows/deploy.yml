@@ -1,0 +1,80 @@
+name: Deploy Worker
+
+# Deploys the remote MCP server to Cloudflare.
+#
+# This lives in GitHub Actions rather than Cloudflare Workers Builds for one
+# reason: on a public repository, a build system wired straight to the repo may
+# build pull requests, and a PR from a fork can change the build command. If the
+# deploy credential is in that environment, a stranger's PR can exfiltrate it.
+#
+# GitHub Actions does not have that problem by construction. A `pull_request`
+# from a fork runs WITHOUT access to secrets, and this workflow only triggers on
+# a push to the default branch — which requires write access — or on a manual
+# dispatch. There is no configuration to get wrong and no checkbox to forget.
+#
+# Prerequisites, once:
+#   1. Disconnect Workers Builds from this repository in the Cloudflare
+#      dashboard, or it will keep deploying in parallel with this workflow.
+#   2. Create a scoped API token (Workers Scripts: Edit) and add it as the
+#      CLOUDFLARE_API_TOKEN repository secret, with CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Least privilege: this job reads the code and talks to Cloudflare. It has no
+# reason to write to the repository.
+permissions:
+  contents: read
+
+# Never let two deploys race; queue them instead.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    # Guard the credential behind an environment, so protection rules and the
+    # deployment log apply to it.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Deploy only what already passes. The same gates as CI, because a green
+      # CI run on an earlier commit says nothing about this one.
+      - name: Verify the OpenAPI contract matches its lock
+        run: npm run spec:verify
+
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Confirm the deployment is actually serving, rather than trusting the
+      # upload succeeded. /healthz needs no authentication.
+      - name: Smoke test the deployment
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 10 https://mcp.beel.es/healthz | grep -q '"status":"ok"'; then
+              echo "Deployment is healthy."
+              exit 0
+            fi
+            echo "Not healthy yet (attempt $attempt); retrying."
+            sleep 10
+          done
+          echo "::error::The deployment did not become healthy."
+          exit 1

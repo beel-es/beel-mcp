@@ -10,7 +10,7 @@
  * Usage:
  *   node scripts/bundle-spec.mjs [path-to-backend-openapi/public-api.yaml]
  *
- * Defaults to the sibling autonomos checkout. In CI the backend's develop branch is
+ * Defaults to a sibling backend checkout. In CI the backend's branch is
  * checked out first (see .github/workflows/sync-spec.yml).
  */
 import { execFileSync } from 'node:child_process';
@@ -23,7 +23,9 @@ const OUT = resolve(here, '../openapi/public-api.yaml');
 
 const DEFAULT_SOURCE = resolve(
   here,
-  '../../beel.es-autonomos/backend/src/main/resources/openapi/public-api.yaml',
+  // Sibling checkout of the backend. Override with BEEL_BACKEND_PATH.
+  process.env.BEEL_BACKEND_PATH ??
+    '../../backend/src/main/resources/openapi/public-api.yaml',
 );
 
 const source = process.argv[2] ? resolve(process.argv[2]) : DEFAULT_SOURCE;
