@@ -4,34 +4,51 @@ docPath: /verifactu/invoice-types
 summary: How BeeL derives the AEAT invoice type, and the rules each type imposes.
 ---
 
-You never set the AEAT `tipo_factura` directly. BeeL derives it from the invoice
-`type` and, for correctives, from `rectification_code`:
+You never set the AEAT `tipo_factura` directly. BeeL derives it from the invoice `type`
+and, for correctives, from `rectification_code`.
 
-- `type: STANDARD` → **F1** (factura ordinaria). Default for B2B and high-value B2C.
-  Requires `recipient.nif` OR `recipient.alternative_id`. If the recipient is an
-  individual (NIF starting with a digit), `legal_name` must match the AEAT census or
-  the registro is rejected — validate first with `validateNif`.
-- `type: SIMPLIFIED` → **F2** (factura simplificada). Recipient optional (with or
-  without NIF). Total **IVA included must be ≤ 3 000 €**. F2 also forbids IRPF
-  withholding: send `irpf_rate: 0` or omit it, or the line is rejected with
-  `SIMPLIFICADA_FORBIDS_IRPF`.
-- **F3** (sustitutiva) is not emitted — to upgrade an F2 to F1, issue an R5 TOTAL
-  corrective and then a new STANDARD invoice for the same operation.
+## The types
 
-## Correctives are a separate endpoint, not a `type`
+| You send | AEAT sees | When |
+|---|---|---|
+| `type: STANDARD` | **F1**, factura ordinaria | B2B, and B2C above the simplified ceiling |
+| `type: SIMPLIFIED` | **F2**, factura simplificada | Ticket-style sales, total ≤ 3 000 € |
+| A corrective operation | **R1–R5** | Amending an invoice already issued |
 
-`type: CORRECTIVE` is **NOT accepted** when creating an invoice. A corrective is
-always created *from the invoice it corrects*:
+**F3** (sustitutiva) is not emitted. To turn an F2 into an F1, issue an R5 `TOTAL`
+corrective and then a new `STANDARD` invoice for the same operation.
 
-    POST /v1/companies/{company_id}/invoices/{invoice_id}/corrective
+## F1 — ordinary
 
-which is where `rectification_type` and `rectification_code` are declared. All three
-of `rectification_type`, `rectification_code` and `reason` are required there.
+Requires `recipient.nif` or `recipient.alternative_id`. When the recipient is an
+individual, the `legal_name` must match the AEAT census exactly or the registro is
+rejected at submission — check it first with `beel_validate_nif`. See the nif-validation
+guardrail.
 
-`rectification_code` maps to the AEAT legal motive **R1–R5**:
+## F2 — simplified
 
-- R1 error fundado en derecho (most common) · R2 concurso de acreedores ·
-  R3 crédito incobrable (bad debt) · R4 resto de causas · R5 rectificativa de F2.
-- **R5 is the ONLY way to correct an F2**; R1–R4 are ONLY for F1. BeeL enforces this.
+The recipient is optional, with or without a NIF. Two constraints:
 
-See the cancel-vs-rectify guardrail for choosing between voiding and correcting.
+- **Total, VAT included, must not exceed 3 000 €.** Above that it has to be an F1.
+- **No IRPF withholding.** AEAT forbids it on F2, and a non-zero `irpf_rate` is rejected
+  with `SIMPLIFICADA_FORBIDS_IRPF` rather than coerced to zero. Note that *omitting*
+  `irpf_rate` inherits the account default, which may not be zero — send `0` explicitly.
+
+## Correctives are a separate operation, not a type
+
+`type: CORRECTIVE` is **not accepted** when creating an invoice. A corrective is always
+created from the invoice it corrects, with `beel_create_company_corrective_invoice`,
+which is where `rectification_type`, `rectification_code` and `reason` are declared.
+
+`rectification_code` is the AEAT legal motive:
+
+| Code | Motive |
+|---|---|
+| `R1` | Error fundado en derecho — the common case |
+| `R2` | Concurso de acreedores |
+| `R3` | Crédito incobrable (bad debt) |
+| `R4` | Resto de causas |
+| `R5` | Rectificativa de factura simplificada |
+
+**`R5` is the only code valid for correcting an F2, and R1–R4 are only valid for an F1.**
+BeeL enforces the pairing.

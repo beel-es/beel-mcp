@@ -30,8 +30,6 @@ export interface ApiRequestOptions {
   path: string;
   query?: Record<string, string | string[] | undefined>;
   body?: unknown;
-  /** Override the active company for this single call (else the configured default). */
-  activeCompany?: string;
   /** Explicit idempotency key; when absent it is derived from method+path+body. */
   idempotencyKey?: string;
 }
@@ -84,19 +82,16 @@ async function fetchWithTimeout(url: URL, init: RequestInit, timeoutMs: number):
 }
 
 /**
- * Deterministic idempotency key for a mutating call: SHA-256 over
- * method+path+activeCompany+body. Two byte-identical POSTs (an agent retry)
- * yield the same key and collapse to one backend operation; any change — payload
- * OR the target NIF (Beel-Active-Company) — yields a new key, so the same body
- * against two different companies never cross-suppresses on the multi-NIF path.
+ * Deterministic idempotency key for a mutating call: SHA-256 over method+path+body.
+ *
+ * Two byte-identical POSTs — an agent retrying — yield the same key and collapse
+ * into one backend operation, which for VeriFactu means one fiscal document
+ * rather than two. Any change to the payload yields a new key. The target company
+ * needs no separate treatment because it is part of the path on every operation
+ * that has one.
  */
-async function idempotencyKeyFor(
-  method: string,
-  path: string,
-  activeCompany: string | undefined,
-  body: unknown,
-): Promise<string> {
-  const material = `${method} ${path}\n${activeCompany ?? ''}\n${body === undefined ? '' : JSON.stringify(body)}`;
+async function idempotencyKeyFor(method: string, path: string, body: unknown): Promise<string> {
+  const material = `${method} ${path}\n${body === undefined ? '' : JSON.stringify(body)}`;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -115,10 +110,10 @@ function buildUrl(baseUrl: string, path: string, query?: ApiRequestOptions['quer
 }
 
 /**
- * Issue a request against the BeeL API. Adds bearer auth, a STABLE Idempotency-Key
- * on POST (derived from method+path+body so a retry never duplicates an invoice),
- * and the Beel-Active-Company header when a company is in scope. Errors are mapped to
- * ApiError from the standard `{ success:false, error:{...}, meta:{request_id} }` envelope.
+ * Issue a request against the BeeL API. Adds bearer auth and a STABLE
+ * Idempotency-Key on POST (derived from method+path+body, so a retry never
+ * duplicates an invoice). Errors are mapped to ApiError from the standard
+ * `{ success:false, error:{...}, meta:{request_id} }` envelope.
  */
 export async function apiRequest(
   config: ResolvedConfig,
@@ -131,7 +126,6 @@ export async function apiRequest(
     [HttpHeader.Authorization]: bearerAuthHeader(config.apiKey),
     [HttpHeader.Accept]: ContentType.Json,
   };
-  const activeCompany = opts.activeCompany ?? config.activeCompany;
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
   if (hasBody) headers[HttpHeader.ContentType] = ContentType.Json;
   // Idempotency-Key STABLE per logical operation, not per HTTP call: an agent that
@@ -141,10 +135,8 @@ export async function apiRequest(
   // byte-identical retry collapses to one operation.
   if (method === 'POST') {
     headers[BEEL_HEADER.idempotencyKey] =
-      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, activeCompany, opts.body));
+      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, opts.body));
   }
-
-  if (activeCompany) headers[BEEL_HEADER.activeCompany] = activeCompany;
 
   const timeoutMs = readEnvInt(ambientEnv(), ENV_VAR.requestTimeoutMs, HTTP_DEFAULTS.timeoutMs);
   const init: RequestInit = {

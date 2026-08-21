@@ -52,7 +52,6 @@ export interface ResolvedConfig {
   apiKey: string;
   env: KeyEnv;
   baseUrl: string;
-  activeCompany?: string;
 }
 
 /**
@@ -62,7 +61,6 @@ export interface ResolvedConfig {
  */
 export function resolveConfig(env: EnvRecord = ambientEnv()): ResolvedConfig {
   const baseUrl = readEnvUrl(env, ENV_VAR.apiBaseUrl, BEEL_DEFAULTS.apiBaseUrl);
-  const activeCompany = readEnv(env, ENV_VAR.activeCompany);
 
   const fromEnv = readEnv(env, ENV_VAR.apiKey);
   if (fromEnv) {
@@ -73,7 +71,7 @@ export function resolveConfig(env: EnvRecord = ambientEnv()): ResolvedConfig {
           `(expected prefix ${API_KEY_PREFIX.test} or ${API_KEY_PREFIX.live}).`,
       );
     }
-    return { apiKey: fromEnv, env: keyEnv, baseUrl, activeCompany };
+    return { apiKey: fromEnv, env: keyEnv, baseUrl };
   }
 
   const target: KeyEnv = readEnv(env, ENV_VAR.keyEnvironment) === 'live' ? 'live' : 'test';
@@ -85,5 +83,5 @@ export function resolveConfig(env: EnvRecord = ambientEnv()): ResolvedConfig {
         `(a ${target} key, prefix ${API_KEY_PREFIX[target]}), or run \`beel login\` with the CLI.`,
     );
   }
-  return { apiKey: key, env: target, baseUrl, activeCompany };
+  return { apiKey: key, env: target, baseUrl };
 }

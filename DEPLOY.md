@@ -77,12 +77,13 @@ npx wrangler deploy --dry-run --outdir /tmp/worker-build   # bundles without cre
 npx wrangler deploy
 ```
 
-Then point an MCP client at `https://<your-host>` and log in. `GET /healthz` answers
-without auth.
+Then point an MCP client at `https://<your-host>/mcp` and log in — that is the endpoint,
+not the root, which serves nothing. `GET /healthz` answers without auth and is what a
+health check should target.
 
 ## How a connection is established
 
-1. The client hits the server with no token and gets a `401` carrying
+1. The client hits `/mcp` with no token and gets a `401` carrying
    `WWW-Authenticate: …resource_metadata=…/.well-known/oauth-protected-resource`.
 2. It reads the metadata and self-registers through `/register` (DCR, handled by
    workers-oauth-provider).

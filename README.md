@@ -22,16 +22,17 @@ It is not a generated wrapper around an API. Three things make it usable by a mo
   non-compliant request before it becomes a fiscal document.
 
 Two transports, one codebase: a local **stdio** binary (`npx @beel_es/mcp`, API key) and a
-hosted **remote server** at `https://mcp.beel.es` (Streamable HTTP + OAuth, one login per
-user, no key to paste).
+hosted **remote server** at `https://mcp.beel.es/mcp` (Streamable HTTP + OAuth, one login
+per user, no key to paste).
 
 ## Quick start
 
 ### Remote (recommended)
 
-Add `https://mcp.beel.es` as a connector in Claude, ChatGPT, Cursor or VS Code and log in
-with your BeeL account. Nothing to install, no API key to handle; the server acts with
-your own credentials.
+Add **`https://mcp.beel.es/mcp`** as a connector in Claude, ChatGPT, Cursor or VS Code
+and log in with your BeeL account. Nothing to install and no API key to handle: the
+server acts with your own credentials, and the OAuth flow is discovered automatically
+from the URL.
 
 ### Local (stdio)
 
@@ -145,7 +146,6 @@ of silently switching a fiscal check off.
 | Variable | Purpose |
 |---|---|
 | `BEEL_API_KEY` | API key. The prefix selects the environment: `beel_sk_test_` → Test, `beel_sk_live_` → Live. |
-| `BEEL_ACTIVE_COMPANY` | Optional. Company UUID for multi-NIF accounts, sent as `Beel-Active-Company`. List them with `beel_list_companies`. |
 | `BEEL_ENV` / `BEEL_CONFIG_DIR` | Optional. With `BEEL_API_KEY` unset, falls back to the CLI's `~/.config/beel/config.json` (`beel login`); `BEEL_ENV` (`test`/`live`, default `test`) picks which stored key. |
 
 ### Shared

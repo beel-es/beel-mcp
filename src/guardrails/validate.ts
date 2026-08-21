@@ -22,7 +22,6 @@
 
 import { ENV_VAR } from '../shared/defaults.js';
 import { ambientEnv, readEnv, type EnvRecord } from '../shared/env.js';
-import { lookupError } from './catalog.js';
 
 /**
  * Where a violation's code comes from.
@@ -68,20 +67,18 @@ export class GuardrailError extends Error {
   }
 }
 
-/** A violation quoting a documented API error code; the remedy comes from the catalogue. */
-function apiViolation(
-  code: string,
-  path: string,
-  message: string,
-  fix?: string,
-): GuardrailViolation {
-  return {
-    code,
-    origin: 'api',
-    path,
-    message,
-    fix: fix ?? lookupError(code)?.remedy ?? `Resolve ${code}.`,
-  };
+/**
+ * A violation quoting a documented API error code.
+ *
+ * `fix` is required rather than borrowed from the error catalogue, and that is
+ * the point: the catalogue is deliberately sparse because an API rejection
+ * arrives with the API's own message explaining it. A pre-flight rejection has
+ * no such message — this text is all the agent gets — so it must be written
+ * here. An earlier version delegated, and trimming the catalogue silently
+ * degraded these to "Resolve LINE_UNIT_PRICE_XOR_DECLARED_TOTAL."
+ */
+function apiViolation(code: string, path: string, message: string, fix: string): GuardrailViolation {
+  return { code, origin: 'api', path, message, fix };
 }
 
 /** A violation for a rule the contract states without naming a code. */
@@ -124,6 +121,7 @@ function checkLine(
         present.length === 0
           ? `no pricing field is set; a line needs exactly one of ${PRICING_FIELDS.join(', ')}.`
           : `${present.join(' and ')} are set together; a line takes exactly one.`,
+        `Keep exactly one of ${PRICING_FIELDS.join(', ')} on this line and remove the others.`,
       ),
     );
   }
@@ -136,6 +134,7 @@ function checkLine(
         'LINE_DECLARED_TOTAL_FORBIDS_DISCOUNT',
         `${path}.discount_percentage`,
         `discount_percentage is ${discount} while ${declaredTotal} is declared; a declared total already contains the discount.`,
+        'Remove discount_percentage, or price the line with unit_price and let BeeL apply the discount.',
       ),
     );
   }
@@ -149,6 +148,7 @@ function checkLine(
         'SIMPLIFICADA_FORBIDS_IRPF',
         `${path}.irpf_rate`,
         `irpf_rate is ${irpf} on a SIMPLIFIED (F2) invoice, where AEAT forbids withholding.`,
+        'Send irpf_rate: 0 explicitly on this line. Omitting it inherits the account default, which may be non-zero.',
       ),
     );
   }
@@ -164,6 +164,7 @@ function checkLine(
           'SURCHARGE_REQUIRES_REGIME',
           `${path}.equivalence_surcharge_rate`,
           `equivalence_surcharge_rate is ${surcharge} under regime_key "${regimeKey}", which does not admit a surcharge.`,
+          'Set main_tax.regime_key to "18", drop the surcharge, or omit regime_key and let BeeL derive it.',
         ),
       );
     }
@@ -173,6 +174,7 @@ function checkLine(
           'REGIME_REQUIRES_SURCHARGE',
           `${path}.main_tax.regime_key`,
           `regime_key "${SURCHARGE_REGIME_KEY}" is recargo de equivalencia, which needs equivalence_surcharge_rate > 0 on the line.`,
+          'Set equivalence_surcharge_rate > 0 on this line, or use the regime key that matches the operation.',
         ),
       );
     }
@@ -246,6 +248,7 @@ function checkSeriesBlock(
         'SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR',
         `${path}.format`,
         `counter_reset is MONTHLY but the format "${format}" lacks {MM} and/or a year token, so numbers from different months could collide.`,
+        'Add {MM} and a year token ({YYYY} or {YY}) to the format, or change counter_reset.',
       ),
     );
   }
@@ -257,6 +260,7 @@ function checkSeriesBlock(
         `the format "${format}" has no year token and counter_reset is ANNUAL` +
           `${series.counter_reset === undefined ? ' (the default when omitted)' : ''}, ` +
           'so numbers from different years could collide.',
+        'Add a year token ({YYYY} or {YY}) to the format, or set counter_reset: NEVER.',
       ),
     );
   }
@@ -271,6 +275,7 @@ function checkCompany(body: Record<string, unknown>, out: GuardrailViolation[]):
         'NUMBERING_REQUIRES_ACTIVATION',
         'body.numbering',
         'a numbering block was sent with activate: false, so it would be discarded and could never be set again.',
+        'Drop the numbering block, or set activate: true in the same call.',
       ),
     );
   }
@@ -329,7 +334,7 @@ export function findViolations(operationId: string, body: unknown): GuardrailVio
 }
 
 /** Pre-flight is on unless explicitly disabled. */
-export function preflightEnabled(env: EnvRecord = ambientEnv()): boolean {
+function preflightEnabled(env: EnvRecord = ambientEnv()): boolean {
   return readEnv(env, ENV_VAR.disablePreflight) !== '1';
 }
 

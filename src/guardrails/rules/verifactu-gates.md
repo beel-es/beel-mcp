@@ -1,21 +1,38 @@
 ---
-title: VeriFactu submission - the three gates
+title: VeriFactu submission — the three gates
 docPath: /verifactu/auto-submit
 summary: Why an issued invoice may never reach AEAT, and how to tell before issuing.
 ---
 
-An issued invoice is submitted to AEAT only when ALL THREE gates are open;
-otherwise it is issued locally with `verifactu.enabled: false`:
+Issuing an invoice and submitting it to AEAT are not the same act. An issued invoice is
+submitted **only when all three gates are open**; otherwise it is issued locally and
+carries `verifactu.enabled: false`. It looks successful either way, which is what makes
+this worth checking in advance.
 
-1. **Connection/serie auto-submit toggle** is on (per-serie or per-integration override).
-2. **A VeriFactu configuration exists** (representation PDF signed, environment target,
-   authorised NIFs). Read with `getVeriFactuConfiguration`, set with
-   `updateVeriFactuConfiguration`.
-3. **The configuration `enabled` flag is on** (account-wide kill switch).
+## The gates
 
-Defaults: Stripe integrations auto-submit ON; manual API issuance uses the serie default.
-TEST keys still submit to AEAT's own test environment (real submissions, flagged test).
-There is no public "submit now" endpoint — submission happens at issuance.
+1. **Auto-submit is on** for the series or integration used.
+2. **A VeriFactu configuration exists** — signed representation document, target
+   environment, authorised NIFs. Read it with
+   `beel_get_company_veri_factu_configuration`, change it with
+   `beel_update_company_veri_factu_configuration`.
+3. **The configuration's `enabled` flag is on** — the account-wide kill switch.
 
-Warning: LIVE submissions are not batch-undoable. Disable auto-submit *before*
-issuing a wave you don't want sent to AEAT.
+## Checking before you issue
+
+`beel_get_setup_status` reports, per NIF, whether it can issue and exactly what is
+missing. Attempting to issue when it cannot fails with `EMISSION_NOT_READY`, whose
+`details.blockers[]` names each reason: `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`,
+`NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`.
+
+## Environments
+
+Test credentials submit to AEAT's own test environment — real submissions, flagged as
+test. `ENV_MISMATCH` means the company's configured environment and the credential's do
+not agree; that is a configuration problem, and no retry will fix it.
+
+## Before issuing in bulk
+
+**Live submissions cannot be undone in batch.** Each one has to be voided or corrected
+individually, and each of those is itself a registro sent to AEAT. Turn auto-submit off
+*before* issuing a wave you are not certain about, not after.

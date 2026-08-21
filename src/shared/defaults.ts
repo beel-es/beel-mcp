@@ -52,7 +52,6 @@ export const API_KEY_PREFIX = {
 
 /** BeeL-specific request headers. Standard ones live in `HttpHeader`. */
 export const BEEL_HEADER = {
-  activeCompany: 'Beel-Active-Company',
   idempotencyKey: 'Idempotency-Key',
 } as const;
 
@@ -61,7 +60,6 @@ export const ENV_VAR = {
   apiKey: 'BEEL_API_KEY',
   keyEnvironment: 'BEEL_ENV',
   apiBaseUrl: 'BEEL_BASE_URL',
-  activeCompany: 'BEEL_ACTIVE_COMPANY',
   configDir: 'BEEL_CONFIG_DIR',
   docsUrl: 'BEEL_DOCS_URL',
   oauthIssuer: 'BEEL_OAUTH_ISSUER',

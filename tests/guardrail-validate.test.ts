@@ -182,3 +182,48 @@ describe('executable guardrails — dispatch', () => {
     expect(stale).toEqual([]);
   });
 });
+
+describe('every violation carries a usable fix', () => {
+  // Regression guard: the fix text used to be borrowed from the error catalogue,
+  // so trimming that catalogue silently degraded these to "Resolve <CODE>." A
+  // pre-flight rejection has no API message behind it — this text is all the
+  // agent gets, so it must always say something actionable.
+  const PAYLOADS: Array<[string, unknown]> = [
+    ['createCompanyInvoice', { type: 'SIMPLIFIED', lines: [{ quantity: 1, unit_price: 10, total_excluding_tax: 10, discount_percentage: 5, irpf_rate: 15 }] }],
+    ['createCompanyInvoice', { lines: [{ quantity: 1, unit_price: 10, equivalence_surcharge_rate: 5.2, main_tax: { regime_key: '01' } }] }],
+    ['createCompanyInvoice', { lines: [{ quantity: 1, unit_price: 10, main_tax: { regime_key: '18' } }] }],
+    ['createCompanyInvoice', { lines: [{ quantity: 1, unit_price: 10, line_type: 'SUPLIDO' }] }],
+    ['createCompanyInvoice', { lines: [{ quantity: 1, unit_price: 10, exemption_reason: 'EXENTA_ART_21', exemption_reason_text: 'x' }] }],
+    ['createCompanyInvoice', { type: 'CORRECTIVE', lines: [{ quantity: 1, unit_price: 1 }] }],
+    ['createCompanySeries', { format: '{CODIGO}-{NUM:6}' }],
+    ['createCompanySeries', { format: '{CODIGO}-{YYYY}-{NUM:4}', counter_reset: 'MONTHLY' }],
+    ['createCompany', { numbering: { code: 'F' }, activate: false }],
+  ];
+
+  it('produces a specific fix for every rule, never a placeholder', () => {
+    const all = PAYLOADS.flatMap(([op, body]) => findViolations(op, body));
+    expect(all.length).toBeGreaterThanOrEqual(10);
+    const weak = all.filter((v) => /^Resolve /.test(v.fix) || v.fix.length < 25);
+    expect(weak.map((v) => v.code)).toEqual([]);
+  });
+
+  it('states the offending value in the message, not just the rule', () => {
+    // "irpf_rate is 15" beats "irpf_rate is not allowed": the agent can see what
+    // it sent without re-reading its own payload.
+    const [, body] = PAYLOADS[0]!;
+    const irpf = findViolations('createCompanyInvoice', body).find((v) => v.code === 'SIMPLIFICADA_FORBIDS_IRPF');
+    expect(irpf?.message).toContain('15');
+  });
+
+  it('labels each violation as an API code or a locally checked rule', () => {
+    const all = PAYLOADS.flatMap(([op, body]) => findViolations(op, body));
+    expect(all.every((v) => v.origin === 'api' || v.origin === 'local')).toBe(true);
+    // Locally-checked codes are ours; they must not masquerade as API codes.
+    const local = new Set(all.filter((v) => v.origin === 'local').map((v) => v.code));
+    expect([...local].sort()).toEqual([
+      'CORRECTIVE_IS_A_SEPARATE_OPERATION',
+      'EXEMPTION_TEXT_REQUIRES_OTRO',
+      'SUPLIDO_REQUIRES_SOURCE_REFERENCE',
+    ]);
+  });
+});

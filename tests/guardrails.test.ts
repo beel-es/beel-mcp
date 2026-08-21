@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
 import { describeTool, guardrailsForOperation } from '../src/guardrails/enrich.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { readGuardrailResource } from '../src/resources/guardrails.js';
 import { GUARDRAILS, guardrailUri } from '../src/guardrails/rules.js';
 import { splitChunks, searchChunks } from '../src/docs/search.js';
+
+const RULES_DIR = 'src/guardrails/rules';
 
 const manifest = buildManifest(loadSpec());
 const byId = (id: string): OperationSpec => manifest.find((o) => o.operationId === id)!;
@@ -61,5 +65,29 @@ describe('docs search scoring', () => {
     const chunks = splitChunks(corpus);
     const results = searchChunks(chunks, ['surcharge', 'values'], 1);
     expect(results[0]?.page).toBe('Recargo de equivalencia');
+  });
+});
+
+describe('guardrail prose points at things that exist', () => {
+  it('does not cite bare operationIds, which are not callable by name', () => {
+    const operations = new Set(buildManifest(loadSpec()).map((op) => op.operationId));
+    const bare: string[] = [];
+    for (const file of readdirSync(RULES_DIR)) {
+      const text = readFileSync(join(RULES_DIR, file), 'utf8');
+      for (const match of text.matchAll(/`([a-z][a-zA-Z0-9]{5,})`/g)) {
+        if (operations.has(match[1]!)) bare.push(`${file}: ${match[1]}`);
+      }
+    }
+    expect(bare).toEqual([]);
+  });
+
+  it('every guardrail carries complete front matter', () => {
+    for (const g of GUARDRAILS) {
+      expect(g.title.length, g.id).toBeGreaterThan(5);
+      expect(g.summary.length, g.id).toBeGreaterThan(20);
+      expect(g.docPath.startsWith('/'), g.id).toBe(true);
+      expect(g.body.length, g.id).toBeGreaterThan(200);
+      expect(g.body.startsWith('---'), `${g.id} still contains its front matter`).toBe(false);
+    }
   });
 });
