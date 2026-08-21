@@ -2,8 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [master, develop]
+    branches: [master]
   pull_request:
+
+# Least privilege. CI only reads the code; it publishes nothing and needs no
+# secrets, which is also what makes it safe to run on pull requests from forks.
+permissions:
+  contents: read
+
+# One run per branch or PR; supersede an in-flight run when new commits land.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
