@@ -22,6 +22,8 @@ const EXCLUDE = [
   'INTERNAL.md',
   'LEARNINGS.md',
   '.github/workflows/sync-spec.yml',
+  // This script is internal tooling, and its own denylist would trip the scan.
+  'scripts/public-export.mjs',
 ];
 
 /**
