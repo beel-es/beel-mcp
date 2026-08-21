@@ -1,3 +1,9 @@
+---
+title: Invoice lifecycle & state machine
+docPath: /verifactu/submission-states
+summary: When an invoice can still be changed, and what to do once it cannot.
+---
+
 BeeL invoices move through a strict state machine. An invoice is created as a
 DRAFT (or issued directly). Once **issued** it is registered (and, if the VeriFactu
 gates are open, submitted to AEAT) and its fiscal data becomes immutable.

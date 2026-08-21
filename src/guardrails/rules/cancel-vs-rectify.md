@@ -1,3 +1,9 @@
+---
+title: Void vs amend (rectificativa)
+docPath: /verifactu/cancel-and-fix
+summary: Choosing wrong here misreports to AEAT. The 30-second decision.
+---
+
 Choosing wrong here misreports to AEAT. The 30-second decision:
 
 - The invoice **should never have existed** (wrong customer billed, accidental

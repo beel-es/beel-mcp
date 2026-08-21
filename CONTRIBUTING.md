@@ -29,8 +29,10 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
 |---|---|
 | `src/spec/` | Reading the OpenAPI document and projecting it to JSON Schema |
 | `src/policy/` | Which operations become tools, their annotations, and OAuth scopes |
-| `src/guardrails/rules/*.md` | The fiscal prose surfaced to agents — plain Markdown |
+| `src/guardrails/rules/*.md` | The fiscal prose surfaced to agents — Markdown, with its own front matter |
 | `src/guardrails/validate.ts` | The invariants actually enforced before a call |
+| `src/guardrails/catalog.ts` | Error code → what it means and what to do about it |
+| `src/guardrails/explain.ts` | Renders an API error through that catalogue |
 | `src/tools/` | Tool definitions, argument validation, result shaping |
 | `src/api/` | The HTTP client (auth, idempotency, timeouts, retries) |
 | `src/cf/` | The Cloudflare Worker: OAuth towards BeeL, the remote transport |
@@ -45,10 +47,16 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
 - **No infrastructure in code.** Storage hosts, KV ids, routes and secrets are
   environment configuration. If you find yourself typing a hostname into a `.ts`
   file, add an environment variable to `ENV_VAR` instead.
-- **Adding an executable guardrail** (`src/guardrails/validate.ts`) requires that
-  the API documents the same rejection, with its error code. The pre-flight must
-  stay a strict subset of what the API rejects, or it will block valid invoices.
-  Advisory-only rules belong in `src/guardrails/rules/*.md`.
+- **The three guardrail layers are not interchangeable.** Prose that a model reads
+  goes in `rules/*.md`. A rule enforced before the request is sent goes in
+  `validate.ts`, and only if the contract documents the same rejection — the
+  pre-flight must stay a strict subset of what the API refuses, or it will block
+  valid invoices. What an error code means and what to do about it goes in
+  `catalog.ts`, never inlined at a call site: it used to be, in two places, and
+  they drifted.
+- **A new guardrail is one Markdown file.** Add `rules/<id>.md` with `title`,
+  `docPath` and `summary` front matter, register it in `rules.ts`, and map the
+  operations it constrains in `enrich.ts`. No metadata lives outside the file.
 - **Hand-curated operationId lists** (destructive operations, guardrail bindings)
   must be covered by a test that fails when an id stops resolving. API migrations
   rename operationIds, and a stale entry fails silently otherwise.

@@ -1,3 +1,9 @@
+---
+title: Tax regime keys and cross-field validations
+docPath: /verifactu/regime-keys
+summary: What regime_key means, where it lives, and which combinations are rejected.
+---
+
 `regime_key` lives **inside** `main_tax` (not at the line root) and is a two-char
 string from a fixed catalogue. Default is `"01"` (régimen general) if unset.
 

@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KeyEnv, ResolvedConfig } from '../config.js';
 import { buildApiTools, executeApiTool } from './api-tools.js';
 import type { OperationSpec } from '../spec/manifest.js';
+import { explainCode } from '../guardrails/explain.js';
 
 /**
  * Synthetic workflow tools that are NOT derived from the OpenAPI spec. They call
@@ -13,18 +14,6 @@ export const SETUP_STATUS = 'beel_get_setup_status';
 
 /** Calls one API operation by operationId; used so tests can inject a fake caller. */
 export type OperationCaller = (operationId: string, args: Record<string, unknown>) => Promise<unknown>;
-
-/** Blocker → single recommended next action, phrased around the tool that resolves it. */
-const BLOCKER_ACTION: Record<string, string> = {
-  COMPANY_HAS_NO_NIF: 'Set the NIF on this company before it can issue.',
-  SERIES_DEFAULT_NOT_FOUND: 'Set a default series with beel_set_company_default_series.',
-  ENV_MISMATCH:
-    'Resolve the environment mismatch (test vs live); see beel_docs_search ["environment"].',
-  NIF_NOT_REGISTERED:
-    'Register the NIF with AEAT/VeriFactu; see beel_get_company_veri_factu_configuration.',
-  NIF_REPRESENTATION_REQUIRED:
-    'Generate the VeriFactu representation with beel_generate_company_representation.',
-};
 
 export const workflowTools: Tool[] = [
   {
@@ -196,7 +185,9 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
       };
 
   const missing: string[] = [];
-  for (const b of blockers) missing.push(BLOCKER_ACTION[b] ?? `Resolve blocker ${b}.`);
+  // Blocker remedies come from the shared error catalogue, not a private map:
+  // this used to duplicate five of them and drift from what the API returns.
+  for (const b of blockers) missing.push(explainCode(b));
   if (verifactu && !verifactu.enabled) {
     missing.push(
       'VeriFactu is disabled; enable it with beel_update_company_veri_factu_configuration if this NIF must reach AEAT.',
@@ -206,9 +197,12 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
     missing.push('No active payment connection; run beel_initiate_payment_connection to get paid.');
   }
 
+  const firstBlocker = blockers[0];
   const next_action = ready
-    ? missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_company_invoice.'
-    : BLOCKER_ACTION[blockers[0] ?? ''] ?? missing[0] ?? 'Check beel_get_company_issuing_readiness.';
+    ? (missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_company_invoice.')
+    : firstBlocker
+      ? explainCode(firstBlocker)
+      : (missing[0] ?? 'Check beel_get_company_issuing_readiness.');
 
   return {
     company_id: companyId,

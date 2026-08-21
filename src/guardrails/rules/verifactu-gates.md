@@ -1,3 +1,9 @@
+---
+title: VeriFactu submission - the three gates
+docPath: /verifactu/auto-submit
+summary: Why an issued invoice may never reach AEAT, and how to tell before issuing.
+---
+
 An issued invoice is submitted to AEAT only when ALL THREE gates are open;
 otherwise it is issued locally with `verifactu.enabled: false`:
 

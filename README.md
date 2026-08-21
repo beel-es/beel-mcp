@@ -66,8 +66,9 @@ fiscal documents.
   `beel_docs_get`, `beel_docs_list` over the documentation, and
   `beel_get_setup_status`, which reports per NIF exactly what is missing before it can
   issue and the one next action to take.
-- **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, also woven
-  into the description of every tool they constrain.
+- **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, plus
+  `beel://guardrails/errors`, a catalogue of every error code with the action it calls
+  for. Their summaries are woven into the description of every tool they constrain.
 - **Workflow prompts** — `issue-invoice`, `fix-invoice` — encoding the safe order of
   operations (validate NIF → choose F1/F2 → check VeriFactu gates → issue).
 - **Inline invoice PDF viewer** ([MCP Apps](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
@@ -85,34 +86,51 @@ are in `src/policy/tool-policy.ts`.
 
 ## The fiscal guardrails
 
-Spanish e-invoicing has invariants that an LLM will get wrong from the schema alone —
-choosing to void an invoice when it should be corrected, using R1 on a simplified invoice,
-editing an invoice that AEAT has already registered. The server handles them at two
-distinct levels, and the difference matters:
+Spanish e-invoicing has invariants an LLM will get wrong from the schema alone — voiding
+an invoice that should have been corrected, using R1 on a simplified invoice, editing one
+AEAT has already registered. The server addresses that in three layers, and the difference
+between them matters:
 
-**Advisory** (`src/guardrails/rules/*.md`) — prose read by the model. The invoice state
-machine, void vs rectify, F1/F2/R1–R5, regime keys, NIF validation, the VeriFactu
-submission gates, multi-NIF accounts. Exposed as MCP resources and appended to the
-description of each tool they apply to.
+**1. Advisory** — `src/guardrails/rules/*.md`, one Markdown file per topic: the invoice
+lifecycle, void vs rectify, invoice types, invoice lines, regime keys, series numbering,
+NIF validation, the VeriFactu gates, multi-NIF accounts. Each is exposed as an MCP
+resource under `beel://guardrails/*` and its one-line summary is appended to the
+description of every tool it constrains, so the constraint travels with the call.
 
-**Enforced** (`src/guardrails/validate.ts`) — checked before the request leaves the
-process, so a bad payload never even consumes an idempotency key:
+**2. Enforced** — `src/guardrails/validate.ts`, checked before the request is sent, so a
+bad payload never even consumes an idempotency key:
 
-| Check | API error code |
+| Check | Code |
 |---|---|
 | Exactly one pricing field per line | `LINE_UNIT_PRICE_XOR_DECLARED_TOTAL` |
 | No discount on a declared total | `LINE_DECLARED_TOTAL_FORBIDS_DISCOUNT` |
 | No IRPF withholding on a simplified (F2) invoice | `SIMPLIFICADA_FORBIDS_IRPF` |
 | Equivalence surcharge only under regime `18`, and `18` only with one | `SURCHARGE_REQUIRES_REGIME` / `REGIME_REQUIRES_SURCHARGE` |
-| `SUPLIDO` lines carry their source reference | — |
-| Correctives go through their own operation, not `type: CORRECTIVE` | — |
+| Series format can tell its reset periods apart | `SERIES_ANNUAL_REQUIRES_YEAR` / `SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR` |
+| Numbering is only seeded in the call that activates the company | `NUMBERING_REQUIRES_ACTIVATION` |
+| `SUPLIDO` lines carry their source reference | checked locally |
+| Exemption text only under reason `OTRO` | checked locally |
+| Correctives go through their own operation, not `type: CORRECTIVE` | checked locally |
 
-**The BeeL API is the authority on all of it.** Every enforced rule is a strict subset of
-a rejection the API documents, so the pre-flight can only make failure faster and better
-explained — never permit something the API would refuse. Rules that depend on server-side
-state (AEAT census matching, the €3 000 F2 ceiling, VeriFactu gates) stay advisory on
-purpose: guessing them locally would reject valid invoices. Set `BEEL_DISABLE_PREFLIGHT=1`
-to bypass the local checks entirely.
+**3. Explained** — `src/guardrails/catalog.ts` pairs every actionable BeeL error code with
+what it means and the single next action it calls for. Every API error the server relays
+passes through it, so `EMISSION_NOT_READY` reaches the model with its nested
+`blockers[]` expanded — each one naming the tool that resolves it — instead of as a bare
+code it can only retry blindly. The same catalogue backs `beel_get_setup_status` and the
+`beel://guardrails/errors` resource.
+
+**The BeeL API is the authority on all of it.** Every enforced rule mirrors a rejection
+the contract documents, so the pre-flight is a strict subset of what the API refuses: it
+can only make failure faster and better explained, never permit something the API would
+reject. Rules that depend on server-side state — AEAT census matching, the €3 000 F2
+ceiling, whether a series exists — stay advisory on purpose, because guessing at them
+locally would reject valid invoices. Set `BEEL_DISABLE_PREFLIGHT=1` to bypass the local
+checks entirely.
+
+Hand-curated lists are anchored by tests: every catalogued code must still appear in the
+contract, every checked `operationId` must still resolve to a real tool, and every
+guardrail reference must point at a guardrail that exists. An API rename fails CI instead
+of silently switching a fiscal check off.
 
 ## Configuration
 

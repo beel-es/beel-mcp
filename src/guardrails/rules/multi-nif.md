@@ -1,3 +1,9 @@
+---
+title: Multi-NIF accounts and company scope
+docPath: /api-reference/multi-nif
+summary: Which company an operation acts on, and how that is selected.
+---
+
 An account can hold several companies (NIFs). When operating on behalf of a
 specific company, pass its UUID. With the MCP server set the `BEEL_ACTIVE_COMPANY`
 environment variable (or the per-call `active_company` argument where exposed) — it is

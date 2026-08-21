@@ -20,6 +20,7 @@ import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
 import { assertValidArguments, ArgumentError } from './tools/validate-args.js';
 import { GuardrailError } from './guardrails/validate.js';
+import { explainError } from './guardrails/explain.js';
 import { SERVER_NAME } from './shared/defaults.js';
 
 export interface ServerInfo {
@@ -42,12 +43,19 @@ function textResult(text: string, isError = false): CallToolResult {
   return { content: [{ type: 'text', text }], isError };
 }
 
+/**
+ * Render an API error for the model. Goes through the guardrail catalogue, so a
+ * bare code like EMISSION_NOT_READY arrives with its meaning, its remedy and its
+ * nested blockers expanded — an agent that only sees the code retries blindly.
+ */
 function formatApiError(err: ApiError): string {
-  const parts = [`BeeL API error (${err.status}): ${err.message}`];
-  if (err.code) parts.push(`code: ${err.code}`);
-  if (err.details) parts.push(`details: ${JSON.stringify(err.details)}`);
-  if (err.requestId) parts.push(`request_id: ${err.requestId}`);
-  return parts.join('\n');
+  return explainError({
+    status: err.status,
+    message: err.message,
+    code: err.code,
+    details: err.details,
+    requestId: err.requestId,
+  });
 }
 
 /**

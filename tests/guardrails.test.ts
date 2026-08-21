@@ -3,7 +3,7 @@ import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
 import { describeTool, guardrailsForOperation } from '../src/guardrails/enrich.js';
 import { readGuardrailResource } from '../src/resources/guardrails.js';
-import { GUARDRAILS, guardrailUri } from '../src/guardrails/domain.js';
+import { GUARDRAILS, guardrailUri } from '../src/guardrails/rules.js';
 import { splitChunks, searchChunks } from '../src/docs/search.js';
 
 const manifest = buildManifest(loadSpec());

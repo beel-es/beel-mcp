@@ -1,3 +1,9 @@
+---
+title: NIF / DNI validation against the AEAT census
+docPath: /nif-validation/validateNif
+summary: Why a name that does not match the census makes an invoice unsubmittable.
+---
+
 Spanish tax IDs (NIF/CIF/DNI/NIE) are validated against the AEAT census. Use
 `validateNif` before creating a customer or issuing an F1 to a Spanish recipient.
 

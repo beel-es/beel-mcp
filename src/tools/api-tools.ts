@@ -82,7 +82,7 @@ export async function executeApiTool(
   // request so a rejected payload never burns an idempotency key. See
   // guardrails/validate.ts for why this can only ever be a subset of the API's
   // own rejections.
-  assertNoViolations(body);
+  assertNoViolations(op.operationId, body);
   const result = await apiRequest(config, {
     method: op.method,
     path,

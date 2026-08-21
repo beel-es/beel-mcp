@@ -1,3 +1,9 @@
+---
+title: Invoice types F1 / F2 / R1-R5
+docPath: /verifactu/invoice-types
+summary: How BeeL derives the AEAT invoice type, and the rules each type imposes.
+---
+
 You never set the AEAT `tipo_factura` directly. BeeL derives it from the invoice
 `type` and, for correctives, from `rectification_code`:
 

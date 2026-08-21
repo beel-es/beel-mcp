@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { assertNoViolations, findViolations, GuardrailError } from '../src/guardrails/validate.js';
+import {
+  assertNoViolations,
+  CHECKED_OPERATIONS,
+  findViolations,
+  GuardrailError,
+} from '../src/guardrails/validate.js';
+import { buildApiTools } from '../src/tools/api-tools.js';
 
+const INVOICE_OP = 'createCompanyInvoice';
 const line = (over: Record<string, unknown> = {}) => ({ quantity: 1, unit_price: 100, ...over });
-const codes = (body: unknown) => findViolations(body).map((v) => v.code);
+const codes = (body: unknown, op = INVOICE_OP) => findViolations(op, body).map((v) => v.code);
 
 describe('executable guardrails — line pricing', () => {
   it('accepts a line with exactly one pricing field', () => {
@@ -71,9 +78,10 @@ describe('executable guardrails — equivalence surcharge and regime', () => {
 
 describe('executable guardrails — invoice level', () => {
   it('redirects CORRECTIVE to its own operation', () => {
-    const violations = findViolations({ type: 'CORRECTIVE', lines: [line()] });
+    const violations = findViolations(INVOICE_OP, { type: 'CORRECTIVE', lines: [line()] });
     expect(violations.map((v) => v.code)).toContain('CORRECTIVE_IS_A_SEPARATE_OPERATION');
     expect(violations[0]?.fix).toMatch(/corrective_invoice/);
+    expect(violations[0]?.origin).toBe('local');
   });
 
   it('requires a source reference on SUPLIDO lines', () => {
@@ -97,7 +105,7 @@ describe('executable guardrails — reporting and escape hatch', () => {
       type: 'SIMPLIFIED',
       lines: [line({ total_excluding_tax: 100, discount_percentage: 10, irpf_rate: 15 })],
     };
-    expect(findViolations(body).length).toBeGreaterThanOrEqual(3);
+    expect(findViolations(INVOICE_OP, body).length).toBeGreaterThanOrEqual(3);
   });
 
   it('ignores bodies it does not understand instead of guessing', () => {
@@ -108,8 +116,69 @@ describe('executable guardrails — reporting and escape hatch', () => {
 
   it('throws a GuardrailError naming the API error code, and honours the escape hatch', () => {
     const bad = { lines: [line({ total_excluding_tax: 100 })] };
-    expect(() => assertNoViolations(bad, {})).toThrow(GuardrailError);
-    expect(() => assertNoViolations(bad, {})).toThrow(/LINE_UNIT_PRICE_XOR_DECLARED_TOTAL/);
-    expect(() => assertNoViolations(bad, { BEEL_DISABLE_PREFLIGHT: '1' })).not.toThrow();
+    expect(() => assertNoViolations(INVOICE_OP, bad, {})).toThrow(GuardrailError);
+    expect(() => assertNoViolations(INVOICE_OP, bad, {})).toThrow(/LINE_UNIT_PRICE_XOR_DECLARED_TOTAL/);
+    expect(() => assertNoViolations(INVOICE_OP, bad, { BEEL_DISABLE_PREFLIGHT: '1' })).not.toThrow();
+  });
+});
+
+describe('executable guardrails — series numbering', () => {
+  const SERIES_OP = 'createCompanySeries';
+
+  it('requires a year token when the counter resets annually', () => {
+    expect(codes({ format: '{CODIGO}-{NUM:6}', counter_reset: 'ANNUAL' }, SERIES_OP)).toContain(
+      'SERIES_ANNUAL_REQUIRES_YEAR',
+    );
+  });
+
+  it('applies the ANNUAL default when counter_reset is omitted', () => {
+    // The trap: silence means ANNUAL, so a year-less format is still invalid.
+    const issues = findViolations(SERIES_OP, { format: '{CODIGO}-{NUM:6}' });
+    expect(issues.map((v) => v.code)).toContain('SERIES_ANNUAL_REQUIRES_YEAR');
+    expect(issues[0]?.message).toMatch(/default when omitted/);
+  });
+
+  it('accepts a year-less format when the counter never resets', () => {
+    expect(codes({ format: '{CODIGO}-{NUM:6}', counter_reset: 'NEVER' }, SERIES_OP)).toEqual([]);
+  });
+
+  it('requires month and year when the counter resets monthly', () => {
+    expect(codes({ format: '{CODIGO}-{YYYY}-{NUM:4}', counter_reset: 'MONTHLY' }, SERIES_OP)).toContain(
+      'SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR',
+    );
+    expect(codes({ format: '{YYYY}{MM}-{NUM:3}', counter_reset: 'MONTHLY' }, SERIES_OP)).toEqual([]);
+  });
+
+  it('says nothing when the format is omitted and the default applies', () => {
+    expect(codes({ name: 'Facturas', code: 'FAC' }, SERIES_OP)).toEqual([]);
+  });
+});
+
+describe('executable guardrails — company numbering', () => {
+  it('rejects a numbering block that would be discarded', () => {
+    expect(codes({ numbering: { code: 'F' }, activate: false }, 'createCompany')).toContain(
+      'NUMBERING_REQUIRES_ACTIVATION',
+    );
+  });
+
+  it('validates the nested simplified and corrective series too', () => {
+    const body = { numbering: { corrective: { format: '{CODIGO}-{NUM:4}' } }, activate: true };
+    expect(codes(body, 'createCompany')).toContain('SERIES_ANNUAL_REQUIRES_YEAR');
+  });
+});
+
+describe('executable guardrails — dispatch', () => {
+  it('only runs checks for the operation the body is bound for', () => {
+    // A series format on an invoice payload must not trigger the series rule.
+    expect(codes({ format: '{CODIGO}-{NUM:6}' }, INVOICE_OP)).toEqual([]);
+    expect(codes({ lines: [line({ total_excluding_tax: 100 })] }, 'listCompanyInvoices')).toEqual([]);
+  });
+
+  it('every checked operationId is still a real tool', () => {
+    // Hand-curated ids stop matching silently when the API renames operations,
+    // which would disable a fiscal check with no trace. Fail here instead.
+    const known = new Set(buildApiTools().tools.map((t) => t.operation.operationId));
+    const stale = Object.keys(CHECKED_OPERATIONS).filter((id) => !known.has(id));
+    expect(stale).toEqual([]);
   });
 });
