@@ -29,7 +29,9 @@ jobs:
       - name: Checkout backend (develop) for the spec source
         uses: actions/checkout@v4
         with:
-          repository: carlosmgv02/beel.es-autonomos
+          # The backend repository is private and named in a repository variable
+          # rather than here, so this workflow carries no reference to it.
+          repository: ${{ vars.BACKEND_REPOSITORY }}
           ref: develop
           ssh-key: ${{ secrets.BACKEND_DEPLOY_KEY }}
           path: backend-src

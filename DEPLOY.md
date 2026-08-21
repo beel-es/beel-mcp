@@ -49,7 +49,19 @@ It must:
 
 ## 4. Configure
 
-Public values go in `vars`; secrets go through `wrangler secret put`.
+Public values go in `vars` in `wrangler.jsonc`; everything else goes through
+`wrangler secret put` and never appears in the repository:
+
+```bash
+npx wrangler secret put BEEL_PDF_STORAGE_HOSTS   # comma-separated storage hosts
+npx wrangler secret put MCP_IDENTITY_HMAC_KEY    # dedicated HMAC key
+npx wrangler secret put BEEL_OAUTH_CLIENT_SECRET # only for a confidential client
+```
+
+The KV namespace id and the route stay in `wrangler.jsonc`. Neither is a
+credential — a namespace id is useless without an API token, and the hostname is
+a public endpoint — and keeping them versioned is what makes the deployment
+reproducible from a clone.
 
 | Variable | Required | Notes |
 |---|---|---|
@@ -57,9 +69,10 @@ Public values go in `vars`; secrets go through `wrangler secret put`.
 | `BEEL_BASE_URL` | yes | API base the user's token is forwarded to. |
 | `BEEL_OAUTH_CLIENT_ID` | no | Defaults to `beel-mcp`. |
 | `BEEL_DOCS_URL` | no | Documentation source for the docs tools. |
-| `BEEL_PDF_STORAGE_HOSTS` | no | Comma-separated storage hosts the invoice-PDF relay may fetch from. **Unset disables the relay** — the viewer needs it. |
+| `BEEL_PDF_STORAGE_HOSTS` | secret | Comma-separated storage hosts the invoice-PDF relay may fetch from. **Unset disables the relay**, so the viewer cannot paint the invoice. A secret rather than a var: these are internal hostnames, and publishing them only invites probing. |
 | `MCP_VERIFIED_CLIENTS` | no | JSON array of `{prefix,name}` extending the built-in list of well-known MCP callbacks. Can only extend it: every entry is re-validated as a non-loopback `https` callback. |
 | `BEEL_OAUTH_CLIENT_SECRET` | secret | Only for a confidential client. |
+| `BACKEND_REPOSITORY` | GitHub var | Only for `sync-spec.yml`: `owner/name` of the private backend repository the contract is bundled from. |
 | `MCP_IDENTITY_HMAC_KEY` | secret | Dedicated key for the client-identity assertion (see below). Falls back to the client secret if unset; give it its own key so the two rotate independently. |
 
 Individual OAuth endpoints can be overridden with `BEEL_OAUTH_AUTHORIZE_URL`,

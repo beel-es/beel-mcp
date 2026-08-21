@@ -4,10 +4,10 @@
   "main": "src/cf/worker.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
-  // Genera el HTML del visor (dist/mcpapp/invoice-pdf.html) ANTES de empaquetar:
-  // worker.ts lo importa como módulo Text. pdf.js NO va aquí (se carga de cdnjs).
+  // Builds the viewer HTML (dist/mcpapp/invoice-pdf.html) BEFORE bundling, because
+  // worker.ts imports it as a text module. pdf.js is not built in; it loads from a CDN.
   "build": { "command": "node scripts/build-mcpapp.mjs" },
-  // El spec YAML y el HTML del visor se embeben como módulos Text.
+  // The spec, the viewer HTML and the guardrail prose travel as text modules.
   "rules": [
     { "type": "Text", "globs": ["**/*.yaml", "**/*.html", "**/*.md"], "fallthrough": true }
   ],
@@ -23,12 +23,10 @@
     "BEEL_OAUTH_CLIENT_ID": "beel-mcp",
     "BEEL_BASE_URL": "https://app.beel.es/api",
     "BEEL_DOCS_URL": "https://docs.beel.es",
-    // Hosts de storage a los que el relay del PDF puede ir. El relay falla cerrado
-    // sin esta var, así que quitarla deja el visor sin poder pintar la factura.
-    "BEEL_PDF_STORAGE_HOSTS": "bucket-production-f776.up.railway.app,storage.beel.es,minio.beel.es,app.beel.es",
-    // Clientes que reciben el badge "verificado" (callback web https del vendor).
-    // Editable aquí (versionado) o en el dashboard de Cloudflare sin redeploy.
-    // Loopback / no-https se descartan siempre; nunca añadir CLIs (localhost).
+    // Clients that earn the "verified" badge, keyed by their vendor-controlled
+    // https callback. Editable here (versioned) or in the dashboard without a
+    // redeploy. Loopback and non-https entries are always rejected, so never add
+    // a CLI: any local application can bind a loopback port.
     "MCP_VERIFIED_CLIENTS": "[{\"prefix\":\"https://claude.ai/api/mcp/auth_callback\",\"name\":\"Claude\"},{\"prefix\":\"https://claude.com/api/mcp/auth_callback\",\"name\":\"Claude\"},{\"prefix\":\"https://chatgpt.com/connector_platform_oauth_redirect\",\"name\":\"ChatGPT\"},{\"prefix\":\"https://www.cursor.com/agents/mcp/oauth/callback\",\"name\":\"Cursor\"},{\"prefix\":\"https://vscode.dev/redirect\",\"name\":\"VS Code (GitHub Copilot)\"},{\"prefix\":\"https://insiders.vscode.dev/redirect\",\"name\":\"VS Code Insiders\"},{\"prefix\":\"https://antigravity.google/oauth-callback\",\"name\":\"Antigravity\"},{\"prefix\":\"https://api.devin.ai/mcp/oauth/callback\",\"name\":\"Devin\"}]"
   }
 }
