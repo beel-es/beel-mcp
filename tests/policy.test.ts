@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest } from '../src/spec/manifest.js';
-import { applyToolPolicy, requiredScopes } from '../src/policy/tool-policy.js';
+import { applyToolPolicy } from '../src/policy/tool-policy.js';
+import { requiredScopes } from '../src/policy/scopes.js';
+import { DESTRUCTIVE_OPERATION_IDS } from '../src/policy/annotations.js';
 
 const manifest = buildManifest(loadSpec());
 const { tools, excluded } = applyToolPolicy(manifest);
@@ -58,5 +60,16 @@ describe('tool policy', () => {
       includedOperationIds: new Set(['exportInvoicesExcel']),
     });
     expect(forced.tools.some((t) => t.operationId === 'exportInvoicesExcel')).toBe(true);
+  });
+});
+
+describe('annotation lists stay anchored to the spec', () => {
+  it('every hardcoded destructive operationId still exists as a tool', () => {
+    // These lists are curated by hand and were broken repeatedly by API
+    // migrations renaming operationIds. Failing here beats shipping an
+    // annotation that silently stops applying to anything.
+    const known = new Set(tools.map((op) => op.operationId));
+    const stale = [...DESTRUCTIVE_OPERATION_IDS].filter((id) => !known.has(id));
+    expect(stale).toEqual([]);
   });
 });

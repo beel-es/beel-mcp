@@ -1,18 +1,16 @@
-name: Sync OpenAPI spec & publish
+name: Sync OpenAPI spec
 
-# Keeps the embedded spec in sync with the backend. Trigger options:
-#  - repository_dispatch (event_type: openapi-updated) fired by the backend repo
-#    when public-api.yaml changes on develop.
-#  - manual workflow_dispatch (optionally with publish=true to release to npm).
+# Reads the backend repository (private) with a deploy key. Its triggers both
+# require write access, so a fork can never run it or reach the secrets.
+
+# Keeps the vendored contract in sync with the backend. Triggers:
+#  - repository_dispatch (event_type: openapi-updated), fired by the backend repo
+#    when its public-api.yaml changes.
+#  - manual workflow_dispatch.
 on:
   repository_dispatch:
     types: [openapi-updated]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish to npm if the spec changed
-        type: boolean
-        default: false
 
 jobs:
   sync:
@@ -21,7 +19,7 @@ jobs:
       - name: Checkout beel-mcp
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout backend (develop) for the spec source
@@ -43,6 +41,21 @@ jobs:
       - name: Re-bundle the spec
         run: node scripts/bundle-spec.mjs backend-src/backend/src/main/resources/openapi/public-api.yaml
 
+      # Drift is the failure mode this workflow exists to prevent, so make it
+      # visible rather than silently committing whatever came back. Two months of
+      # unnoticed drift once produced 96 changed files in a single sync.
+      - name: Report contract drift
+        run: |
+          if git diff --quiet -- openapi/public-api.yaml; then
+            echo "No drift: the vendored contract already matches the backend."
+          else
+            echo "::warning::The vendored OpenAPI contract had drifted from the backend."
+            git diff --stat -- openapi/public-api.yaml
+          fi
+
+      - name: Refresh the contract lock
+        run: node scripts/spec-lock.mjs --write
+
       - name: Validate (typecheck + tests + build)
         run: |
           npm run typecheck
@@ -59,17 +72,8 @@ jobs:
           else
             git config user.name "beel-bot"
             git config user.email "it@beel.es"
-            git add openapi/public-api.yaml
-            git commit -m "chore(spec): sync public-api.yaml from backend develop"
-            git push origin develop
+            git add openapi/public-api.yaml openapi/spec.lock.json
+            git commit -m "chore(spec): sync public-api.yaml from the backend"
+            git push origin master
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Bump version & publish to npm
-        if: steps.commit.outputs.changed == 'true' && (github.event_name == 'repository_dispatch' || inputs.publish)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm version patch -m "chore(release): %s [skip ci]"
-          git push origin develop --follow-tags
-          npm publish --access public

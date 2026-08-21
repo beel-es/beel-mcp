@@ -25,14 +25,14 @@ describe('enrichToolResult', () => {
   });
 
   it('shapes the PDF result: structuredContent for the viewer + PDF attachment', async () => {
-    stubFetch({ 'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf' } });
+    stubFetch({ 'https://files.example.test/x.pdf': { body: PDF_BYTES, type: 'application/pdf' } });
     const result = await enrichToolResult('getCompanyInvoicePdf', {
-      download_url: 'https://storage.beel.es/x.pdf',
+      download_url: 'https://files.example.test/x.pdf',
       file_name: 'factura_A-2026-0041.pdf',
     });
     // structuredContent alimenta el visor (MCP App).
     expect(result?.structuredContent).toEqual({
-      download_url: 'https://storage.beel.es/x.pdf',
+      download_url: 'https://files.example.test/x.pdf',
       file_name: 'factura_A-2026-0041.pdf',
     });
     // PDF real adjunto.
@@ -43,12 +43,12 @@ describe('enrichToolResult', () => {
   });
 
   it('still returns viewer data when the PDF attachment download fails', async () => {
-    stubFetch({ 'https://storage.beel.es/x.pdf': { body: PDF_BYTES, type: 'application/pdf', status: 403 } });
+    stubFetch({ 'https://files.example.test/x.pdf': { body: PDF_BYTES, type: 'application/pdf', status: 403 } });
     const result = await enrichToolResult('getCompanyInvoicePdf', {
-      download_url: 'https://storage.beel.es/x.pdf',
+      download_url: 'https://files.example.test/x.pdf',
     });
     // El visor puede seguir (tiene la URL); solo falta el adjunto.
-    expect(result?.structuredContent).toMatchObject({ download_url: 'https://storage.beel.es/x.pdf' });
+    expect(result?.structuredContent).toMatchObject({ download_url: 'https://files.example.test/x.pdf' });
     expect(result?.content.some((c) => c.type === 'resource')).toBe(false);
   });
 

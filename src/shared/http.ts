@@ -1,24 +1,23 @@
 /**
- * Constantes y helpers HTTP compartidos: nombres de cabecera, esquemas de
- * autenticación y content-types en un único sitio. Evita repetir literales por
- * el código (una cabecera mal tecleada falla en silencio) y desacopla los
- * nombres de sus usos.
+ * Shared HTTP constants: header names, authentication schemes and content types
+ * in one place. A mistyped header fails silently rather than loudly, which is
+ * reason enough not to repeat the literals across the codebase.
  */
 
-/** Nombres canónicos de cabecera (case-insensitive en HTTP, pero uniformes aquí). */
+/** Canonical header names. HTTP treats them case-insensitively; we do not. */
 export const HttpHeader = {
   Authorization: 'Authorization',
   ContentType: 'Content-Type',
   Accept: 'Accept',
 } as const;
 
-/** Esquemas del header `Authorization`. */
+/** `Authorization` header schemes. */
 export const AuthScheme = {
   Basic: 'Basic',
   Bearer: 'Bearer',
 } as const;
 
-/** Media types usados por el worker. */
+/** Media types used across the server. */
 export const ContentType = {
   Json: 'application/json',
   Form: 'application/x-www-form-urlencoded',
@@ -26,7 +25,8 @@ export const ContentType = {
 
 /**
  * `Authorization: Basic base64(clientId:clientSecret)` — client_secret_basic.
- * El secreto viaja en la cabecera (no en el cuerpo), que es lo que registra BeeL.
+ * The secret travels in the header rather than the body, which is the method
+ * BeeL registers for this client.
  */
 export function basicAuthHeader(clientId: string, clientSecret: string): string {
   return `${AuthScheme.Basic} ${btoa(`${clientId}:${clientSecret}`)}`;

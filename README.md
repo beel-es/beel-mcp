@@ -1,206 +1,210 @@
-# @beel_es/mcp — BeeL Model Context Protocol server
+# BeeL MCP server — VeriFactu-compliant invoicing for AI agents
 
-An MCP server that exposes the [BeeL](https://beel.es) invoicing API to LLM agents.
-Tools are **derived from the public OpenAPI spec** (so the surface stays in sync with
-the API), curated by a **tool-inclusion policy** (not every endpoint makes sense for an
-agent), and wrapped in **Spanish fiscal guardrails** (VeriFactu, NIF validation, the
-invoice state machine, corrective invoices) so an agent doesn't generate non-compliant
-operations. It also exposes a **docs search** tool over the BeeL documentation.
+[![CI](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-It is the MCP sibling of the [`@beel_es/cli`](../beel-cli): same spec-driven philosophy,
-same docs source, different surface.
+An [MCP](https://modelcontextprotocol.io) server that lets an AI agent issue **legally
+compliant Spanish electronic invoices** — VeriFactu registration with AEAT, F1/F2 invoice
+types, R1–R5 correctives, NIF validation against the census, and the regime keys the
+regulation requires.
 
-**Two transports, one codebase:** `beel-mcp` (stdio, local/desktop with an API key) and
-`beel-mcp-http` (remote Streamable HTTP + OAuth, deployed at `mcp.beel.es`). Both expose
-the same tools, guardrails, docs search and PDF viewer. See [DEPLOY.md](./DEPLOY.md) for
-the remote deployment.
+It is not a generated wrapper around an API. Three things make it usable by a model:
 
-## What it provides
+- **Tools are derived from the public OpenAPI contract**, so each tool's input schema is
+  the operation's real schema — enums, line items, regime keys and all. The surface
+  cannot drift from the API.
+- **A tool-inclusion policy** decides what an agent should actually be given. Binary
+  downloads, multipart uploads, webhook plumbing and deprecated operations are excluded
+  by rule, not by hand.
+- **Fiscal guardrails** travel with the tools: the invariants a generated wrapper would
+  miss, both as documentation the model reads and as pre-flight checks that stop a
+  non-compliant request before it becomes a fiscal document.
 
-- **~80 API tools** generated from `openapi/public-api.yaml` — invoices, customers,
-  products, recurring invoices, series & tax configuration, NIF validation, companies.
-  Each tool's `inputSchema` is the operation's real JSON Schema (enums, line items,
-  regime keys included), so the model sees the exact contract.
-- **3 docs tools** — `beel_docs_search`, `beel_docs_get`, `beel_docs_list` — over
-  `docs.beel.es` (fetched, cached, scored locally; no API quota spent).
-- **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, also
-  woven into the relevant tool descriptions.
-- **Workflow prompts** — `issue-invoice`, `fix-invoice` — that encode the safe order of
-  operations (validate NIF → choose F1/F2 → check VeriFactu gates → issue).
-- **Interactive PDF viewer (MCP Apps)** — calling `beel_generate_invoice_pdf` opens the
-  invoice PDF in a side panel in hosts that support MCP Apps (Claude, ChatGPT, …).
+One codebase, two transports: the hosted **remote server** at
+`https://mcp.beel.es/mcp` (Streamable HTTP + OAuth — one login per user, nothing to
+install), and a **local stdio** server built from this repository for headless use, where
+an API key works and a browser-based login does not.
 
-### What is *not* a tool (by policy)
+## Quick start
 
-The policy excludes operation classes an agent can't drive: binary downloads (PDF
-preview, bulk ZIP, Excel/CSV export), multipart uploads (CSV/Holded import, signed-PDF
-submission) and webhook infrastructure. See `src/policy/tool-policy.ts`.
+Add **`https://mcp.beel.es/mcp`** as a connector in Claude, ChatGPT, Cursor or VS Code and
+log in with your BeeL account. Nothing to install and no API key to handle: the server acts
+with your own credentials, and the OAuth flow is discovered from the URL.
 
-## Install & configure
+```bash
+# Claude Code
+claude mcp add --transport http beel https://mcp.beel.es/mcp
+```
 
-Requires Node ≥ 20. Run via `npx` (no install needed):
+That is the whole setup for interactive use. Read on only if you need the local server.
+
+## Running it locally
+
+Use the local server when OAuth cannot: a scheduled job that issues invoices, a CI
+pipeline, or any headless process where no one is present to complete a browser login.
+It authenticates with an API key instead.
+
+Requires Node ≥ 20. Build it from this repository:
+
+```bash
+git clone https://github.com/beel-es/beel-mcp.git
+cd beel-mcp
+npm ci && npm run build
+```
+
+Then point your client at the built entry point:
 
 ```jsonc
 // Claude Desktop / Claude Code MCP config
 {
   "mcpServers": {
     "beel": {
-      "command": "npx",
-      "args": ["-y", "@beel_es/mcp"],
-      "env": {
-        "BEEL_API_KEY": "beel_sk_test_xxx"
-      }
+      "command": "node",
+      "args": ["/absolute/path/to/beel-mcp/dist/index.js"],
+      "env": { "BEEL_API_KEY": "beel_sk_test_xxx" }
     }
   }
 }
 ```
 
-### Environment variables
+Keys prefixed `beel_sk_test_` are safe to experiment with; `beel_sk_live_` issues real
+fiscal documents.
+
+## What it provides
+
+- **119 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
+  products, recurring invoices, series and tax configuration, NIF validation, companies.
+- **4 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
+  `beel_docs_get`, `beel_docs_list` over the documentation, and
+  `beel_get_setup_status`, which reports per NIF exactly what is missing before it can
+  issue and the one next action to take.
+- **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, plus
+  `beel://guardrails/errors`, a catalogue of every error code with the action it calls
+  for. Their summaries are woven into the description of every tool they constrain.
+- **7 workflow prompts** encoding the safe order of operations for the flows where the
+  order is what makes them safe: `issue-invoice` (validate NIF → choose F1/F2 → check the
+  VeriFactu gates → issue), `fix-invoice` (void vs correct), `onboard-nif`,
+  `setup-representation`, `invite-member`, `connect-payments` and `upgrade-integration`.
+- **Inline invoice PDF viewer** ([MCP Apps](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
+  generating an invoice PDF opens it in a side panel in hosts that support it.
+
+A generated catalogue of every tool, with the scopes each requires, lives at
+[docs.beel.es/mcp/tools](https://docs.beel.es/mcp/tools) (`npm run tools:catalog`).
+
+### What is deliberately not a tool
+
+Binary downloads (PDF preview, bulk ZIP, Excel/CSV export), multipart uploads (CSV/Holded
+import, signed-PDF submission), webhook infrastructure, and every `deprecated` operation.
+An agent cannot drive them, and each one costs context that a usable tool needs. The rules
+are in `src/policy/tool-policy.ts`.
+
+## The fiscal guardrails
+
+Spanish e-invoicing has invariants an LLM will get wrong from the schema alone — voiding
+an invoice that should have been corrected, using R1 on a simplified invoice, editing one
+AEAT has already registered. The server addresses that in three layers, and the difference
+between them matters:
+
+**1. Advisory** — `src/guardrails/rules/*.md`, one Markdown file per topic: the invoice
+lifecycle, void vs rectify, invoice types, invoice lines, regime keys, series numbering,
+NIF validation, the VeriFactu gates, multi-NIF accounts. Each is exposed as an MCP
+resource under `beel://guardrails/*` and its one-line summary is appended to the
+description of every tool it constrains, so the constraint travels with the call.
+
+**2. Enforced** — `src/guardrails/validate.ts`, checked before the request is sent, so a
+bad payload never even consumes an idempotency key:
+
+| Check | Code |
+|---|---|
+| Exactly one pricing field per line | `LINE_UNIT_PRICE_XOR_DECLARED_TOTAL` |
+| No discount on a declared total | `LINE_DECLARED_TOTAL_FORBIDS_DISCOUNT` |
+| No IRPF withholding on a simplified (F2) invoice | `SIMPLIFICADA_FORBIDS_IRPF` |
+| Equivalence surcharge only under regime `18`, and `18` only with one | `SURCHARGE_REQUIRES_REGIME` / `REGIME_REQUIRES_SURCHARGE` |
+| Series format can tell its reset periods apart | `SERIES_ANNUAL_REQUIRES_YEAR` / `SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR` |
+| Numbering is only seeded in the call that activates the company | `NUMBERING_REQUIRES_ACTIVATION` |
+| `SUPLIDO` lines carry their source reference | checked locally |
+| Exemption text only under reason `OTRO` | checked locally |
+| Correctives go through their own operation, not `type: CORRECTIVE` | checked locally |
+
+**3. Explained** — the BeeL API already answers well: its `message` is written for a
+human in the caller's language, `error.details` carries the specifics, and the RFC 7807
+`type` field links to a documentation page for that exact code (around 357 of them). The
+server relays all of that untouched, and adds only the two things a response cannot
+carry: **the remedy as a tool call** — the docs address someone with the dashboard open
+("create a series in settings"), an agent needs `beel_set_company_default_series` — and
+**whether retrying can possibly help**, which is what stops an agent looping on a 403
+that needs an administrator. `src/guardrails/catalog.ts` holds only codes where one of
+those applies; anything else passes through, because a paraphrase would be worse than the
+original and would drift from it. The nested `blockers[]` of `EMISSION_NOT_READY` are the
+clearest case: they arrive as bare strings with no message and no link, and each comes
+back out naming the tool that clears it.
+
+**The BeeL API is the authority on all of it.** Every enforced rule mirrors a rejection
+the contract documents, so the pre-flight is a strict subset of what the API refuses: it
+can only make failure faster and better explained, never permit something the API would
+reject. Rules that depend on server-side state — AEAT census matching, the €3 000 F2
+ceiling, whether a series exists — stay advisory on purpose, because guessing at them
+locally would reject valid invoices. Set `BEEL_DISABLE_PREFLIGHT=1` to bypass the local
+checks entirely.
+
+Hand-curated lists are anchored by tests: every catalogued code must still appear in the
+contract, every checked `operationId` must still resolve to a real tool, and every
+guardrail reference must point at a guardrail that exists. An API rename fails CI instead
+of silently switching a fiscal check off.
+
+## Configuration
+
+### Local server only
 
 | Variable | Purpose |
 |---|---|
-| `BEEL_API_KEY` | API key. The prefix selects the environment: `beel_sk_test_` → sandbox, `beel_sk_live_` → production. **Sandbox is safe to experiment with.** |
-| `BEEL_ACTIVE_COMPANY` | (Optional) Company UUID for multi-NIF accounts. Sent as `Beel-Active-Company`. List companies with `beel_list_companies`. |
-| `BEEL_BASE_URL` | (Optional) Override the API base URL (default `https://app.beel.es/api`). |
-| `BEEL_DOCS_URL` | (Optional) Override the docs source (default `https://docs.beel.es`), e.g. a local `beel-api-docs-standalone` instance. |
-| `BEEL_ENV` / `BEEL_CONFIG_DIR` | (Optional) If `BEEL_API_KEY` is unset, the server falls back to the CLI's `~/.config/beel/config.json` (`beel login`); `BEEL_ENV` (`test`/`live`, default `test`) selects which stored key. |
+| `BEEL_API_KEY` | API key. The prefix selects the environment: `beel_sk_test_` → Test, `beel_sk_live_` → Live. |
+| `BEEL_ENV` / `BEEL_CONFIG_DIR` | Optional. With `BEEL_API_KEY` unset, falls back to the CLI's `~/.config/beel/config.json` (`beel login`); `BEEL_ENV` (`test`/`live`, default `test`) picks which stored key. |
 
-If no key is configured the server still starts and lists tools — it only errors when an
-API tool is actually called. POST calls send an `Idempotency-Key` automatically, so an
-agent retry never duplicates an invoice.
-
-## Remote mode (OAuth) — hosting at `mcp.beel.es`
-
-Besides the local stdio binary, the package ships a **remote HTTP server**
-(`beel-mcp-http`) that speaks the **Streamable HTTP** transport and acts as an
-**OAuth authorization-server facade** (token-minting proxy) in front of BeeL. This is
-what you'd deploy at `https://mcp.beel.es` for a hosted, multi-tenant connector.
-
-How auth works:
-
-1. A client connects without a token → `401` with
-   `WWW-Authenticate: …resource_metadata=https://mcp.beel.es/.well-known/oauth-protected-resource`.
-2. The client reads the metadata and uses the OAuth endpoints **on the MCP server**
-   (`/authorize`, `/token`, `/register`), which proxy to BeeL. `/register` returns the
-   pre-registered public client, so the client self-registers (DCR) — the user just
-   pastes the URL and logs into BeeL. PKCE is validated upstream by BeeL.
-3. On the token exchange the server gets BeeL's token but **mints its own signed JWT**
-   (`iss` = this server, `aud` = the resource, verifiable via the server's JWKS) for the
-   client, and keeps the BeeL token internally. The client validates that token against
-   the authorization server it used (this server), so the iss/aud match. On each `/mcp`
-   call the server **forwards the BeeL token to the API** — every session acts with its
-   own user's credentials. Sandbox vs production comes from the granted `sandbox` scope.
-
-```bash
-npm run start:http   # serves on :$PORT (default 3000)
-npm run test:oauth   # end-to-end OAuth flow with BeeL stubbed locally (no login needed)
-```
-
-### Remote env vars
+### Shared
 
 | Variable | Purpose |
 |---|---|
-| `PORT` | HTTP port (default 3000). |
-| `MCP_PUBLIC_URL` | Public URL of this server (default `https://mcp.beel.es`), used in the advertised resource metadata. |
-| `BEEL_OAUTH_ISSUER` | BeeL OAuth issuer (default `https://app.beel.es`). The authorize/token/revoke URLs derive from it as `<issuer>/oauth2/*`, overridable via `BEEL_OAUTH_AUTHORIZE_URL`, `…_TOKEN_URL`, `…_REVOKE_URL`. |
-| `BEEL_BASE_URL` | API base the upstream token is forwarded to (default `https://app.beel.es/api`). |
-| `BEEL_OAUTH_CLIENT_ID` | Pre-registered BeeL client (default `beel-mcp`). |
-| `BEEL_OAUTH_CLIENT_SECRET` | Only if the BeeL client is confidential; omit for a public (PKCE) client. |
-| `BEEL_OAUTH_REDIRECT_URIS` | Allowed connector callbacks, comma-separated (default Claude's). |
+| `BEEL_BASE_URL` | API base URL. Default `https://app.beel.es/api`. |
+| `BEEL_DOCS_URL` | Documentation source for the docs tools. Default `https://docs.beel.es`. |
+| `BEEL_REQUEST_TIMEOUT_MS` | Hard ceiling on a single API call. Default `30000`. |
+| `BEEL_DISABLE_PREFLIGHT` | Set to `1` to skip the enforced guardrails. |
 
-> **Client registration.** BeeL has no Dynamic Client Registration, so this server's
-> `/register` returns the fixed pre-registered `beel-mcp` (public) client — clients
-> self-register and the user enters no credentials. The `beel-mcp` client at BeeL must
-> be public (`client-authentication-methods: none`) and allow the connector's redirect URI.
->
-> **Single instance.** The signing key, token map and sessions are in memory, so run one
-> replica (or add a shared key + store and sticky `mcp-session-id` routing behind a LB).
+Every default lives in `src/shared/defaults.ts`; nothing is hardcoded twice. Remote
+deployment variables are documented in [DEPLOY.md](./DEPLOY.md).
 
-## Interactive PDF viewer (MCP Apps)
+The server starts and lists tools with no credentials at all — it only errors when an API
+tool is actually called. POST requests carry a stable `Idempotency-Key` derived from the
+request itself, so an agent retrying "create invoice" can never mint a second invoice.
 
-`beel_generate_invoice_pdf` is an **MCP App** ([SEP-1865](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
-when the agent calls it, the host renders the invoice PDF in a side panel. Mechanics:
+## Self-hosting
 
-- The tool carries `_meta.ui.resourceUri = "ui://beel/invoice-pdf.html"` and returns the
-  PDF info as `structuredContent` (`download_url`, `file_name`, `expires_in_seconds`).
-- The `ui://beel/invoice-pdf.html` resource (mimetype `text/html;profile=mcp-app`) serves a
-  self-contained app (built from `src/ui/invoice-pdf-app.ts` with `@modelcontextprotocol/ext-apps`)
-  that receives the result via the app-bridge and shows the PDF in a sandboxed iframe.
-- Hosts that render MCP Apps today: Claude (claude.ai / Desktop via connectors), ChatGPT,
-  VS Code, Goose, Postman, MCPJam.
-
-The presigned PDF URL is a MinIO/S3 link, so its host must be allowed in the iframe CSP.
-Set `BEEL_PDF_DOMAINS` (comma-separated origins) per environment; default
-`https://minio.beel.es,https://app.beel.es`.
-
-The UI is bundled by `npm run build:ui` (part of `npm run build`) into `dist/ui/invoice-pdf.html`.
+The remote server runs on Cloudflare Workers. See [DEPLOY.md](./DEPLOY.md) for the KV
+namespace, the OAuth client BeeL must have registered, and the secrets involved.
 
 ## Development
 
 ```bash
-npm install
-npm run dev        # run from source over stdio (tsx)
-npm test           # vitest: derive / manifest / policy / json-schema / guardrails
-npm run typecheck
-npm run build      # single-file bundle to dist/index.js
-npm run inspect    # build + open the MCP Inspector
+npm ci
+npm run dev          # stdio server from source
+npm test             # vitest
+npm run typecheck    # both the Node and the Worker configs
+npm run build        # single-file bundle to dist/index.js
+npm run inspect      # MCP Inspector against the local build
+npm run spec:verify  # the vendored contract still matches its lock
 ```
 
-## Maintenance — keeping the spec in sync
+`openapi/public-api.yaml` is a **generated** copy of the API contract, and
+`openapi/spec.lock.json` records its version, operation count and hash. CI fails if the
+two disagree, which is what keeps a vendored contract honest. See
+[CONTRIBUTING.md](./CONTRIBUTING.md).
 
-The spec is interpreted at runtime, so syncing it is the whole maintenance story:
+## Related
 
-```bash
-npm run sync:spec  # re-bundle openapi/public-api.yaml from the sibling backend checkout
-npm test           # confirm the manifest/policy still hold
-```
-
-The spec source is the **`develop`** branch of the backend repo. CI (`sync-spec.yml`)
-does this automatically on a `repository_dispatch` from the backend, runs the test suite,
-commits the new spec to `develop`, and publishes a patch release to npm.
-
-> The bundle keeps internal `$ref`s (it is **not** fully dereferenced) — a dereferenced
-> bundle produces a YAML-alias explosion that trips the parser. Schema refs are resolved
-> into local `#/$defs` when building each tool's input schema.
-
-## Architecture
-
-```
-src/
-  index.ts              # stdio entry point
-  serve-http.ts         # remote HTTP (OAuth) entry point — beel-mcp-http
-  server.ts             # wires tools / resources / prompts onto the MCP Server
-  config.ts             # API key + env + base URL resolution
-  http/
-    client.ts           # auth, idempotency, Beel-Active-Company, error normalisation
-    oauth.ts            # OAuth proxy provider (mints signed JWTs, DCR shim) + config
-    token-store.ts      # signs our JWTs + maps them to the upstream BeeL token
-    serve.ts            # express app: discovery + bearer auth + session transports
-  spec/
-    load.ts             # parse the embedded OpenAPI doc
-    refs.ts             # JSON-Pointer $ref resolution
-    manifest.ts         # operations -> OperationSpec[] (params, body, response info)
-    derive.ts           # operationId -> beel_snake_case tool name
-    json-schema.ts      # OperationSpec -> MCP inputSchema (refs -> #/$defs)
-  policy/
-    tool-policy.ts      # curated include/exclude rules
-    annotations.ts      # readOnly / destructive / idempotent hints
-  guardrails/
-    domain.ts           # the fiscal invariants (state machine, F1/F2/R1–R5, regime keys…)
-    enrich.ts           # map operations -> guardrails, inject into descriptions
-  docs/
-    fetch.ts            # fetch + cache docs.beel.es/llms*.txt
-    search.ts           # chunk + keyword scoring
-  tools/                # api-tools (spec-derived) + docs-tools
-  resources/
-    guardrails.ts       # fiscal guardrails as MCP resources
-    pdf-app.ts          # serves the ui:// PDF viewer resource (+ CSP)
-  ui/
-    registry.ts         # MCP Apps wiring (which tools get a UI panel, CSP domains)
-    invoice-pdf-app.ts  # browser app (bundled into dist/ui/invoice-pdf.html)
-  prompts/workflows.ts
-```
+- [`@beel_es/cli`](https://docs.beel.es/cli) — the same contract from the terminal
+- [BeeL API reference](https://docs.beel.es) · [MCP guide](https://docs.beel.es/mcp)
+- [Security policy](./SECURITY.md)
 
 ## License
 
-Proprietary — © BeeL.
+MIT © BeeL

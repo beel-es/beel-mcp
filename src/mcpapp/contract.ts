@@ -1,42 +1,47 @@
 /**
- * Contrato de la MCP App del visor de factura — ÚNICA fuente de nombres, URIs y
- * dominios CSP. Cualquier otra capa (recurso, binding, app browser, build) los
- * importa de aquí; nadie hardcodea literales duplicados.
+ * Contract for the invoice-viewer MCP App: the names, URIs and CSP origins shared
+ * by the resource, the tool binding, the browser app and the build script.
+ *
+ * Values specific to the viewer live here; anything shared with the rest of the
+ * server comes from shared/defaults.ts, which is the single global source.
  */
 
-/** Dominio público del worker (sirve el proxy del PDF). */
-export const APP_ORIGIN = 'https://mcp.beel.es';
+import { BEEL_DEFAULTS } from '../shared/defaults.js';
 
-/** CDN de Cloudflare que sirve pdf.js (self-hosted por Cloudflare, no inline). */
+/** Public origin of the worker, which serves the PDF relay. */
+export const APP_ORIGIN = BEEL_DEFAULTS.publicUrl;
+
+/** Cloudflare's CDN copy of pdf.js — loaded at runtime rather than inlined. */
 export const PDFJS_CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 export const PDFJS_VERSION = '4.10.38';
 export const PDFJS_MODULE_URL = `${PDFJS_CDN_ORIGIN}/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.mjs`;
 export const PDFJS_WORKER_URL = `${PDFJS_CDN_ORIGIN}/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
 
-/** Recurso ui:// del visor y su mimetype (perfil MCP Apps). */
+/** The viewer's ui:// resource and its mimetype (the MCP Apps profile). */
 export const INVOICE_PDF_APP_URI = 'ui://beel/invoice-pdf.html';
 export const MCP_APP_MIME = 'text/html;profile=mcp-app';
 
-/** Ruta del proxy que re-sirve la presigned inline con CORS (para el fetch de la app). */
+/** Path of the relay that re-serves the presigned PDF inline with CORS, so the app can fetch it. */
 export const PDF_PROXY_PATH = '/pdf';
 
-/** Operación cuyo resultado abre el visor (binding tool ↔ app). */
+/** The operation whose result opens the viewer (the tool ↔ app binding). */
 export const INVOICE_PDF_OPERATION = 'getCompanyInvoicePdf';
 
 /**
- * CSP que declara el recurso (`_meta.ui.csp`). La app corre en un sandbox sin
- * same-origin: se listan explícitamente los orígenes que puede cargar/contactar.
- * - resourceDomains: scripts/estilos/img/worker → cdnjs (pdf.js).
- * - connectDomains: fetch → nuestro proxy (bytes del PDF) + cdnjs (chunks/worker de pdf.js).
+ * The CSP the resource declares (`_meta.ui.csp`). The app runs in a sandbox with
+ * no same-origin privileges, so every origin it may load from or talk to has to
+ * be listed explicitly:
+ * - resourceDomains: scripts, styles, images and workers → the pdf.js CDN.
+ * - connectDomains: fetch → our relay (the PDF bytes) and the CDN (pdf.js chunks).
  */
 export const APP_CSP = {
   resourceDomains: [PDFJS_CDN_ORIGIN],
   connectDomains: [APP_ORIGIN, PDFJS_CDN_ORIGIN],
 } as const;
 
-/** Payload que el tool entrega al visor por `structuredContent`. */
+/** The payload the tool hands to the viewer through `structuredContent`. */
 export interface InvoicePdfAppData {
-  /** URL presignada del PDF (se enruta por el proxy para servirlo inline+CORS). */
+  /** Presigned PDF URL; routed through the relay so it is served inline with CORS. */
   download_url: string;
   file_name?: string;
 }

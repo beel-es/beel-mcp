@@ -1,6 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ResolvedConfig } from '../config.js';
-import { apiRequest } from '../http/client.js';
+import { apiRequest } from '../api/client.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest, type OperationSpec } from '../spec/manifest.js';
 import { buildInputSchema } from '../spec/json-schema.js';
@@ -9,6 +9,7 @@ import { applyToolPolicy, type PolicyResult } from '../policy/tool-policy.js';
 import { annotationsFor } from '../policy/annotations.js';
 import { describeTool } from '../guardrails/enrich.js';
 import { APP_BINDINGS } from '../mcpapp/binding.js';
+import { assertNoViolations } from '../guardrails/validate.js';
 
 /** A registered API tool: its MCP definition plus the operation it invokes. */
 export interface ApiTool {
@@ -31,7 +32,7 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
       inputSchema: buildInputSchema(operation, doc),
       annotations: annotationsFor(operation),
     };
-    // MCP Apps: si la operación tiene un visor asociado, el host lo renderiza al llamarla.
+    // MCP Apps: when an operation has a viewer bound to it, the host renders it on call.
     const appResourceUri = APP_BINDINGS[operation.operationId];
     if (appResourceUri) tool._meta = { ui: { resourceUri: appResourceUri } };
     return { operation, tool };
@@ -77,6 +78,11 @@ export async function executeApiTool(
   const path = substitutePath(op, args);
   const query = collectQuery(op, args);
   const body = op.requestBody ? args.body : undefined;
+  // Pre-flight the fiscal invariants the schema cannot express. Runs before the
+  // request so a rejected payload never burns an idempotency key. See
+  // guardrails/validate.ts for why this can only ever be a subset of the API's
+  // own rejections.
+  assertNoViolations(op.operationId, body);
   const result = await apiRequest(config, {
     method: op.method,
     path,

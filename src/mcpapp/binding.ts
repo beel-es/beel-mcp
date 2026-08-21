@@ -1,16 +1,16 @@
 /**
- * Binding tool ↔ MCP App: qué operación abre qué visor, y cómo extraer del
- * payload crudo de la API los datos que el visor necesita. Único registro; añadir
- * un visor nuevo = una entrada, sin tocar el handler.
+ * The tool ↔ MCP App binding: which operation opens which viewer, and how to pull
+ * the data a viewer needs out of the raw API payload. The single point of
+ * registration — a new viewer is one entry here and no change to the handler.
  */
 import { INVOICE_PDF_APP_URI, INVOICE_PDF_OPERATION, type InvoicePdfAppData } from './contract.js';
 
-/** operationId → recurso ui:// que el host debe renderizar al llamar al tool. */
+/** operationId → the ui:// resource the host should render when the tool is called. */
 export const APP_BINDINGS: Readonly<Record<string, string>> = {
   [INVOICE_PDF_OPERATION]: INVOICE_PDF_APP_URI,
 };
 
-/** Extrae del resultado de la API los datos del visor; `null` si el payload no aplica. */
+/** Extract the viewer's data from an API result; `null` when the payload does not apply. */
 export function invoicePdfAppData(data: unknown): InvoicePdfAppData | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
