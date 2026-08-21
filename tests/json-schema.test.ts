@@ -40,3 +40,34 @@ describe('buildInputSchema', () => {
     expect(schema.required ?? []).not.toContain('page');
   });
 });
+
+describe('OpenAPI 3.0 → JSON Schema normalisation', () => {
+  it('converts boolean exclusive bounds into the numeric JSON Schema form', () => {
+    const doc = {
+      components: {
+        schemas: {
+          Price: {
+            type: 'object',
+            properties: {
+              unit_price: { type: 'number', minimum: 0, exclusiveMinimum: true, maximum: 10, exclusiveMaximum: false },
+            },
+          },
+        },
+      },
+    } as never;
+    const op = {
+      operationId: 'x',
+      method: 'POST',
+      path: '/x',
+      tag: 'X',
+      summary: '',
+      pathParams: [],
+      queryParams: [],
+      scopes: [],
+      requestBody: { contentType: 'application/json', required: true, schema: { $ref: '#/components/schemas/Price' } },
+    } as never;
+    const schema = buildInputSchema(op, doc);
+    const price = (schema.$defs as Record<string, { properties: Record<string, Record<string, unknown>> }>).Price;
+    expect(price?.properties.unit_price).toEqual({ type: 'number', exclusiveMinimum: 0, maximum: 10 });
+  });
+});

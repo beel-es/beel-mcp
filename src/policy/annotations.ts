@@ -19,12 +19,15 @@ export interface ToolAnnotations {
  * Lifecycle mutations that are irreversible or fiscally significant even though
  * their HTTP verb (POST) isn't inherently destructive. Voiding/cancelling and
  * issuing a registered invoice cannot be undone once it reaches AEAT.
+ *
+ * Exported so `tests/policy.test.ts` can assert every id still resolves to a real
+ * operation: API migrations have renamed operationIds before, which turns an
+ * entry here into a silent no-op rather than a visible failure.
  */
-const DESTRUCTIVE_OPERATION_IDS = new Set([
+export const DESTRUCTIVE_OPERATION_IDS = new Set([
   'voidCompanyInvoice',
   'createCompanyCorrectiveInvoice',
   'cancelCompanyRepresentation',
-  'revokeCompanyApiKey',
 ]);
 
 function titleCase(operationId: string): string {

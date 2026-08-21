@@ -1,59 +1,52 @@
 {
   "name": "@beel_es/mcp",
   "version": "0.1.0",
-  "description": "BeeL Model Context Protocol server — invoicing tools derived from the OpenAPI spec, docs search, and Spanish fiscal guardrails (VeriFactu, NIF, corrective invoices).",
+  "description": "MCP server for the BeeL invoicing API \u2014 VeriFactu-compliant electronic invoicing tools for LLM agents, derived from the public OpenAPI contract.",
   "type": "module",
-  "bin": {
-    "beel-mcp": "./dist/index.js",
-    "beel-mcp-http": "./dist/serve-http.js"
-  },
-  "files": [
-    "dist",
-    "openapi"
-  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "build": "node scripts/build-mcpapp.mjs && tsup",
     "build:mcpapp": "node scripts/build-mcpapp.mjs",
-    "dev": "node scripts/build-mcpapp.mjs && tsx src/index.ts",
-    "dev:http": "node scripts/build-mcpapp.mjs && tsx src/serve-http.ts",
-    "start:http": "node dist/serve-http.js",
+    "dev": "node scripts/build-mcpapp.mjs && tsx --import ./scripts/text-loader.mjs src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:oauth": "tsx scripts/oauth-e2e.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.cf.json --noEmit",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
     "sync:spec": "node scripts/bundle-spec.mjs",
-    "prepublishOnly": "npm run build"
+    "spec:lock": "node scripts/spec-lock.mjs --write",
+    "spec:verify": "node scripts/spec-lock.mjs",
+    "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",
+    "tools:list": "tsx --import ./scripts/text-loader.mjs scripts/list-tools.mts"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/beel-es/beel-mcp.git"
   },
   "keywords": [
-    "beel",
     "mcp",
     "model-context-protocol",
-    "invoicing",
     "verifactu",
-    "api",
-    "openapi",
+    "facturacion-electronica",
+    "einvoicing",
+    "invoicing",
+    "spain",
+    "aeat",
     "llm",
-    "agents"
+    "agents",
+    "claude",
+    "openapi",
+    "beel"
   ],
-  "license": "UNLICENSED",
-  "private": false,
-  "publishConfig": {
-    "access": "public"
-  },
+  "license": "MIT",
+  "private": true,
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.3",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "agents": "^0.17.4",
-    "express": "^5.0.0",
+    "ajv": "^8.20.0",
     "hono": "^4.13.1",
     "jose": "^5.10.0",
     "yaml": "^2.6.0"
@@ -61,7 +54,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260811.1",
     "@redocly/cli": "^1.25.0",
-    "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "esbuild": "^0.27.0",
     "pdfjs-dist": "^4.10.38",
@@ -70,5 +62,9 @@
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
     "wrangler": "^4.120.1"
+  },
+  "homepage": "https://github.com/beel-es/beel-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/beel-es/beel-mcp/issues"
   }
 }

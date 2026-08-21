@@ -22,6 +22,29 @@ const DROP_KEYS = new Set([
   'writeOnly',
 ]);
 
+/**
+ * OpenAPI 3.0 spells exclusive bounds as a boolean flag modifying `minimum` /
+ * `maximum`; JSON Schema (draft 6 onwards, which is what MCP clients validate
+ * against) spells them as the bound itself. Left untranslated, the advertised
+ * `inputSchema` is not valid JSON Schema at all — strict validators reject the
+ * whole tool definition rather than the offending value.
+ */
+function normaliseExclusiveBounds(out: Record<string, unknown>): void {
+  for (const [flag, bound] of [
+    ['exclusiveMinimum', 'minimum'],
+    ['exclusiveMaximum', 'maximum'],
+  ] as const) {
+    const value = out[flag];
+    if (typeof value !== 'boolean') continue;
+    if (value && typeof out[bound] === 'number') {
+      out[flag] = out[bound];
+      delete out[bound];
+    } else {
+      delete out[flag];
+    }
+  }
+}
+
 function schemaRefName(ref: string): string | null {
   const match = ref.match(/^#\/components\/schemas\/(.+)$/);
   return match ? match[1]! : null;
@@ -68,6 +91,7 @@ class SchemaProjector {
     if (src.nullable === true && typeof src.type === 'string') {
       out.type = [src.type, 'null'];
     }
+    normaliseExclusiveBounds(out);
     return out;
   }
 

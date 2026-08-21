@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [develop, master]
+    branches: [master, develop]
   pull_request:
 
 jobs:
@@ -14,11 +14,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
       - run: npm ci
+
+      # The vendored OpenAPI contract must be a generated copy, never a hand edit:
+      # the tool surface is derived from it, so an edited spec makes every tool
+      # advertise a contract the API does not honour.
+      - name: Verify the OpenAPI contract matches its lock
+        run: npm run spec:verify
+
+      # Typechecks both the Node and the Worker configurations.
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # Smoke test: the server boots and lists tools over stdio.
+
+      # The server must boot and list tools over stdio with no credentials.
       - name: Smoke test (tools/list)
         run: |
           printf '%s\n' \
@@ -28,3 +38,18 @@ jobs:
             | timeout 15 node dist/index.js \
             | grep -q '"beel_create_company_invoice"' \
             && echo "tools/list OK"
+
+  worker:
+    name: Worker bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # A dry-run deploy proves the Worker still bundles (text modules, spec,
+      # viewer HTML) without needing any Cloudflare credentials.
+      - name: Build the Worker bundle
+        run: npx wrangler deploy --dry-run --outdir /tmp/worker-build

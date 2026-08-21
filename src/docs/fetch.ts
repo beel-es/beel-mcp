@@ -8,10 +8,10 @@
  * isolate keeps it warm between requests, which is all the TTL asks for).
  */
 
-export type DocsFile = 'llms.txt' | 'llms-full.txt';
+import { BEEL_DEFAULTS, CACHE_TTL_MS, ENV_VAR } from '../shared/defaults.js';
+import { ambientEnv, readEnvUrl, type EnvRecord } from '../shared/env.js';
 
-const DEFAULT_DOCS_URL = 'https://docs.beel.es';
-const CACHE_TTL_MS = 15 * 60 * 1000;
+export type DocsFile = 'llms.txt' | 'llms-full.txt';
 
 interface CacheEntry {
   text: string;
@@ -20,16 +20,16 @@ interface CacheEntry {
 
 const cache = new Map<DocsFile, CacheEntry>();
 
-function docsBaseUrl(env: Record<string, string | undefined>): string {
-  return (env.BEEL_DOCS_URL ?? DEFAULT_DOCS_URL).replace(/\/$/, '');
+function docsBaseUrl(env: EnvRecord): string {
+  return readEnvUrl(env, ENV_VAR.docsUrl, BEEL_DEFAULTS.docsUrl);
 }
 
 export async function fetchDocsFile(
   file: DocsFile,
-  env: Record<string, string | undefined> = typeof process !== 'undefined' ? process.env : {},
+  env: EnvRecord = ambientEnv(),
 ): Promise<string> {
   const hit = cache.get(file);
-  if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) return hit.text;
+  if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS.docs) return hit.text;
 
   const url = `${docsBaseUrl(env)}/${file}`;
   const response = await fetch(url);

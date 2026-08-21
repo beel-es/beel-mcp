@@ -1,5 +1,5 @@
 import type { OperationSpec } from '../spec/manifest.js';
-import { GUARDRAILS, guardrailUri } from './domain.js';
+import { GUARDRAILS, guardrailUri } from './rules.js';
 
 /**
  * Wire operations to the guardrails an agent must respect when calling them.
@@ -8,11 +8,24 @@ import { GUARDRAILS, guardrailUri } from './domain.js';
  * description, so the constraint travels with the tool the model is about to call.
  */
 const BY_OPERATION_ID: Record<string, string[]> = {
-  createCompanyInvoice: ['invoice-types', 'regime-keys', 'nif-validation', 'verifactu-gates'],
+  createCompanyInvoice: [
+    'invoice-types',
+    'invoice-lines',
+    'regime-keys',
+    'nif-validation',
+    'verifactu-gates',
+    'series-and-numbering',
+  ],
   patchCompanyInvoice: ['invoice-state-machine'],
   deleteCompanyInvoice: ['invoice-state-machine'],
   voidCompanyInvoice: ['cancel-vs-rectify', 'invoice-state-machine'],
-  createCompanyCorrectiveInvoice: ['cancel-vs-rectify', 'invoice-types', 'invoice-state-machine'],
+  createCompanyCorrectiveInvoice: [
+    'cancel-vs-rectify',
+    'invoice-types',
+    'invoice-lines',
+    'invoice-state-machine',
+    'series-and-numbering',
+  ],
   issueCompanyInvoice: ['invoice-state-machine', 'verifactu-gates'],
   setCompanyInvoiceStatus: ['invoice-state-machine'],
   setCompanyInvoiceSchedule: ['invoice-state-machine'],
@@ -21,11 +34,16 @@ const BY_OPERATION_ID: Record<string, string[]> = {
   createCompanyCustomersBulk: ['nif-validation'],
   updateCompanyVeriFactuConfiguration: ['verifactu-gates'],
   getCompanyVeriFactuConfiguration: ['verifactu-gates'],
-  createCompany: ['multi-nif', 'nif-validation'],
+  createCompany: ['multi-nif', 'nif-validation', 'series-and-numbering'],
+  createCompanySeries: ['series-and-numbering'],
+  updateCompanySeries: ['series-and-numbering'],
+  patchCompanySeries: ['series-and-numbering'],
+  setCompanyDefaultSeries: ['series-and-numbering'],
   listCompanies: ['multi-nif'],
 };
 
 const BY_TAG: Record<string, string[]> = {
+  CompanySeries: ['series-and-numbering'],
   CompanyInvoices: ['invoice-state-machine'],
   CompanyInvoiceLifecycle: ['invoice-state-machine', 'cancel-vs-rectify'],
   CompanyProforma: ['invoice-state-machine'],
@@ -41,8 +59,9 @@ function guardrailIdsFor(op: OperationSpec): string[] {
   return BY_TAG[op.tag] ?? [];
 }
 
+/** id → the one-line summary shown in the tool description footer. */
 const ONE_LINER: Record<string, string> = Object.fromEntries(
-  GUARDRAILS.map((g) => [g.id, g.title]),
+  GUARDRAILS.map((g) => [g.id, g.summary]),
 );
 
 /**

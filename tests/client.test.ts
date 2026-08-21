@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest } from '../src/http/client.js';
+import { apiRequest } from '../src/api/client.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = { apiKey: 'beel_sk_test_x', env: 'test', baseUrl: 'https://api.test' };
@@ -35,10 +35,12 @@ describe('idempotency key (fiscal duplicate protection)', () => {
   });
 
   it('differs for the same body against different companies (multi-NIF safety)', async () => {
+    // The company is part of the path on every scoped operation, so an identical
+    // payload sent to two NIFs cannot collapse into one backend operation.
     const calls = captureFetch();
     const body = { total: 100 };
-    await apiRequest(config, { method: 'POST', path: '/v1/invoices', body, activeCompany: 'nif-A' });
-    await apiRequest(config, { method: 'POST', path: '/v1/invoices', body, activeCompany: 'nif-B' });
+    await apiRequest(config, { method: 'POST', path: '/v1/companies/nif-A/invoices', body });
+    await apiRequest(config, { method: 'POST', path: '/v1/companies/nif-B/invoices', body });
     expect(keyOf(calls[0])).not.toBe(keyOf(calls[1]));
   });
 

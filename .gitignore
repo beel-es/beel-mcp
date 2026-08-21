@@ -6,3 +6,8 @@ dist
 .env.*
 coverage
 src/mcpapp/generated/
+__pycache__/
+*.pyc
+.pytest_cache/
+.wrangler/
+.dev.vars

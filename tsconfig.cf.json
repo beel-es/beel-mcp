@@ -8,12 +8,8 @@
     "dist",
     "node_modules",
     "tests",
-    // Node-only entrypoints and the legacy Express/OAuth layer (kept for stdio + reference)
-    "src/index.ts",
-    "src/serve-http.ts",
-    "src/http/oauth.ts",
-    "src/http/serve.ts",
-    "src/http/token-store.ts"
+    // Node-only entrypoint: the Worker's entry is src/cf/worker.ts.
+    "src/index.ts"
   ],
   "include": ["src"]
 }

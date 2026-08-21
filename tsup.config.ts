@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/serve-http.ts'],
+  entry: ['src/index.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node20',
@@ -17,5 +17,6 @@ export default defineConfig({
   noExternal: [/.*/],
   loader: {
     '.yaml': 'text',
+    '.md': 'text',
   },
 });
