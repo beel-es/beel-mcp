@@ -12,6 +12,10 @@ on:
     types: [openapi-updated]
   workflow_dispatch:
 
+# Commits the refreshed contract back to the default branch.
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest

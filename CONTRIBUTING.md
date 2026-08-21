@@ -61,6 +61,19 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
   must be covered by a test that fails when an id stops resolving. API migrations
   rename operationIds, and a stale entry fails silently otherwise.
 
+## How it ships
+
+Three workflows, and none of them overlap:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | every push and pull request | contract lock, typechecks, tests, build, stdio smoke test. No secrets, so it is safe on PRs from forks |
+| `deploy.yml` | push to the default branch | re-runs the gates, then `wrangler deploy`, then polls `/healthz` |
+| `sync-spec.yml` | `repository_dispatch` from the backend | re-bundles the contract, refreshes the lock, commits |
+
+Deployment lives in Actions rather than in a repository-connected build system on
+purpose — see the reasoning in [DEPLOY.md](./DEPLOY.md#why-actions-and-not-workers-builds).
+
 ## Pull requests
 
 Keep the diff to one concern. Include a test for any behaviour change — the fiscal
