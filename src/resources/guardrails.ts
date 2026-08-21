@@ -5,7 +5,8 @@ import {
   findGuardrail,
   guardrailUri,
 } from '../guardrails/rules.js';
-import { ERROR_CATALOG, catalogCodes } from '../guardrails/catalog.js';
+import { ERROR_CATALOG, catalogCodes, docsUrlForCode } from '../guardrails/catalog.js';
+import { BEEL_DEFAULTS } from '../shared/defaults.js';
 
 /**
  * The fiscal guardrails as MCP resources, so a client can pin or preload them
@@ -33,8 +34,8 @@ export const guardrailResources: Resource[] = [
     uri: ERRORS_URI,
     name: 'BeeL error codes and what to do about each',
     description:
-      'Every BeeL error code an agent can act on, with what it means and the single ' +
-      'next action it calls for. Consult it when a call fails, or before a risky one.',
+      'The BeeL error codes this server can add a tool-call remedy or retry advice to, ' +
+      'each linked to its canonical documentation page. Consult it when a call fails.',
     mimeType: 'text/markdown',
   },
   ...GUARDRAILS.map(
@@ -77,23 +78,22 @@ function errorsBody(): string {
 
   for (const code of catalogCodes()) {
     const entry = ERROR_CATALOG[code]!;
-    const lines = [
-      `### \`${code}\``,
-      '',
-      entry.meaning,
-      '',
-      `**Do this:** ${entry.remedy}`,
-    ];
-    if (entry.guardrail) lines.push('', `Background: \`${guardrailUri(entry.guardrail)}\``);
-    lines.push('');
-    byActor[entry.actor]!.push(...lines);
+    const parts = [`- **\`${code}\`** — ${docsUrlForCode(code)}`];
+    if (entry.remedy) parts.push(`  ${entry.remedy}`);
+    if (entry.guardrail) parts.push(`  Background: \`${guardrailUri(entry.guardrail)}\``);
+    byActor[entry.actor]!.push(parts.join('\n'));
   }
 
   return [
     '# BeeL error codes',
     '',
-    'What each code means and the one action it calls for, grouped by who has to act.',
-    'Errors carry their specifics in `error.details`.',
+    'Every BeeL error carries its own documentation link as the RFC 7807 `type` field, and',
+    `around 357 codes have a page under \`${BEEL_DEFAULTS.docsUrl}/errors/<CODE>\`. That is the`,
+    'canonical explanation of what a code means, in the language you asked for.',
+    '',
+    'Listed here are only the codes this server can add something to: the tool call that',
+    'resolves them, and whether retrying is worth attempting. A code missing from this list',
+    "is not an omission — it means the API's own message says everything worth saying.",
     '',
     ...Object.values(byActor).flat(),
   ].join('\n');

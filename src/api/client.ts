@@ -11,6 +11,13 @@ export class ApiError extends Error {
     readonly code?: string,
     readonly details?: unknown,
     readonly requestId?: string,
+    /**
+     * The RFC 7807 `type` URI from the error envelope: a stable link to the
+     * documentation page for this exact code. The API hands it to us on every
+     * error, so relaying it beats anything we could write locally — the docs
+     * cover ~357 codes and are maintained alongside the API.
+     */
+    readonly docsUrl?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -174,6 +181,7 @@ export async function apiRequest(
       error?.code,
       error?.details,
       envelope?.meta?.request_id,
+      typeof envelope?.type === 'string' ? envelope.type : undefined,
     );
   }
 

@@ -2,12 +2,38 @@ import { describe, expect, it } from 'vitest';
 import { explainCode, explainError } from '../src/guardrails/explain.js';
 
 describe('explaining API errors', () => {
-  it('adds meaning and remedy to a catalogued code', () => {
-    const text = explainError({ status: 422, message: 'Not ready', code: 'ENV_MISMATCH' });
-    expect(text).toContain('ENV_MISMATCH');
-    expect(text).toContain('What this means:');
+  it("leads with the API's own message and links its documentation page", () => {
+    // The message and the doc page are the API's job and it does it well, in the
+    // caller's language and across ~357 codes. This layer must not paraphrase them.
+    const text = explainError({ status: 422, message: 'Environments do not match', code: 'ENV_MISMATCH' });
+    expect(text).toContain('Environments do not match');
+    expect(text).toContain('docs.beel.es/errors/ENV_MISMATCH');
     expect(text).toContain('What to do:');
     expect(text).toContain('Retrying this call unchanged will not help.');
+  });
+
+  it('prefers the RFC 7807 type URI the API sent over one built locally', () => {
+    const text = explainError({
+      status: 422, message: 'x', code: 'ENV_MISMATCH',
+      docsUrl: 'https://docs.example.test/errors/ENV_MISMATCH',
+    });
+    expect(text).toContain('https://docs.example.test/errors/ENV_MISMATCH');
+  });
+
+  it('never drops error.details, which carry the specifics the agent needs', () => {
+    // Regression: a curated allow-list here once discarded defaults_status_endpoint,
+    // the one field that said how to diagnose the problem.
+    const text = explainError({
+      status: 422,
+      message: 'You have no default invoice series.',
+      code: 'SERIES_DEFAULT_NOT_FOUND',
+      details: {
+        expected_document_type: 'FACTURA_RECTIFICATIVA',
+        defaults_status_endpoint: 'GET /v1/companies/x/series/defaults',
+      },
+    });
+    expect(text).toContain('defaults_status_endpoint');
+    expect(text).toContain('FACTURA_RECTIFICATIVA');
   });
 
   it('expands the nested blockers of EMISSION_NOT_READY, each with its own fix', () => {
@@ -21,6 +47,8 @@ describe('explaining API errors', () => {
     expect(text).toContain('NIF_NOT_REGISTERED');
     expect(text).toContain('beel_generate_company_representation');
     expect(text.match(/Fix:/g)?.length).toBe(2);
+    // Each bare blocker also gets its own documentation page.
+    expect(text).toContain('errors/NIF_NOT_REGISTERED');
   });
 
   it('flags a benign code as not necessarily a failure', () => {
@@ -28,7 +56,7 @@ describe('explaining API errors', () => {
     expect(text).toMatch(/not necessarily a failure/);
   });
 
-  it('surfaces the detail fields the catalogue asks for', () => {
+  it('surfaces detail fields verbatim', () => {
     const text = explainError({
       status: 403,
       message: 'Forbidden',
@@ -44,7 +72,7 @@ describe('explaining API errors', () => {
     expect(text).toContain('beel://guardrails/invoice-state-machine');
   });
 
-  it('degrades to the API message for an unknown code, losing nothing', () => {
+  it('degrades to the API message and a constructed doc link for an unknown code', () => {
     const text = explainError({
       status: 500,
       message: 'Boom',
@@ -56,7 +84,8 @@ describe('explaining API errors', () => {
     expect(text).toContain('SOMETHING_NEW');
     expect(text).toContain('"hint":"x"');
     expect(text).toContain('abc123');
-    expect(text).not.toContain('What this means:');
+    expect(text).toContain('errors/SOMETHING_NEW');
+    expect(text).not.toContain('What to do:');
   });
 
   it('handles an error with no code at all', () => {
@@ -64,7 +93,7 @@ describe('explaining API errors', () => {
   });
 
   it('explainCode returns the remedy, or a usable fallback', () => {
-    expect(explainCode('NIF_NOT_REGISTERED')).toMatch(/VeriFactu registration/);
-    expect(explainCode('UNKNOWN_BLOCKER')).toBe('Resolve UNKNOWN_BLOCKER.');
+    expect(explainCode('NIF_NOT_REGISTERED')).toMatch(/beel_get_company_veri_factu_configuration/);
+    expect(explainCode('UNKNOWN_BLOCKER')).toContain('errors/UNKNOWN_BLOCKER');
   });
 });

@@ -112,12 +112,18 @@ bad payload never even consumes an idempotency key:
 | Exemption text only under reason `OTRO` | checked locally |
 | Correctives go through their own operation, not `type: CORRECTIVE` | checked locally |
 
-**3. Explained** — `src/guardrails/catalog.ts` pairs every actionable BeeL error code with
-what it means and the single next action it calls for. Every API error the server relays
-passes through it, so `EMISSION_NOT_READY` reaches the model with its nested
-`blockers[]` expanded — each one naming the tool that resolves it — instead of as a bare
-code it can only retry blindly. The same catalogue backs `beel_get_setup_status` and the
-`beel://guardrails/errors` resource.
+**3. Explained** — the BeeL API already answers well: its `message` is written for a
+human in the caller's language, `error.details` carries the specifics, and the RFC 7807
+`type` field links to a documentation page for that exact code (around 357 of them). The
+server relays all of that untouched, and adds only the two things a response cannot
+carry: **the remedy as a tool call** — the docs address someone with the dashboard open
+("create a series in settings"), an agent needs `beel_set_company_default_series` — and
+**whether retrying can possibly help**, which is what stops an agent looping on a 403
+that needs an administrator. `src/guardrails/catalog.ts` holds only codes where one of
+those applies; anything else passes through, because a paraphrase would be worse than the
+original and would drift from it. The nested `blockers[]` of `EMISSION_NOT_READY` are the
+clearest case: they arrive as bare strings with no message and no link, and each comes
+back out naming the tool that clears it.
 
 **The BeeL API is the authority on all of it.** Every enforced rule mirrors a rejection
 the contract documents, so the pre-flight is a strict subset of what the API refuses: it

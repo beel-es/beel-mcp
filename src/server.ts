@@ -55,6 +55,7 @@ function formatApiError(err: ApiError): string {
     code: err.code,
     details: err.details,
     requestId: err.requestId,
+    docsUrl: err.docsUrl,
   });
 }
 
