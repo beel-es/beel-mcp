@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 /**
- * Visor de PDF de factura (MCP App). Corre en el sandbox del host. Renderiza el
- * PDF de verdad a <canvas> con pdf.js — cargado DINÁMICAMENTE desde cdnjs
- * (Cloudflare), no inline (así el recurso ui:// queda diminuto y no revienta el
- * límite de tamaño del host). El binario del PDF llega por el proxy del worker.
+ * Invoice PDF viewer (MCP App), running inside the host's sandbox. It renders the
+ * real PDF to a <canvas> with pdf.js, loaded DYNAMICALLY from Cloudflare's CDN
+ * rather than inlined — that keeps the ui:// resource tiny and clear of the
+ * host's size limit. The PDF bytes themselves arrive through the worker's relay.
  *
- * Se bundlea a un IIFE pequeño e inyecta en el HTML (scripts/build-mcpapp.mjs).
- * pdf.js NO se bundlea: es un import() de una URL (externo).
+ * Bundled into a small IIFE and injected into the HTML by scripts/build-mcpapp.mjs.
+ * pdf.js is NOT bundled: it is an import() of an external URL.
  */
 import {
   App,
@@ -30,10 +30,10 @@ const statusEl = byId('status');
 const titleEl = byId('title');
 const openEl = byId<HTMLAnchorElement>('open');
 
-/** URL del PDF a través del proxy (inline + CORS) para poder leer los bytes. */
+/** The PDF URL routed through the relay (inline + CORS) so the bytes are readable. */
 const proxied = (url: string): string => `${APP_ORIGIN}${PDF_PROXY_PATH}?u=${encodeURIComponent(url)}`;
 
-/** Carga pdf.js de cdnjs una sola vez; fija el worker desde el mismo CDN. */
+/** Load pdf.js from the CDN exactly once, pinning its worker to the same origin. */
 let pdfjsPromise: Promise<typeof PDFJS> | null = null;
 function loadPdfjs(): Promise<typeof PDFJS> {
   if (!pdfjsPromise) {
@@ -51,7 +51,7 @@ function setStatus(text: string): void {
   statusEl.style.display = text ? 'flex' : 'none';
 }
 
-/** Renderiza cada página del PDF a un canvas escalado al ancho del contenedor. */
+/** Render every page of the PDF to a canvas scaled to the container width. */
 async function renderCanvases(lib: typeof PDFJS, bytes: ArrayBuffer): Promise<void> {
   const pdf = await lib.getDocument({ data: bytes }).promise;
   pagesEl.replaceChildren();
@@ -76,9 +76,9 @@ async function renderCanvases(lib: typeof PDFJS, bytes: ArrayBuffer): Promise<vo
 async function render(data: InvoicePdfAppData | undefined): Promise<void> {
   if (!data?.download_url) return;
   const url = proxied(data.download_url);
-  // `target="_blank"` está bloqueado en el sandbox: pedimos al HOST que abra el
-  // enlace fuera del iframe (openLink del app-bridge). href queda para menú
-  // contextual / accesibilidad, pero interceptamos el clic.
+  // `target="_blank"` is blocked inside the sandbox, so we ask the HOST to open
+  // the link outside the iframe (the app-bridge's openLink). The href stays for
+  // the context menu and accessibility, but the click itself is intercepted.
   openEl.href = url;
   openEl.onclick = (e) => {
     e.preventDefault();

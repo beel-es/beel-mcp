@@ -125,9 +125,9 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
       // malformed call is answered with the field name rather than an upstream 400.
       assertValidArguments(apiTool.tool, args);
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
-      // Algunos tools enriquecen su payload (p.ej. el PDF de la factura: datos
-      // para el visor + adjunto); el resto cae al JSON de texto. Registro en
-      // ./tools/tool-result.
+      // A few tools enrich their payload — the invoice PDF supplies viewer data
+      // and an attachment — while the rest fall back to formatted JSON. The
+      // registry lives in ./tools/tool-result.
       const result =
         (await enrichToolResult(apiTool.operation.operationId, data)) ??
         textResult(JSON.stringify(data, null, 2));
@@ -168,7 +168,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
             uri,
             mimeType: MCP_APP_MIME,
             text: app.html,
-            // CSP: pdf.js desde cdnjs (resourceDomains) + fetch del PDF por el proxy.
+            // CSP: pdf.js from the CDN (resourceDomains) plus the PDF fetch through the relay.
             _meta: { ui: { csp: app.csp } },
           },
         ],

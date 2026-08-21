@@ -80,7 +80,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.get('/healthz', (c) => c.json({ status: 'ok', name: SERVER_NAME, runtime: 'cloudflare' }));
 
-// Proxy del PDF para el visor (inline + CORS, guard anti-SSRF).
+// The PDF relay for the viewer: inline + CORS, restricted to an allowlist.
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
 
 app.get('/authorize', async (c) => {
@@ -95,8 +95,8 @@ app.get('/authorize', async (c) => {
     expirationTtl: STATE_TTL_SECONDS,
   });
 
-  // El redirect que el WORKER envía al backend (no el downstream del cliente MCP):
-  // el backend ata la aserción de identidad contra ESTE valor + client_id=beel-mcp.
+  // The redirect the WORKER sends to the backend — not the MCP client's own. The
+  // backend binds the identity assertion against THIS value plus client_id.
   const upstreamRedirectUri = new URL('/callback', c.req.url).href;
 
   const url = new URL(upstream.authorizeUrl);
@@ -123,9 +123,9 @@ app.get('/authorize', async (c) => {
   if (hmacSecret) {
     url.searchParams.set(
       IDENTITY_ASSERTION.PARAM,
-      // Binding = lo que el backend ve en SU petición (proxy): client_id=beel-mcp
-      // y el redirect del worker. Los datos del cliente MCP downstream (Claude)
-      // viajan en los claims de DISPLAY (label/origin/verified), no en el binding.
+      // The binding is what the backend sees in ITS request: our client_id and the
+      // worker's redirect. The downstream client's own details (Claude, Cursor…)
+      // travel in the DISPLAY claims — label, origin, verified — never the binding.
       await createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
         clientId: upstream.clientId,
         redirectUri: upstreamRedirectUri,
@@ -174,20 +174,20 @@ app.get('/callback', async (c) => {
     },
   });
   await c.env.OAUTH_KV.delete(key);
-  // El hop final al callback del cliente MCP (p.ej. claude.ai) NO puede ser un
-  // 302: iría dentro de la cadena de redirects del POST de consentimiento (que
-  // arranca en app.beel.es) y el `form-action` del CSP se aplica a TODA la
-  // cadena → bloquea cualquier host fuera de *.beel.es. Servimos un interstitial
-  // desde mcp.beel.es (sin ese CSP) que hace una navegación NUEVA vía JS: así la
-  // cadena del formulario termina en *.beel.es y el salto cross-origin queda
-  // fuera de form-action. Vale para cualquier cliente sin tocar el CSP.
+  // The final hop to the MCP client's callback CANNOT be a 302. It would sit
+  // inside the redirect chain of the consent POST, which starts on BeeL's domain,
+  // and CSP `form-action` governs that WHOLE chain — blocking any host outside
+  // it. So we serve an interstitial from our own domain (not under that CSP) that
+  // navigates afresh from JavaScript: the form's chain ends on BeeL's domain and
+  // the cross-origin jump falls outside form-action. Works for every client
+  // without anyone having to touch the CSP.
   return finalRedirect(redirectTo);
 });
 
 /**
- * Corta la cadena de form-action: termina el submit en mcp.beel.es (200) y salta
- * al destino con `location.replace` (navegación nueva, no gobernada por
- * form-action). `<noscript>` cae a un enlace manual como último recurso.
+ * Breaks the form-action chain: the submit ends here with a 200, and the jump to
+ * the real destination happens through `location.replace` — a fresh navigation,
+ * which form-action does not govern. `<noscript>` falls back to a manual link.
  */
 function finalRedirect(target: string): Response {
   const jsUrl = JSON.stringify(target); // escapa para contexto JS

@@ -32,7 +32,7 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
       inputSchema: buildInputSchema(operation, doc),
       annotations: annotationsFor(operation),
     };
-    // MCP Apps: si la operación tiene un visor asociado, el host lo renderiza al llamarla.
+    // MCP Apps: when an operation has a viewer bound to it, the host renders it on call.
     const appResourceUri = APP_BINDINGS[operation.operationId];
     if (appResourceUri) tool._meta = { ui: { resourceUri: appResourceUri } };
     return { operation, tool };
