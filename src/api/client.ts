@@ -1,5 +1,7 @@
 import type { ResolvedConfig } from '../config.js';
 import { ContentType, HttpHeader, bearerAuthHeader } from '../shared/http.js';
+import { BEEL_HEADER, ENV_VAR, HTTP_DEFAULTS } from '../shared/defaults.js';
+import { ambientEnv, readEnvInt } from '../shared/env.js';
 
 /** A normalised API error carrying BeeL's error envelope fields. */
 export class ApiError extends Error {
@@ -34,6 +36,45 @@ export interface ApiResult {
 }
 
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+
+/** Transient upstream conditions worth one more attempt. */
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Honour `Retry-After` when the server sends one (seconds or an HTTP date),
+ * otherwise back off exponentially. Capped so a tool call cannot stall a session.
+ */
+function retryDelayMs(response: Response, attempt: number): number {
+  const header = response.headers.get('retry-after');
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, HTTP_DEFAULTS.timeoutMs);
+    const at = Date.parse(header);
+    if (!Number.isNaN(at)) return Math.min(Math.max(at - Date.now(), 0), HTTP_DEFAULTS.timeoutMs);
+  }
+  return HTTP_DEFAULTS.retryBaseDelayMs * 2 ** attempt;
+}
+
+/**
+ * `fetch` with a hard deadline. Without it an unresponsive upstream hangs the
+ * tool call forever: MCP has no timeout of its own, so the client just waits.
+ */
+async function fetchWithTimeout(url: URL, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new ApiError(`BeeL API request timed out after ${timeoutMs} ms`, 504, 'request_timeout');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Deterministic idempotency key for a mutating call: SHA-256 over
@@ -92,17 +133,27 @@ export async function apiRequest(
   // Caller may pass an explicit key; else derive it from method+path+body so a
   // byte-identical retry collapses to one operation.
   if (method === 'POST') {
-    headers['Idempotency-Key'] =
+    headers[BEEL_HEADER.idempotencyKey] =
       opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, activeCompany, opts.body));
   }
 
-  if (activeCompany) headers['Beel-Active-Company'] = activeCompany;
+  if (activeCompany) headers[BEEL_HEADER.activeCompany] = activeCompany;
 
-  const response = await fetch(url, {
+  const timeoutMs = readEnvInt(ambientEnv(), ENV_VAR.requestTimeoutMs, HTTP_DEFAULTS.timeoutMs);
+  const init: RequestInit = {
     method,
     headers,
     body: hasBody ? JSON.stringify(opts.body) : undefined,
-  });
+  };
+
+  // Retrying is safe for every method here: GET/PUT/DELETE are idempotent by HTTP
+  // semantics, and POST carries the stable Idempotency-Key set above, so a repeat
+  // collapses into the same backend operation rather than a second invoice.
+  let response = await fetchWithTimeout(url, init, timeoutMs);
+  for (let attempt = 0; attempt < HTTP_DEFAULTS.maxRetries && RETRYABLE_STATUSES.has(response.status); attempt++) {
+    await sleep(retryDelayMs(response, attempt));
+    response = await fetchWithTimeout(url, init, timeoutMs);
+  }
 
   const text = await response.text();
   let parsed: unknown = null;

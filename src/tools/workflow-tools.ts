@@ -1,5 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ResolvedConfig } from '../config.js';
+import type { KeyEnv, ResolvedConfig } from '../config.js';
 import { buildApiTools, executeApiTool } from './api-tools.js';
 import type { OperationSpec } from '../spec/manifest.js';
 
@@ -47,6 +47,13 @@ export const workflowTools: Tool[] = [
     outputSchema: {
       type: 'object',
       properties: {
+        environment: {
+          type: 'string',
+          enum: ['test', 'live'],
+          description:
+            'Which BeeL environment this session operates on. `live` means every ' +
+            'invoice issued is a real fiscal document.',
+        },
         account: {
           type: 'object',
           description: 'The authenticated account, or an error note if identity could not be read.',
@@ -103,7 +110,7 @@ export const workflowTools: Tool[] = [
           description: 'Single recommended next action across the whole account.',
         },
       },
-      required: ['account', 'companies', 'next_action'],
+      required: ['environment', 'account', 'companies', 'next_action'],
     },
     annotations: { title: 'Setup status', readOnlyHint: true, openWorldHint: true },
   },
@@ -218,6 +225,12 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
 }
 
 export interface SetupStatus {
+  /**
+   * The environment this session acts on. Computed in exactly one place (see
+   * policy/scopes.ts) and surfaced here because it was previously derived and
+   * then discarded — the agent had no way to know it was touching live data.
+   */
+  environment: KeyEnv;
   account: { account_id?: string; name?: string; email?: string; error?: string };
   companies: CompanyReport[];
   next_action: string;
@@ -262,5 +275,5 @@ export async function getSetupStatus(
         ? `${notReady.nif ?? notReady.company_id}: ${notReady.next_action}`
         : 'All NIFs can issue Live. Issue an invoice with beel_create_company_invoice.';
 
-  return { account, companies, next_action };
+  return { environment: config.env, account, companies, next_action };
 }

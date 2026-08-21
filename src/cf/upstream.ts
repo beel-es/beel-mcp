@@ -5,6 +5,8 @@
  */
 
 import { ContentType, HttpHeader, basicAuthHeader } from '../shared/http.js';
+import { BEEL_DEFAULTS, ENV_VAR, OAUTH_PATH } from '../shared/defaults.js';
+import { readEnv, readEnvUrl, type EnvRecord } from '../shared/env.js';
 
 export interface UpstreamConfig {
   issuer: string;
@@ -22,15 +24,15 @@ export interface UpstreamTokens {
   scope?: string;
 }
 
-export function upstreamConfig(env: Env): UpstreamConfig {
-  const issuer = (env.BEEL_OAUTH_ISSUER ?? 'https://app.beel.es/api').replace(/\/$/, '');
+export function upstreamConfig(env: EnvRecord): UpstreamConfig {
+  const issuer = readEnvUrl(env, ENV_VAR.oauthIssuer, BEEL_DEFAULTS.oauthIssuer);
   return {
     issuer,
-    authorizeUrl: `${issuer}/oauth2/authorize`,
-    tokenUrl: `${issuer}/oauth2/token`,
-    clientId: env.BEEL_OAUTH_CLIENT_ID ?? 'beel-mcp',
-    clientSecret: env.BEEL_OAUTH_CLIENT_SECRET ?? '',
-    apiBaseUrl: env.BEEL_BASE_URL ?? 'https://app.beel.es/api',
+    authorizeUrl: readEnv(env, ENV_VAR.oauthAuthorizeUrl) ?? `${issuer}${OAUTH_PATH.authorize}`,
+    tokenUrl: readEnv(env, ENV_VAR.oauthTokenUrl) ?? `${issuer}${OAUTH_PATH.token}`,
+    clientId: readEnv(env, ENV_VAR.oauthClientId) ?? BEEL_DEFAULTS.oauthClientId,
+    clientSecret: readEnv(env, ENV_VAR.oauthClientSecret) ?? '',
+    apiBaseUrl: readEnvUrl(env, ENV_VAR.apiBaseUrl, BEEL_DEFAULTS.apiBaseUrl),
   };
 }
 
@@ -55,13 +57,13 @@ export async function pkcePair(): Promise<{ verifier: string; challenge: string 
 async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Promise<UpstreamTokens> {
   const headers: Record<string, string> = { [HttpHeader.ContentType]: ContentType.Form };
   if (config.clientSecret) {
-    // Cliente CONFIDENCIAL: client_secret_basic (secreto en la cabecera, no en
-    // el cuerpo). Es el método que registra BeeL para beel-mcp; enviarlo en el
-    // cuerpo (client_secret_post) daba 401 por método no soportado. Con Basic,
-    // el client_id va SOLO en la cabecera (no en el body).
+    // Confidential client: client_secret_basic (secret in the header, not the
+    // body) — the method BeeL registers for this client. Sending it in the body
+    // (client_secret_post) is rejected with 401. With Basic, the client_id
+    // travels ONLY in the header.
     headers[HttpHeader.Authorization] = basicAuthHeader(config.clientId, config.clientSecret);
   } else {
-    // Cliente público (sin secreto): PKCE (S256) es la protección.
+    // Public client (no secret): PKCE (S256) is the protection.
     params.set('client_id', config.clientId);
   }
   const response = await fetch(config.tokenUrl, {
@@ -71,7 +73,9 @@ async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Pr
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`BeeL token endpoint ${response.status}: ${text.slice(0, 300)}`);
+    // The body may echo request parameters; surface the status and a short,
+    // bounded excerpt only — never the full upstream response.
+    throw new Error(`BeeL token endpoint returned ${response.status}: ${text.slice(0, 200)}`);
   }
   return JSON.parse(text) as UpstreamTokens;
 }

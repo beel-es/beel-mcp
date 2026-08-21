@@ -1,5 +1,6 @@
 import { SignJWT } from 'jose';
 import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider';
+import { BEEL_DEFAULTS } from '../shared/defaults.js';
 
 /**
  * Identity of the END client (Claude, Cursor, …) as far as it can be known.
@@ -117,7 +118,7 @@ export async function resolveClientIdentity(
 /** Claim names of the identity assertion (mirrored by the backend verifier). */
 export const IDENTITY_ASSERTION = {
   PARAM: 'client_identity_assertion',
-  ISSUER: 'https://mcp.beel.es',
+  ISSUER: BEEL_DEFAULTS.publicUrl,
   CLAIM_LABEL: 'client_label',
   CLAIM_ORIGIN: 'client_origin',
   CLAIM_VERIFIED: 'client_verified',

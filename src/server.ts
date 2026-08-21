@@ -9,7 +9,7 @@ import {
   type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { resolveConfig, type ResolvedConfig } from './config.js';
-import { ApiError } from './http/client.js';
+import { ApiError } from './api/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { getSetupStatus, isWorkflowTool, workflowTools } from './tools/workflow-tools.js';
@@ -18,6 +18,9 @@ import { enrichToolResult } from './tools/tool-result.js';
 import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
 import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
+import { assertValidArguments, ArgumentError } from './tools/validate-args.js';
+import { GuardrailError } from './guardrails/validate.js';
+import { SERVER_NAME } from './shared/defaults.js';
 
 export interface ServerInfo {
   name: string;
@@ -109,6 +112,9 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
         logToolCall(name, 'error', Date.now() - startedAt, { code: 'unknown_tool' });
         return textResult(`Unknown tool: ${name}`, true);
       }
+      // Validate against the schema we advertised before anything else runs, so a
+      // malformed call is answered with the field name rather than an upstream 400.
+      assertValidArguments(apiTool.tool, args);
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
       // Algunos tools enriquecen su payload (p.ej. el PDF de la factura: datos
       // para el visor + adjunto); el resto cae al JSON de texto. Registro en
@@ -122,6 +128,16 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
       if (err instanceof ApiError) {
         logToolCall(name, 'error', Date.now() - startedAt, { status: err.status, code: err.code });
         return textResult(formatApiError(err), true);
+      }
+      // Local rejections never reached the API; label them as such so the log
+      // distinguishes "we stopped this" from "BeeL stopped this".
+      if (err instanceof GuardrailError) {
+        logToolCall(name, 'error', Date.now() - startedAt, { code: 'guardrail_violation' });
+        return textResult(err.message, true);
+      }
+      if (err instanceof ArgumentError) {
+        logToolCall(name, 'error', Date.now() - startedAt, { code: 'invalid_arguments' });
+        return textResult(err.message, true);
       }
       logToolCall(name, 'error', Date.now() - startedAt);
       return textResult(err instanceof Error ? err.message : String(err), true);
@@ -164,7 +180,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     process.stderr.write(
-      `[beel-mcp] ${apiTools.length} API tools, ${docsTools.length + workflowTools.length} synthetic tools, ` +
+      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + workflowTools.length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }

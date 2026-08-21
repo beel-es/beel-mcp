@@ -5,7 +5,9 @@ import invoicePdfHtml from '../../dist/mcpapp/invoice-pdf.html';
 import { setSpecSource } from '../spec/load.js';
 import { setInvoicePdfAppHtml } from '../mcpapp/resource.js';
 import { createServer } from '../server.js';
-import type { KeyEnv, ResolvedConfig } from '../config.js';
+import type { ResolvedConfig } from '../config.js';
+import { keyEnvFromScopes } from '../policy/scopes.js';
+import { SERVER_INFO } from '../shared/defaults.js';
 import { BeelAuthHandler } from './beel-handler.js';
 import { refreshUpstream, upstreamConfig } from './upstream.js';
 
@@ -24,8 +26,6 @@ import { refreshUpstream, upstreamConfig } from './upstream.js';
 setSpecSource(specYaml);
 setInvoicePdfAppHtml(invoicePdfHtml);
 
-const SERVER_INFO = { name: 'beel-mcp', version: '0.2.0' };
-
 interface Props extends Record<string, unknown> {
   accessToken: string;
   refreshToken?: string;
@@ -38,10 +38,9 @@ export class BeelMcpAgent extends McpAgent<Env, Record<string, never>, Props> {
     getConfig: (): ResolvedConfig => {
       const props = this.props;
       if (!props) throw new Error('No authenticated session — reconnect the BeeL MCP.');
-      const env: KeyEnv = props.scopes.includes('sandbox') ? 'test' : 'live';
       return {
         apiKey: props.accessToken,
-        env,
+        env: keyEnvFromScopes(props.scopes),
         baseUrl: upstreamConfig(this.env).apiBaseUrl,
       };
     },

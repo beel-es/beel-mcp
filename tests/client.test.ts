@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest } from '../src/http/client.js';
+import { apiRequest } from '../src/api/client.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = { apiKey: 'beel_sk_test_x', env: 'test', baseUrl: 'https://api.test' };

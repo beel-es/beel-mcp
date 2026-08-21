@@ -1,5 +1,8 @@
 name: Sync OpenAPI spec & publish
 
+# INTERNAL ONLY — this workflow reads a private backend repository with a deploy
+# key and must never be copied into the public mirror. See INTERNAL.md.
+
 # Keeps the embedded spec in sync with the backend. Trigger options:
 #  - repository_dispatch (event_type: openapi-updated) fired by the backend repo
 #    when public-api.yaml changes on develop.
@@ -43,6 +46,21 @@ jobs:
       - name: Re-bundle the spec
         run: node scripts/bundle-spec.mjs backend-src/backend/src/main/resources/openapi/public-api.yaml
 
+      # Drift is the failure mode this workflow exists to prevent, so make it
+      # visible rather than silently committing whatever came back. Two months of
+      # unnoticed drift once produced 96 changed files in a single sync.
+      - name: Report contract drift
+        run: |
+          if git diff --quiet -- openapi/public-api.yaml; then
+            echo "No drift: the vendored contract already matches the backend."
+          else
+            echo "::warning::The vendored OpenAPI contract had drifted from the backend."
+            git diff --stat -- openapi/public-api.yaml
+          fi
+
+      - name: Refresh the contract lock
+        run: node scripts/spec-lock.mjs --write
+
       - name: Validate (typecheck + tests + build)
         run: |
           npm run typecheck
@@ -59,7 +77,7 @@ jobs:
           else
             git config user.name "beel-bot"
             git config user.email "it@beel.es"
-            git add openapi/public-api.yaml
+            git add openapi/public-api.yaml openapi/spec.lock.json
             git commit -m "chore(spec): sync public-api.yaml from backend develop"
             git push origin develop
             echo "changed=true" >> "$GITHUB_OUTPUT"

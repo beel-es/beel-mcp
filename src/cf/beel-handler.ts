@@ -5,7 +5,9 @@ import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.
 import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
-import { intersectScopes, requiredScopes } from '../policy/tool-policy.js';
+import { FALLBACK_GRANTABLE_SCOPES, intersectScopes, requiredScopes } from '../policy/scopes.js';
+import { CACHE_TTL_MS, ENV_VAR, OAUTH_PATH, SERVER_NAME } from '../shared/defaults.js';
+import { readEnv } from '../shared/env.js';
 import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
 import { pdfProxyHandler } from './pdf-proxy.js';
 
@@ -28,34 +30,7 @@ interface PendingAuth {
 // between /authorize and /callback. 10 minutes proved too short in practice.
 const STATE_TTL_SECONDS = 1800;
 
-/**
- * Fallback scopes requested upstream when the MCP client asks for none (Claude
- * sends no scope parameter) and the backend discovery doesn't advertise its
- * catalog. Must be a subset of the beel-mcp client registration (Spring rejects
- * unknown scopes with invalid_scope). `sandbox` is NEVER defaulted: connecting
- * means working with your real (live) BeeL data unless explicitly requested.
- */
-const FALLBACK_SCOPES = [
-  'invoices:read',
-  'invoices:write',
-  'customers:read',
-  'customers:write',
-  'products:read',
-  'products:write',
-  'configuration:read',
-  'configuration:write',
-  'series:read',
-  'series:write',
-  'nif:validate',
-  'companies:read',
-  'companies:write',
-  // NOT here: companies:list — the fallback must stay a subset of what the OLDEST
-  // deployed backend registers, or Spring fails the whole authorize with
-  // invalid_scope. New scopes arrive via scopes_supported in the discovery.
-];
-
-/** Scopes never granted by default even if the catalog advertises them. */
-const SCOPES_CACHE_TTL_MS = 15 * 60 * 1000;
+const SCOPES_CACHE_TTL_MS = CACHE_TTL_MS.scopeDiscovery;
 let scopesCache: { scopes: string[]; fetchedAt: number } | null = null;
 
 /**
@@ -73,9 +48,9 @@ async function defaultScopes(issuer: string): Promise<string[]> {
     return scopesCache.scopes;
   }
   const needed = requiredScopes(buildManifest(loadSpec()));
-  let grantable: string[] = FALLBACK_SCOPES;
+  let grantable: readonly string[] = FALLBACK_GRANTABLE_SCOPES;
   try {
-    const response = await fetch(`${issuer}/.well-known/oauth-authorization-server`);
+    const response = await fetch(`${issuer}${OAUTH_PATH.discovery}`);
     if (response.ok) {
       const metadata = (await response.json()) as { scopes_supported?: string[] };
       if (metadata.scopes_supported?.length) grantable = metadata.scopes_supported;
@@ -86,7 +61,7 @@ async function defaultScopes(issuer: string): Promise<string[]> {
   const scopes = intersectScopes(needed, grantable);
   // Cache only when discovery actually contributed (grantable != fallback), so a
   // transient discovery outage doesn't pin a degraded result for the full TTL.
-  if (grantable !== FALLBACK_SCOPES) scopesCache = { scopes, fetchedAt: Date.now() };
+  if (grantable !== FALLBACK_GRANTABLE_SCOPES) scopesCache = { scopes, fetchedAt: Date.now() };
   return scopes;
 }
 
@@ -96,12 +71,14 @@ async function defaultScopes(issuer: string): Promise<string[]> {
  * client secret only if the dedicated key isn't provisioned yet.
  */
 function identityHmacSecret(env: Env): string | undefined {
-  return env.MCP_IDENTITY_HMAC_KEY || env.BEEL_OAUTH_CLIENT_SECRET || undefined;
+  return (
+    readEnv(env, ENV_VAR.identityHmacKey) ?? readEnv(env, ENV_VAR.oauthClientSecret)
+  );
 }
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get('/healthz', (c) => c.json({ status: 'ok', name: 'beel-mcp', runtime: 'cloudflare' }));
+app.get('/healthz', (c) => c.json({ status: 'ok', name: SERVER_NAME, runtime: 'cloudflare' }));
 
 // Proxy del PDF para el visor (inline + CORS, guard anti-SSRF).
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
@@ -140,7 +117,7 @@ app.get('/authorize', async (c) => {
   const identity = await resolveClientIdentity(
     c.env.OAUTH_PROVIDER,
     oauthReqInfo.clientId,
-    parseKnownClients(c.env.MCP_VERIFIED_CLIENTS),
+    parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
   );
   const hmacSecret = identityHmacSecret(c.env);
   if (hmacSecret) {

@@ -53,33 +53,6 @@ function classify(op: OperationSpec, opts: Required<PolicyOptions>): ExclusionRe
   return null;
 }
 
-/**
- * Scopes an agent actually needs: the union of OAuth2 scopes across the tools the
- * policy exposes. Least privilege — the consent screen then never asks for a scope
- * no tool uses (e.g. webhooks, excluded as infrastructure) nor omits one it does.
- */
-export function requiredScopes(operations: OperationSpec[]): string[] {
-  const { tools } = applyToolPolicy(operations);
-  const scopes = new Set<string>();
-  for (const tool of tools) for (const scope of tool.scopes) scopes.add(scope);
-  return [...scopes].sort();
-}
-
-/** Scopes never requested by default even when the catalog grants them. */
-export const NON_DEFAULT_SCOPES = new Set(['sandbox']);
-
-/**
- * Least-privilege intersection of what the tools NEED with what the backend
- * GRANTS (both minus non-default scopes like `sandbox`). Pure — no Worker deps —
- * so it's unit-testable from Node. Fails CLOSED: an empty intersection returns
- * `needed` (the tool set), NEVER the whole grantable catalog.
- */
-export function intersectScopes(needed: string[], grantable: string[]): string[] {
-  const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
-  const scopes = needed.filter((s) => grantableSet.has(s));
-  return scopes.length ? scopes : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
-}
-
 export function applyToolPolicy(
   operations: OperationSpec[],
   options: PolicyOptions = {},

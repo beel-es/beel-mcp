@@ -6,3 +6,10 @@ dist
 .env.*
 coverage
 src/mcpapp/generated/
+__pycache__/
+*.pyc
+.pytest_cache/
+.wrangler/
+# Deployment-specific Wrangler configs (KV ids, routes, storage hosts)
+wrangler.*.local.jsonc
+.dev.vars

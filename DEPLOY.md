@@ -1,104 +1,116 @@
-# Deploying the BeeL MCP server (remote / OAuth)
+# Deploying the remote MCP server
 
-This deploys the **remote** server (`beel-mcp-http`) at e.g. `https://mcp.beel.es`. It
-speaks Streamable HTTP and acts as an **OAuth authorization-server facade** (token-minting
-proxy) in front of BeeL: each user logs in with their own BeeL account, the server mints
-its own signed JWT, and forwards the upstream BeeL token to the API on each call
-(multi-tenant). With a public BeeL client it **needs no secrets at runtime**.
+The remote server (`https://mcp.beel.es`) runs on **Cloudflare Workers**. It speaks the
+Streamable HTTP transport and is a full OAuth **authorization server** towards MCP clients
+while acting as a plain OAuth **client** towards BeeL. Each user logs in with their own
+BeeL account; their token lives in the encrypted grant and is forwarded to the API on
+every call, so the server is multi-tenant and holds no long-lived credential of its own.
 
-> Recommended host: a long-running container (Dokploy, Fly, Render, a VM). **Not Vercel**
-> — the server keeps in-memory sessions and streams, which serverless functions don't fit.
+Authorization is handled by
+[`@cloudflare/workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider):
+Dynamic Client Registration, `/authorize`, `/token` and KV-backed grants are its job, not
+ours. Our code is two Hono routes — `/authorize` (redirect upstream with PKCE) and
+`/callback` (exchange the code, complete the authorization). Resist the temptation to
+hand-roll this part; a previous iteration did, and spent eight commits on it.
 
-## 1. Runtime environment variables
+## 1. Prerequisites
 
-| Var | Required | Value (prod example) | Notes |
-|---|---|---|---|
-| `PORT` | no | `8787` | Port the server listens on. |
-| `MCP_PUBLIC_URL` | **yes** | `https://mcp.beel.es` | Public URL; goes into the advertised OAuth metadata. Must match the real external URL. |
-| `BEEL_OAUTH_ISSUER` | **yes** | `https://app.beel.es` *(confirm — see ⚠️)* | Must equal the `iss` claim in BeeL's tokens. authorize/token/jwks/revoke derive from it as `<issuer>/oauth2/*`. |
-| `BEEL_BASE_URL` | **yes** | `https://app.beel.es/api` | API base the user token is forwarded to. |
-| `BEEL_PDF_DOMAINS` | no | `https://minio.beel.es,https://app.beel.es` | CSP `frame-src` allowlist for the PDF viewer panel. Set to wherever presigned invoice PDFs are served. |
-| `BEEL_OAUTH_CLIENT_ID` | no | `beel-mcp` | Pre-registered client id at BeeL (default `beel-mcp`). |
-| `BEEL_OAUTH_REDIRECT_URIS` | no | `https://claude.ai/api/mcp/auth_callback` | Connector callback(s) allowed; comma-separated. |
-| `BEEL_OAUTH_CLIENT_SECRET` | no | — | **Omit when the `beel-mcp` backend client is public (recommended).** Only set it if that client stays confidential (`client_secret_basic`); then it must equal the backend's `OAUTH2_CLIENT_SECRET`. |
+- A Cloudflare account with Workers (Durable Objects require a paid plan).
+- An OAuth client registered at BeeL — see step 3. This is the real gate: without it
+  the deployment is complete and still cannot authenticate anyone.
 
-The MCP server is an **OAuth proxy with a DCR shim**: it exposes `/authorize`, `/token`,
-`/register` on its own domain. Clients (Claude) self-register and the user just pastes the
-URL and logs into BeeL — **no client_id/secret to enter** when the backend client is public.
-| `BEEL_DOCS_URL` | no | `https://docs.beel.es` | Docs source for the search tools (default already correct). |
-
-You can override individual OAuth endpoints if they don't follow the `<issuer>/oauth2/*`
-pattern: `BEEL_OAUTH_JWKS_URL`, `BEEL_OAUTH_AUTHORIZE_URL`, `BEEL_OAUTH_TOKEN_URL`,
-`BEEL_OAUTH_REVOKE_URL`.
-
-> ⚠️ **Confirm the issuer.** Locally the issuer is `http://localhost:8080/api` (endpoints
-> under `/api/oauth2/*`); the public docs show `https://app.beel.es/oauth2/*` (no `/api`).
-> Set `BEEL_OAUTH_ISSUER` (and, if needed, `BEEL_OAUTH_JWKS_URL`) to **exactly** what the
-> production discovery doc reports: `GET https://app.beel.es/.well-known/oauth-authorization-server`.
-> A mismatched issuer makes every token fail validation (401).
-
-## 2. Backend prerequisite — the OAuth client (the real gate)
-
-The MCP connector flow in Claude/ChatGPT needs an OAuth client it can use. BeeL already
-defines a `beel-mcp` client (`backend/src/main/resources/application.yml`), confidential
-(`client_secret_basic`) + PKCE. Two things must be true in production:
-
-1. `OAUTH2_CLIENT_SECRET` is set in the backend env (the client secret).
-2. The MCP client's **redirect URI is allowed**. Today the client allows
-   `http://localhost:3000/oauth/callback` and `http://localhost:8000/auth/callback`. Add
-   the redirect URI(s) your MCP host uses via `OAUTH2_REDIRECT_URIS` — **or** enable
-   **Dynamic Client Registration (DCR)** on the Spring Authorization Server so hosts that
-   require "click & connect" (Claude.ai, ChatGPT) can self-register. Without DCR or a
-   matching redirect, the interactive connector won't complete.
-
-The MCP server itself needs no client secret — it only validates tokens.
-
-## 3. Dokploy
-
-1. **New Application** → source = GitHub `beel-es/beel-mcp`, branch `master`, build type
-   **Dockerfile** (the repo's `Dockerfile`).
-2. **Environment** → set the variables from §1.
-3. **Domains** → add `mcp.beel.es`, container port `8787`, enable HTTPS (Let's Encrypt).
-4. **Deploy.** Health is checked at `/healthz` (the image has a `HEALTHCHECK`).
-
-(Equivalent anywhere else: `docker build -t beel-mcp . && docker run -p 8787:8787 -e MCP_PUBLIC_URL=... beel-mcp`.)
-
-## 4. DNS / TLS
-
-Point `mcp.beel.es` at the Dokploy host; Dokploy/Traefik issues the TLS cert. The public
-URL must be HTTPS — MCP clients refuse plain HTTP.
-
-## 5. Connect it in Claude
-
-Claude.ai (Pro/Max/Team/Enterprise) or Claude Desktop → **Settings → Connectors → Add
-custom connector** → URL `https://mcp.beel.es` (the MCP endpoint is the root). Claude discovers the OAuth config,
-you log in to BeeL, consent the scopes, and the tools appear — including the PDF viewer
-that renders emitted invoices in a side panel.
-
-## 6. Verify the deployment
+## 2. Create the KV namespace
 
 ```bash
-curl https://mcp.beel.es/healthz
-# {"status":"ok","name":"beel-mcp","version":"..."}
-
-curl https://mcp.beel.es/.well-known/oauth-protected-resource
-# { "resource": "...", "authorization_servers": ["https://app.beel.es/api"], "scopes_supported": [...] }
-
-curl -i -X POST https://mcp.beel.es/ -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
-# 401 + WWW-Authenticate: Bearer ... resource_metadata="https://mcp.beel.es/.well-known/oauth-protected-resource"
+npx wrangler kv namespace create OAUTH_KV
 ```
 
-## Operational notes
+Put the id it prints into `kv_namespaces[0].id`. The checked-in `wrangler.jsonc` is a
+template with a placeholder, and deliberately carries no routes, no namespace ids and no
+storage hosts: those are infrastructure, not source. Keep your own values either in that
+file (in a private repo) or in a separate config passed with
+`wrangler deploy -c wrangler.prod.jsonc`.
 
-- **Sessions are in memory** → run a single instance, or put sticky routing on the
-  `mcp-session-id` header behind a load balancer (or add a shared session store).
-- **Tokens** last ~1h; the session binds the token at `initialize`. Long sessions across a
-  token refresh would need re-connect (acceptable for v1).
-- **Spec sync**: the OpenAPI surface is regenerated by `.github/workflows/sync-spec.yml`;
-  redeploy after a spec bump to pick up new tools.
+## 3. Register the OAuth client at BeeL
 
-## Local quick test (no deploy, no OAuth)
+The MCP server drives the upstream flow as a pre-registered client, `beel-mcp` by default.
+It must:
 
-To try the tools and the PDF panel fast, run the **stdio** server in Claude Desktop with an
-API key — see the README's "Install & configure".
+- be **public** (`client-authentication-methods: none`) so PKCE (S256) is the protection.
+  A confidential client also works — set `BEEL_OAUTH_CLIENT_SECRET` and the server
+  switches to `client_secret_basic` — but public gives the cleanest UX: the user pastes a
+  URL and logs in, with no client id or secret to enter anywhere.
+- allow the worker's own callback, `https://<your-host>/callback`, as a redirect URI. This
+  is the redirect **the worker** sends to BeeL, not the MCP client's callback.
+- grant the scopes the tools need. The consent screen requests the intersection of what
+  the tools require (derived from the contract) with what the backend advertises in
+  `/.well-known/oauth-authorization-server`, so a scope no tool uses is never requested.
+
+## 4. Configure
+
+Public values go in `vars`; secrets go through `wrangler secret put`.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `BEEL_OAUTH_ISSUER` | yes | Must equal the `iss` in BeeL's tokens. `authorize`/`token`/`revoke` derive from it as `<issuer>/oauth2/*`. |
+| `BEEL_BASE_URL` | yes | API base the user's token is forwarded to. |
+| `BEEL_OAUTH_CLIENT_ID` | no | Defaults to `beel-mcp`. |
+| `BEEL_DOCS_URL` | no | Documentation source for the docs tools. |
+| `BEEL_PDF_STORAGE_HOSTS` | no | Comma-separated storage hosts the invoice-PDF relay may fetch from. **Unset disables the relay** — the viewer needs it. |
+| `MCP_VERIFIED_CLIENTS` | no | JSON array of `{prefix,name}` extending the built-in list of well-known MCP callbacks. Can only extend it: every entry is re-validated as a non-loopback `https` callback. |
+| `BEEL_OAUTH_CLIENT_SECRET` | secret | Only for a confidential client. |
+| `MCP_IDENTITY_HMAC_KEY` | secret | Dedicated key for the client-identity assertion (see below). Falls back to the client secret if unset; give it its own key so the two rotate independently. |
+
+Individual OAuth endpoints can be overridden with `BEEL_OAUTH_AUTHORIZE_URL`,
+`BEEL_OAUTH_TOKEN_URL` and `BEEL_OAUTH_REVOKE_URL` when they do not follow the
+`<issuer>/oauth2/*` pattern.
+
+> **Get the issuer exactly right.** A mismatched issuer makes every token fail validation
+> with a 401 and nothing else explains why. Take it verbatim from
+> `GET <api-base>/.well-known/oauth-authorization-server`.
+
+## 5. Deploy
+
+```bash
+npx wrangler deploy --dry-run --outdir /tmp/worker-build   # bundles without credentials
+npx wrangler deploy
+```
+
+Then point an MCP client at `https://<your-host>` and log in. `GET /healthz` answers
+without auth.
+
+## How a connection is established
+
+1. The client hits the server with no token and gets a `401` carrying
+   `WWW-Authenticate: …resource_metadata=…/.well-known/oauth-protected-resource`.
+2. It reads the metadata and self-registers through `/register` (DCR, handled by
+   workers-oauth-provider).
+3. `/authorize` stores the parsed request plus a fresh PKCE verifier in KV under a
+   single-use state token, then redirects to BeeL's login.
+4. `/callback` exchanges the code for BeeL's tokens and calls `completeAuthorization`,
+   which stores them encrypted in the grant.
+5. Each tool call surfaces that token as the bearer for the API. When the client refreshes
+   its token, `tokenExchangeCallback` refreshes the upstream one too — the worker's token
+   is deliberately given a shorter TTL so it always expires first.
+
+### Client identity on the consent screen
+
+The consent screen shows which client is asking. DCR client names are self-asserted —
+anyone can register as "Claude" — so the only provable signal is the registered
+`redirect_uri` host. A callback matching a curated allowlist of well-known MCP hosts earns
+a verified badge; everything else renders as unverified with its origin shown. Loopback
+callbacks and custom schemes never qualify, since any local application can claim them.
+
+That identity travels to the backend as an HS256 assertion signed with
+`MCP_IDENTITY_HMAC_KEY`, bound to the specific `client_id` and `redirect_uri` and carrying
+a single-use `jti`, so a "verified" assertion cannot be transplanted onto another request
+or replayed.
+
+## Operating notes
+
+- **Logs** carry one structured line per tool call — tool name, outcome, upstream status
+  and latency. No arguments, tokens or personal data, by design.
+- **The final hop to the client's callback is served as an interstitial page**, not a
+  302. The consent POST originates on BeeL's domain and its CSP `form-action` governs the
+  whole redirect chain, which would block any host outside it. Ending the chain on our own
+  domain and jumping with `location.replace` sidesteps that without weakening anyone's CSP.

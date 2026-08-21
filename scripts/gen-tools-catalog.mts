@@ -5,7 +5,7 @@
  *   npx tsx scripts/gen-tools-catalog.mts > /tmp/tools-catalog.mdx
  */
 import { buildApiTools } from '../src/tools/api-tools.js';
-import { requiredScopes } from '../src/policy/tool-policy.js';
+import { requiredScopes } from '../src/policy/scopes.js';
 
 // Usa la MISMA vía que el server (buildApiTools aplica la política: excluye deprecated),
 // así el catálogo documenta exactamente las tools que el agente ve.

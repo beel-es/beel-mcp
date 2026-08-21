@@ -1,17 +1,9 @@
 /// <reference types="@cloudflare/workers-types" />
 
-/** Text modules embedded at build time (see `rules` in wrangler.jsonc). */
-declare module '*.yaml' {
-  const text: string;
-  export default text;
-}
-declare module '*.html' {
-  const text: string;
-  export default text;
-}
-
 /** Worker bindings. OAUTH_KV/OAUTH_PROVIDER are injected by workers-oauth-provider. */
 interface Env {
+  /** Bindings and vars are read generically by `shared/env.ts`; see ENV_VAR. */
+  [key: string]: unknown;
   OAUTH_KV: KVNamespace;
   MCP_OBJECT: DurableObjectNamespace;
   OAUTH_PROVIDER: import('@cloudflare/workers-oauth-provider').OAuthHelpers;
@@ -25,4 +17,6 @@ interface Env {
   MCP_VERIFIED_CLIENTS?: string;
   BEEL_BASE_URL?: string;
   BEEL_DOCS_URL?: string;
+  /** Comma-separated storage hosts the invoice-PDF relay may fetch from. */
+  BEEL_PDF_STORAGE_HOSTS?: string;
 }
