@@ -81,8 +81,10 @@ fiscal documents.
 - **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, plus
   `beel://guardrails/errors`, a catalogue of every error code with the action it calls
   for. Their summaries are woven into the description of every tool they constrain.
-- **Workflow prompts** — `issue-invoice`, `fix-invoice` — encoding the safe order of
-  operations (validate NIF → choose F1/F2 → check VeriFactu gates → issue).
+- **7 workflow prompts** encoding the safe order of operations for the flows where the
+  order is what makes them safe: `issue-invoice` (validate NIF → choose F1/F2 → check the
+  VeriFactu gates → issue), `fix-invoice` (void vs correct), `onboard-nif`,
+  `setup-representation`, `invite-member`, `connect-payments` and `upgrade-integration`.
 - **Inline invoice PDF viewer** ([MCP Apps](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
   generating an invoice PDF opens it in a side panel in hosts that support it.
 
@@ -186,7 +188,7 @@ namespace, the OAuth client BeeL must have registered, and the secrets involved.
 npm ci
 npm run dev          # stdio server from source
 npm test             # vitest
-npm run typecheck    # Node and Worker configs
+npm run typecheck    # both the Node and the Worker configs
 npm run build        # single-file bundle to dist/index.js
 npm run inspect      # MCP Inspector against the local build
 npm run spec:verify  # the vendored contract still matches its lock

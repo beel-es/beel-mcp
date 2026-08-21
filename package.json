@@ -12,7 +12,7 @@
     "dev": "node scripts/build-mcpapp.mjs && tsx --import ./scripts/text-loader.mjs src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.cf.json --noEmit",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
     "sync:spec": "node scripts/bundle-spec.mjs",
     "spec:lock": "node scripts/spec-lock.mjs --write",

@@ -23,9 +23,8 @@ jobs:
       - name: Verify the OpenAPI contract matches its lock
         run: npm run spec:verify
 
+      # Typechecks both the Node and the Worker configurations.
       - run: npm run typecheck
-      - name: Typecheck the Worker build
-        run: npx tsc -p tsconfig.cf.json --noEmit
       - run: npm test
       - run: npm run build
 

@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readGuardrailResource } from '../src/resources/guardrails.js';
 import { GUARDRAILS, guardrailUri } from '../src/guardrails/rules.js';
-import { splitChunks, searchChunks } from '../src/docs/search.js';
+import { splitChunks, searchChunks, renderChunks } from '../src/docs/search.js';
 
 const RULES_DIR = 'src/guardrails/rules';
 
@@ -89,5 +89,51 @@ describe('guardrail prose points at things that exist', () => {
       expect(g.body.length, g.id).toBeGreaterThan(200);
       expect(g.body.startsWith('---'), `${g.id} still contains its front matter`).toBe(false);
     }
+  });
+});
+
+describe('docs search ranking', () => {
+  const chunk = (page: string, heading: string, content: string) => ({ page, heading, content });
+
+  it('does not let one enormous section win every query', () => {
+    // Regression: the corpus holds a 54 KB table of error codes that mentions
+    // nearly every term once, and with raw term frequency it came first for
+    // "factura simplificada" and "nif validar" alike — burying the real answer.
+    const giant = chunk('All error codes', 'Full table', `${'SIMPLIFICADA lorem ipsum '.repeat(2000)}`);
+    const answer = chunk('Invoice types', 'F2 — Factura simplificada', 'A simplificada is capped at 3000 EUR including VAT.'.repeat(6));
+    const [top] = searchChunks([giant, answer], ['simplificada'], 1);
+    expect(top?.heading).toBe('F2 — Factura simplificada');
+  });
+
+  it('does not let a near-empty heading stub win either', () => {
+    // The opposite failure: normalise too eagerly and a 40-character cross
+    // reference outranks the section that actually explains the thing.
+    const stub = chunk('Series API Reference', 'Series', 'See also.');
+    const answer = chunk('Glossary', 'Invoice Series Terms', 'A series numbers invoices. '.repeat(20));
+    const [top] = searchChunks([stub, answer], ['series'], 1);
+    expect(top?.page).toBe('Glossary');
+  });
+
+  it('prefers a chunk matching every term over one matching a single term often', () => {
+    const partial = chunk('Taxes', 'IVA', 'recargo recargo recargo recargo recargo. '.repeat(20));
+    const complete = chunk(
+      'Taxes',
+      'Surcharge',
+      'The recargo de equivalencia applies per line and only under regime 18. '.repeat(8),
+    );
+    const [top] = searchChunks([partial, complete], ['recargo', 'equivalencia'], 1);
+    expect(top?.heading).toBe('Surcharge');
+  });
+
+  it('truncates an oversized section and says so', () => {
+    const rendered = renderChunks([chunk('Big', 'Table', 'x'.repeat(20_000))]);
+    expect(rendered.length).toBeLessThan(9_000);
+    expect(rendered).toMatch(/truncated/);
+    expect(rendered).toMatch(/20000 characters/);
+  });
+
+  it('leaves a normal section intact', () => {
+    const rendered = renderChunks([chunk('Page', 'Section', 'short body')]);
+    expect(rendered).toBe('## Page › Section\n\nshort body');
   });
 });
