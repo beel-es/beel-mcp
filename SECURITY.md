@@ -32,6 +32,16 @@ These are intentional, and stating them saves everyone a round trip:
   closed when unconfigured.
 - **Tool annotations are advisory.** `destructiveHint` and friends are hints MCP
   clients use to decide whether to confirm an action. They are not enforcement.
+- **The "verified" badge on the consent screen proves an origin, not an identity.**
+  A client's name is self-asserted at registration, and registration is open. The
+  badge means only that the callback this request returns to belongs to a
+  well-known host — which an impostor cannot claim, because the authorization
+  code is useless anywhere else. Everything unverified is shown with its origin
+  so the user can judge it.
+- **The invoice viewer loads pdf.js from a public CDN.** That code runs in the
+  host's sandbox with access to the presigned document URL, so a compromise of
+  the CDN would expose the invoice being viewed. Reports about that supply chain
+  are in scope.
 
 ## Handling credentials
 

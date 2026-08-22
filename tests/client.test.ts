@@ -56,3 +56,37 @@ describe('idempotency key (fiscal duplicate protection)', () => {
     expect(keyOf(calls[0])).toBeUndefined();
   });
 });
+
+describe('the idempotency key covers the whole request', () => {
+  it('differs when a query parameter changes the meaning of the call', async () => {
+    // POST …/customers/bulk?dry_run=true and the same call with dry_run=false
+    // carry an identical body. Leaving the query out of the key gives them the
+    // same one: the backend replays the dry run, nothing is created, and the
+    // agent is told it succeeded.
+    const calls = captureFetch();
+    const body = { customers: [{ nif: 'B12345674' }] };
+    const path = '/v1/companies/x/customers/bulk';
+    await apiRequest(config, { method: 'POST', path, body, query: { dry_run: 'true' } });
+    await apiRequest(config, { method: 'POST', path, body, query: { dry_run: 'false' } });
+    expect(keyOf(calls[0])).not.toBe(keyOf(calls[1]));
+  });
+
+  it('is stable when only the order of query parameters changes', async () => {
+    // Order is not significant in HTTP, so the same request must hash one way —
+    // otherwise a retry could miss the deduplication it exists for.
+    const calls = captureFetch();
+    const body = { total: 100 };
+    const path = '/v1/companies/x/invoices';
+    await apiRequest(config, { method: 'POST', path, body, query: { a: '1', b: '2' } });
+    await apiRequest(config, { method: 'POST', path, body, query: { b: '2', a: '1' } });
+    expect(keyOf(calls[0])).toBe(keyOf(calls[1]));
+  });
+
+  it('still collapses a byte-identical retry into one operation', async () => {
+    const calls = captureFetch();
+    const request = { method: 'POST', path: '/v1/companies/x/invoices', body: { total: 100 }, query: { wait_for_pdf: 'true' } } as const;
+    await apiRequest(config, { ...request });
+    await apiRequest(config, { ...request });
+    expect(keyOf(calls[0])).toBe(keyOf(calls[1]));
+  });
+});

@@ -82,16 +82,41 @@ async function fetchWithTimeout(url: URL, init: RequestInit, timeoutMs: number):
 }
 
 /**
- * Deterministic idempotency key for a mutating call: SHA-256 over method+path+body.
+ * Deterministic idempotency key for a mutating call: SHA-256 over the full
+ * request — method, path, canonicalised query and body.
  *
  * Two byte-identical POSTs — an agent retrying — yield the same key and collapse
  * into one backend operation, which for VeriFactu means one fiscal document
- * rather than two. Any change to the payload yields a new key. The target company
- * needs no separate treatment because it is part of the path on every operation
- * that has one.
+ * rather than two.
+ *
+ * The query string is part of the material, and must be: several POSTs change
+ * meaning through it. `POST …/customers/bulk?dry_run=true` and the same call
+ * with `dry_run=false` carry an identical body, so leaving the query out gives
+ * them the same key — the backend replays the dry run, nothing is created, and
+ * the agent is told it succeeded. Query order is not significant in HTTP, so the
+ * parameters are sorted before hashing; otherwise the same request could hash
+ * two ways and defeat the deduplication it exists for.
  */
-async function idempotencyKeyFor(method: string, path: string, body: unknown): Promise<string> {
-  const material = `${method} ${path}\n${body === undefined ? '' : JSON.stringify(body)}`;
+function canonicalQuery(query: ApiRequestOptions['query']): string {
+  if (!query) return '';
+  const pairs: Array<[string, string]> = [];
+  for (const [name, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    for (const v of Array.isArray(value) ? value : [value]) pairs.push([name, String(v)]);
+  }
+  pairs.sort(([a, av], [b, bv]) => a.localeCompare(b) || av.localeCompare(bv));
+  return pairs.map(([k, v]) => `${k}=${v}`).join('&');
+}
+
+async function idempotencyKeyFor(
+  method: string,
+  path: string,
+  query: ApiRequestOptions['query'],
+  body: unknown,
+): Promise<string> {
+  const material =
+    `${method} ${path}?${canonicalQuery(query)}\n` +
+    `${body === undefined ? '' : JSON.stringify(body)}`;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -135,7 +160,7 @@ export async function apiRequest(
   // byte-identical retry collapses to one operation.
   if (method === 'POST') {
     headers[BEEL_HEADER.idempotencyKey] =
-      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, opts.body));
+      opts.idempotencyKey ?? (await idempotencyKeyFor(method, opts.path, opts.query, opts.body));
   }
 
   const timeoutMs = readEnvInt(ambientEnv(), ENV_VAR.requestTimeoutMs, HTTP_DEFAULTS.timeoutMs);

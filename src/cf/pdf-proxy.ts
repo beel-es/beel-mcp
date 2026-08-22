@@ -21,6 +21,9 @@ import { readEnvList, type EnvRecord } from '../shared/env.js';
 /** Refuse to stream anything larger than a plausible invoice PDF. */
 const MAX_BYTES = 25 * 1024 * 1024;
 
+/** Presigned URLs redirect at most once or twice; more suggests a loop. */
+const MAX_REDIRECTS = 3;
+
 /**
  * Hosts this relay may fetch from, from `BEEL_PDF_STORAGE_HOSTS` (comma-separated).
  * Empty by design: with nothing configured the relay is disabled rather than
@@ -51,9 +54,31 @@ export async function pdfProxyHandler(c: Context<{ Bindings: any }>): Promise<Re
     return c.text('Host not allowed', 403);
   }
 
+  // `redirect: 'manual'` is the point of this block. Left to follow, the
+  // allowlist would only cover the FIRST hop: a permitted host answering a 3xx
+  // would carry the request to any host and scheme, and the body comes back to
+  // the caller with open CORS — a readable, unauthenticated relay into wherever
+  // that redirect points. Each hop is re-validated instead.
   let upstream: Response;
+  let current = target;
   try {
-    upstream = await fetch(target.href);
+    for (let hop = 0; ; hop++) {
+      upstream = await fetch(current.href, { redirect: 'manual' });
+      const location = upstream.headers.get('location');
+      if (!location) break;
+      if (hop >= MAX_REDIRECTS) return c.text('Too many redirects', 502);
+
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        return c.text('Invalid redirect', 502);
+      }
+      if (next.protocol !== 'https:' || !allowed.has(next.hostname.toLowerCase())) {
+        return c.text('Redirect target not allowed', 403);
+      }
+      current = next;
+    }
   } catch {
     return c.text('Upstream fetch failed', 502);
   }

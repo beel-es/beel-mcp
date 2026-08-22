@@ -138,7 +138,7 @@ async function buildUpstreamAuthorizeUrl(
 async function signClientIdentity(
   c: Context<{ Bindings: Env }>,
   upstream: UpstreamConfig,
-  clientId: string,
+  request: AuthRequest,
   redirectUri: string,
 ): Promise<string | undefined> {
   const hmacSecret = identityHmacSecret(c.env);
@@ -146,7 +146,10 @@ async function signClientIdentity(
 
   const identity = await resolveClientIdentity(
     c.env.OAUTH_PROVIDER,
-    clientId,
+    request.clientId,
+    // The callback THIS request will return to — not merely one the client
+    // registered. See resolveClientIdentity for why the difference matters.
+    request.redirectUri,
     parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
   );
   return createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
@@ -181,7 +184,7 @@ app.get('/authorize', async (c) => {
     state,
     codeChallenge: challenge,
     redirectUri,
-    identityAssertion: await signClientIdentity(c, upstream, oauthReqInfo.clientId, redirectUri),
+    identityAssertion: await signClientIdentity(c, upstream, oauthReqInfo, redirectUri),
   });
 
   return c.redirect(url.href, 302);
@@ -240,7 +243,10 @@ app.get('/callback', async (c) => {
  * which form-action does not govern. `<noscript>` falls back to a manual link.
  */
 function finalRedirect(target: string): Response {
-  const jsUrl = JSON.stringify(target); // escapa para contexto JS
+  // JSON.stringify does not escape "<", so a target containing "</script>"
+  // would break out of the script element. The URL serializer should already
+  // percent-encode it; escaping here removes the dependency on that.
+  const jsUrl = JSON.stringify(target).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
   const hrefAttr = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const body = `<!doctype html><html lang="es"><head><meta charset="utf-8">`
     + `<meta name="robots" content="noindex"><title>Conectando…</title></head>`
@@ -248,7 +254,13 @@ function finalRedirect(target: string): Response {
     + `<noscript><a href="${hrefAttr}">Continuar</a></noscript></body></html>`;
   return new Response(body, {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      // The destination carries an authorization code in its query; do not hand
+      // this page's URL to it.
+      'Referrer-Policy': 'no-referrer',
+    },
   });
 }
 

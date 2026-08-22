@@ -90,27 +90,65 @@ export function parseKnownClients(raw: string | undefined): KnownClient[] {
   return clients.length ? clients : DEFAULT_KNOWN_CLIENTS;
 }
 
+/**
+ * Does this callback belong to a well-known host?
+ *
+ * Matched at a segment boundary rather than by bare prefix: `startsWith` alone
+ * would accept `https://claude.ai.evil.example/...` for the prefix
+ * `https://claude.ai/api/mcp/auth_callback`, which is the exact impersonation
+ * the badge exists to prevent.
+ */
+function matchKnownClient(
+  callback: string,
+  knownClients: KnownClient[],
+): KnownClient | undefined {
+  if (!isVerifiableCallback(callback)) return undefined;
+  return knownClients.find(
+    (k) =>
+      callback === k.prefix ||
+      callback.startsWith(`${k.prefix}/`) ||
+      callback.startsWith(`${k.prefix}?`),
+  );
+}
+
+/**
+ * Identify the client behind THIS authorization request.
+ *
+ * `requestedRedirectUri` is the callback the request will actually return to,
+ * and it is the only one that may earn the badge. Judging by the registered set
+ * instead would be a consent-phishing hole: registration is open, so anyone can
+ * register a client listing both a well-known callback and their own, start the
+ * flow with their own, and have the consent screen vouch for them by name.
+ *
+ * The registered set is still used for the unverified case, where all it does is
+ * give the user an origin to look at.
+ */
 export async function resolveClientIdentity(
   provider: OAuthHelpers,
   clientId: string,
+  requestedRedirectUri: string | undefined,
   knownClients: KnownClient[] = DEFAULT_KNOWN_CLIENTS,
 ): Promise<ClientIdentity> {
   const client = await provider.lookupClient(clientId).catch(() => null);
-  const redirectUris: string[] = client?.redirectUris ?? [];
-  // Guardrail: a loopback/custom-scheme URI must never satisfy a prefix check,
-  // even if it somehow shared a prefix. Only verifiable https callbacks qualify.
-  const matched = redirectUris.find(
-    (u) => isVerifiableCallback(u) && knownClients.some((k) => u.startsWith(k.prefix)),
-  );
-  const known = matched && knownClients.find((k) => matched.startsWith(k.prefix));
-  if (known && matched) {
-    return { label: known.name, origin: hostOf(matched), verified: true, redirectUri: matched };
+
+  const known = requestedRedirectUri
+    ? matchKnownClient(requestedRedirectUri, knownClients)
+    : undefined;
+  if (known && requestedRedirectUri) {
+    return {
+      label: known.name,
+      origin: hostOf(requestedRedirectUri),
+      verified: true,
+      redirectUri: requestedRedirectUri,
+    };
   }
+
+  const fallback = requestedRedirectUri ?? client?.redirectUris?.[0];
   return {
     label: client?.clientName || undefined,
-    origin: hostOf(redirectUris[0]),
+    origin: hostOf(fallback),
     verified: false,
-    redirectUri: redirectUris[0],
+    redirectUri: fallback,
   };
 }
 
