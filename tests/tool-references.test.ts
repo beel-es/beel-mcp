@@ -12,9 +12,9 @@ import { ERROR_CATALOG } from '../src/guardrails/catalog.js';
  * does not resolve sends the agent nowhere, and nothing else in the build would
  * notice: these are strings, not identifiers.
  *
- * This has already caught real breakage twice: deprecated operationIds cited in
- * the guardrails after the company-scoped migration, and a prompt asking for
- * `beel_create_corrective_invoice` (the real name has `company` in it).
+ * Names drift for ordinary reasons — an API migration renames an operation, a
+ * tool gains a path segment — and prose is the one place a compiler cannot
+ * follow. This is the check that does.
  */
 
 const TOOL_NAMES = new Set([

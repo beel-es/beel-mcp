@@ -185,8 +185,8 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
       };
 
   const missing: string[] = [];
-  // Blocker remedies come from the shared error catalogue, not a private map:
-  // this used to duplicate five of them and drift from what the API returns.
+  // Blocker remedies come from the shared error catalogue rather than a local
+  // map, so this report and a failed call always phrase the fix the same way.
   for (const b of blockers) missing.push(explainCode(b));
   if (verifactu && !verifactu.enabled) {
     missing.push(
@@ -221,8 +221,8 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
 export interface SetupStatus {
   /**
    * The environment this session acts on. Computed in exactly one place (see
-   * policy/scopes.ts) and surfaced here because it was previously derived and
-   * then discarded — the agent had no way to know it was touching live data.
+   * policy/scopes.ts) and surfaced here so the agent can tell whether it is
+   * about to touch live fiscal data.
    */
   environment: KeyEnv;
   account: { account_id?: string; name?: string; email?: string; error?: string };

@@ -80,11 +80,11 @@ function countOccurrences(haystack: string, needle: string): number {
  * Relevance of one chunk to the query terms.
  *
  * Raw term frequency has two failure modes, and this corpus hits both hard.
- * Without **saturation and length normalisation** the single largest chunk wins
- * nearly every query: a 54 KB table of error codes used to come first for
- * "factura simplificada" and "nif validar", burying the answer. Normalise too
- * eagerly and it inverts — near-empty heading stubs of 40 characters float to
- * the top instead, which answer even less.
+ * Without **saturation and length normalisation** the single largest section
+ * wins nearly every query — the corpus contains a 54 KB reference table that
+ * mentions almost every term, and it would bury the answer. Normalise too
+ * eagerly and it inverts: near-empty heading stubs float to the top instead,
+ * and those answer even less.
  *
  * So the two signals are scored differently. A title hit does not depend on how
  * long the body is, and is not normalised by it. A body hit is saturated and

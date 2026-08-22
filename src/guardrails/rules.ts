@@ -2,12 +2,10 @@
  * The fiscal guardrails: the invariants a blindly generated MCP would miss.
  *
  * Each guardrail is one Markdown file in `rules/`, carrying its own metadata in
- * front matter. That is deliberate — title and doc link used to live in
- * TypeScript beside the prose they described, which is exactly the split that
- * drifts. Now a guardrail is one file, editable by anyone who understands
- * Spanish invoicing whether or not they read TypeScript. And it does drift: the
- * prose here once described correctives as an invoice `type`, which the API has
- * never accepted.
+ * front matter. Keeping the metadata inside the file it describes means the two
+ * cannot fall out of step, and it makes a guardrail editable by anyone who
+ * understands Spanish invoicing, whether or not they read TypeScript — which
+ * matters, because the fiscal wording is where correctness actually lives.
  *
  * Files are embedded as text at build time (tsup for Node, a wrangler Text rule
  * for the Worker, a plugin for vitest), so there is no filesystem read at runtime.

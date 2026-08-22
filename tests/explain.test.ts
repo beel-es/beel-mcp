@@ -21,8 +21,9 @@ describe('explaining API errors', () => {
   });
 
   it('never drops error.details, which carry the specifics the agent needs', () => {
-    // Regression: a curated allow-list here once discarded defaults_status_endpoint,
-    // the one field that said how to diagnose the problem.
+    // The API puts diagnostic pointers in details — defaults_status_endpoint here.
+    // A curated allow-list would drop exactly the field the agent needs, so the
+    // whole object is passed through.
     const text = explainError({
       status: 422,
       message: 'You have no default invoice series.',
