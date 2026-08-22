@@ -15,7 +15,21 @@ export interface UpstreamConfig {
   clientId: string;
   clientSecret: string;
   apiBaseUrl: string;
+  /**
+   * This server's own public origin, from configuration — never derived from the
+   * incoming request.
+   *
+   * It is an identity, not a routing detail: the upstream authorization server
+   * validates the redirect_uri built from it against what it has registered, and
+   * the client-identity assertion is signed with it as issuer and bound to that
+   * same redirect_uri. Taking it from the request URL would make all three vary
+   * with whichever hostname the Worker happened to be reached through.
+   */
+  publicUrl: string;
 }
+
+/** Path the upstream authorization server redirects back to. */
+export const CALLBACK_PATH = '/callback';
 
 export interface UpstreamTokens {
   access_token: string;
@@ -33,7 +47,13 @@ export function upstreamConfig(env: EnvRecord): UpstreamConfig {
     clientId: readEnv(env, ENV_VAR.oauthClientId) ?? BEEL_DEFAULTS.oauthClientId,
     clientSecret: readEnv(env, ENV_VAR.oauthClientSecret) ?? '',
     apiBaseUrl: readEnvUrl(env, ENV_VAR.apiBaseUrl, BEEL_DEFAULTS.apiBaseUrl),
+    publicUrl: readEnvUrl(env, ENV_VAR.publicUrl, BEEL_DEFAULTS.publicUrl),
   };
+}
+
+/** The callback this server registers upstream. Derived from configuration only. */
+export function callbackUrl(config: UpstreamConfig): string {
+  return `${config.publicUrl}${CALLBACK_PATH}`;
 }
 
 function base64url(bytes: Uint8Array): string {
