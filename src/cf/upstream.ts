@@ -123,3 +123,38 @@ export function refreshUpstream(config: UpstreamConfig, refreshToken: string): P
     new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
   );
 }
+
+/**
+ * Margin that makes THIS server's access token expire before BeeL's.
+ *
+ * The MCP client only refreshes when our token expires, and that refresh is the
+ * only thing that drags the upstream token along (see `tokenExchangeCallback`).
+ * So ours must always run out first: if the upstream token dies while ours is
+ * still valid, every tool call 401s and nothing triggers a recovery until our
+ * own token finally expires.
+ */
+const UPSTREAM_SKEW_SECONDS = 300;
+
+/**
+ * Our access token's lifetime, derived from the upstream token's `expires_in`.
+ *
+ * Applies from the first refresh onwards, which is the earliest the provider
+ * lets us set a per-grant TTL: `completeAuthorization` takes no TTL, so the
+ * initial token always gets the provider-wide default below.
+ */
+export function workerAccessTokenTTL(expiresIn: number | undefined): number {
+  return Math.max(60, (expiresIn ?? 3600) - UPSTREAM_SKEW_SECONDS);
+}
+
+/**
+ * TTL of the very first access token of a session, before any refresh has told
+ * us how long BeeL's tokens actually live.
+ *
+ * Deliberately short rather than optimistic. The upstream authorization server
+ * decides its own lifetime and can shorten it without telling us; if our first
+ * token outlives it, every tool call 401s until ours expires too, because a
+ * refresh is the only thing that renews the upstream side. Guessing low costs
+ * one extra refresh round-trip at the start of a session and then self-corrects
+ * to the real value. Guessing high costs a broken session.
+ */
+export const INITIAL_ACCESS_TOKEN_TTL = 240;
