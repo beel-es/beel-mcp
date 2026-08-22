@@ -1,94 +1,93 @@
 #!/usr/bin/env node
 /**
- * Verifies what would actually ship to npm, after a build.
+ * Verifies the package by installing it and running it.
  *
- * Deliberately not a unit test: it inspects build output and the packed tarball,
- * so it only means anything once `npm run build` has run. Wiring it into the
- * pipelines instead keeps the test suite runnable without a build, while still
- * failing when the package is wrong — the failure nobody notices until someone
- * runs the published binary.
+ * Whether a file exists in `dist/` says nothing about whether a consumer gets
+ * it — that is decided by `files` in package.json, and the smoke test in the
+ * workflow cannot tell the difference because it runs `dist/index.js` directly.
+ * So this packs the tarball, installs it into a temporary directory, and drives
+ * the installed binary over the protocol.
+ *
+ * It deliberately asks npm nothing about what it packed. An earlier version
+ * parsed `npm pack --json` and broke when npm 12 changed that output's shape,
+ * reporting an empty package and stopping a release for no reason. Running the
+ * thing is both simpler and more honest: it fails only when a consumer would
+ * actually be broken.
  *
  *   npm run verify:package
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-/** The stdio server reads this from disk; the Worker embeds it at bundle time. */
-const VIEWER = 'dist/mcpapp/invoice-pdf.html';
+/** A tool that must be present, proving the contract was packed and parsed. */
+const A_TOOL = 'beel_create_company_invoice';
 
-/** Everything a consumer needs, and would be broken without. */
-const REQUIRED = ['dist/index.js', VIEWER, 'openapi/public-api.yaml', 'LICENSE', 'README.md'];
+/** The viewer resource, which the stdio server reads from disk at runtime. */
+const VIEWER_URI = 'ui://beel/invoice-pdf.html';
 
-/** Directories that belong to the repository, never to a consumer's node_modules. */
-const REPOSITORY_ONLY = /^(src|tests|scripts|\.github)\//;
+const REQUESTS = [
+  { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'verify', version: '0' } } },
+  { jsonrpc: '2.0', method: 'notifications/initialized' },
+  { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+  { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: VIEWER_URI } },
+];
 
-/**
- * Pull the single package entry out of `npm pack --json`.
- *
- * The shape changed in npm 12: a one-element array became an object keyed by
- * package name. Reading it blindly makes this check report that *nothing* would
- * be published — alarming, and completely wrong. Accept both, and throw rather
- * than treat an unrecognised shape as an empty package.
- */
-export function readPackedEntry(parsed) {
-  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed ?? {})[0];
-  if (!entry || !Array.isArray(entry.files)) {
-    throw new Error(
-      'Could not read the file list from `npm pack --json`. Its output shape may have changed again.',
-    );
-  }
-  return entry;
-}
+const workspace = mkdtempSync(join(tmpdir(), 'beel-mcp-verify-'));
+const problems = [];
 
-/** Everything wrong with the package as it stands, in the order found. */
-export function findProblems(pkg, shipped) {
-  const problems = [];
-
-  for (const [name, target] of Object.entries(pkg.bin ?? {})) {
-    // npm rewrites a bin path beginning with "./" and warns that it had to
-    // correct the manifest — a warning on every single publish otherwise.
-    if (target.startsWith('./')) {
-      problems.push(`bin "${name}" is "${target}"; npm will rewrite it. Drop the leading "./".`);
-    }
-    const path = target.replace(/^\.\//, '');
-    if (!existsSync(path)) {
-      problems.push(`bin "${name}" points at ${path}, which the build did not produce.`);
-    } else if (!readFileSync(path, 'utf8').startsWith('#!')) {
-      problems.push(`${path} has no shebang, so npx cannot execute it.`);
-    }
-  }
-
-  if (!existsSync(VIEWER)) {
-    problems.push(`${VIEWER} is missing. The bundler wipes dist/, so it must be built after it.`);
-  }
-
-  for (const required of REQUIRED) {
-    if (!shipped.has(required)) problems.push(`${required} would not be published.`);
-  }
-  for (const path of shipped) {
-    if (REPOSITORY_ONLY.test(path)) {
-      problems.push(`${path} would be published, and belongs only in the repository.`);
-    }
-  }
-
-  return problems;
-}
-
-function main() {
+try {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-  const raw = execFileSync('npm', ['pack', '--dry-run', '--json'], { encoding: 'utf8' });
-  const entry = readPackedEntry(JSON.parse(raw));
-  const shipped = new Set(entry.files.map((f) => f.path));
 
-  const problems = findProblems(pkg, shipped);
-  if (problems.length > 0) {
-    console.error('The package that would be published is wrong:\n');
-    for (const problem of problems) console.error(`  - ${problem}`);
-    process.exit(1);
+  // Pack and install exactly what a consumer would receive.
+  const tarball = execFileSync('npm', ['pack', '--silent'], { encoding: 'utf8' }).trim().split('\n').pop();
+  execFileSync('npm', ['install', '--silent', '--no-save', join(process.cwd(), tarball)], {
+    cwd: workspace,
+    stdio: 'pipe',
+  });
+  rmSync(tarball);
+
+  const [binary] = Object.keys(pkg.bin ?? {});
+  if (!binary) throw new Error('package.json declares no binary to run.');
+  const installed = join(workspace, 'node_modules', '.bin', binary);
+
+  const output = execFileSync('node', [installed], {
+    input: REQUESTS.map((r) => JSON.stringify(r)).join('\n') + '\n',
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+
+  const replies = new Map(
+    output
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((m) => m.id !== undefined)
+      .map((m) => [m.id, m]),
+  );
+
+  const tools = replies.get(2)?.result?.tools ?? [];
+  if (!tools.some((t) => t.name === A_TOOL)) {
+    problems.push(`The installed server does not expose ${A_TOOL}; the OpenAPI contract did not ship.`);
   }
 
-  console.log(`Package verified: ${shipped.size} files, ${Math.round((entry.size ?? 0) / 1024)} kB packed.`);
+  const viewer = replies.get(3);
+  if (viewer?.error) {
+    problems.push(`${VIEWER_URI} is unreadable once installed: ${viewer.error.message}`);
+  }
+
+  if (problems.length === 0) {
+    console.log(`Package verified by installing it: ${tools.length} tools, viewer readable.`);
+  }
+} catch (err) {
+  problems.push(err instanceof Error ? err.message : String(err));
+} finally {
+  rmSync(workspace, { recursive: true, force: true });
 }
 
-// Run the checks only when invoked directly; the test suite imports the helpers.
-if (process.argv[1]?.endsWith('verify-package.mjs')) main();
+if (problems.length > 0) {
+  console.error('The package a consumer would install is broken:\n');
+  for (const problem of problems) console.error(`  - ${problem}`);
+  process.exit(1);
+}

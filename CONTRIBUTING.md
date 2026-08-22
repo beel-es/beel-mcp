@@ -82,6 +82,11 @@ npm version <patch|minor|major>
 git push --follow-tags
 ```
 
+`npm run verify:package` packs the tarball, installs it into a temporary
+directory and drives the installed binary over the protocol. It is the only
+check that sees what a consumer actually receives — the smoke tests run
+`dist/index.js` directly, so they cannot tell whether a file was packed.
+
 The tag triggers `publish.yml`, which re-runs the contract check, the typechecks, the
 tests and a smoke test of the built binary before publishing. It refuses to publish when
 the tag and `package.json` disagree.
