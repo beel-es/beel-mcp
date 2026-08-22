@@ -18,7 +18,9 @@ const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
 
 describe('what the published package declares', () => {
   it('exposes the stdio server as its binary', () => {
-    expect(pkg.bin).toEqual({ 'beel-mcp': './dist/index.js' });
+    // Path without a leading "./": npm rewrites it on publish otherwise, and
+    // warns about a package.json it had to correct.
+    expect(pkg.bin).toEqual({ 'beel-mcp': 'dist/index.js' });
   });
 
   it('builds the MCP App viewer after the bundler, not before', () => {
@@ -35,8 +37,11 @@ describe('what the published package declares', () => {
     expect(pkg.files).toEqual(['dist', 'openapi', 'LICENSE', 'README.md']);
   });
 
-  it('publishes publicly with provenance', () => {
-    expect(pkg.publishConfig).toMatchObject({ access: 'public', provenance: true });
+  it('publishes publicly, and does not demand provenance in the manifest', () => {
+    // Trusted publishing attaches provenance on its own. Asking for it here
+    // instead makes every publish outside CI fail with "provider: null" — which
+    // includes the first one, and that one can only be manual.
+    expect(pkg.publishConfig).toEqual({ access: 'public' });
   });
 
   it('keeps a packaging check that runs after the build', () => {
