@@ -75,6 +75,42 @@ Three workflows, and none of them overlap:
 Workers Builds must have **"Builds for non-production branches" disabled**; see
 [DEPLOY.md](./DEPLOY.md#required-build-configuration).
 
+## Releasing
+
+```bash
+npm version <patch|minor|major>
+git push --follow-tags
+```
+
+The tag triggers `publish.yml`, which re-runs the contract check, the typechecks, the
+tests and a smoke test of the built binary before publishing. It refuses to publish when
+the tag and `package.json` disagree.
+
+There is **no npm token**. Authentication is [trusted
+publishing](https://docs.npmjs.com/trusted-publishers): GitHub mints a short-lived,
+workflow-specific OIDC token that npm verifies against the publisher configured for this
+package, and npm attaches provenance automatically.
+
+### First-time setup
+
+npm can only show a package's Trusted Publisher screen once the package exists, so the
+very first version has to be published another way. Either:
+
+- `npx npm@latest trust` (npm ≥ 11.10.0) configures the publisher without publishing, or
+- publish `0.1.0` once from a laptop after `npm login`, then configure it.
+
+Then, on npmjs.com → the package → Settings → Trusted Publisher:
+
+| Field | Value |
+|---|---|
+| Provider | GitHub Actions |
+| Organization | `beel-es` |
+| Repository | `beel-mcp` |
+| Workflow filename | `publish.yml` |
+| Environment | *(empty)* |
+
+After that no credential is involved in a release, and none needs storing anywhere.
+
 ## Pull requests
 
 Keep the diff to one concern. Include a test for any behaviour change — the fiscal

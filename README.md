@@ -44,31 +44,33 @@ Use the local server when OAuth cannot: a scheduled job that issues invoices, a 
 pipeline, or any headless process where no one is present to complete a browser login.
 It authenticates with an API key instead.
 
-Requires Node ≥ 20. Build it from this repository:
-
-```bash
-git clone https://github.com/beel-es/beel-mcp.git
-cd beel-mcp
-npm ci && npm run build
-```
-
-Then point your client at the built entry point:
+Requires Node ≥ 20.
 
 ```jsonc
 // Claude Desktop / Claude Code MCP config
 {
   "mcpServers": {
     "beel": {
-      "command": "node",
-      "args": ["/absolute/path/to/beel-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@beel_es/mcp"],
       "env": { "BEEL_API_KEY": "beel_sk_test_xxx" }
     }
   }
 }
 ```
 
+```bash
+# Claude Code
+claude mcp add beel --env BEEL_API_KEY=beel_sk_test_xxx -- npx -y @beel_es/mcp
+```
+
 Keys prefixed `beel_sk_test_` are safe to experiment with; `beel_sk_live_` issues real
 fiscal documents.
+
+The package is published from CI through npm [trusted
+publishing](https://docs.npmjs.com/trusted-publishers), so every release carries
+provenance: npm records the exact commit and workflow it was built from, and you can
+verify it with `npm audit signatures`.
 
 ## What it provides
 
