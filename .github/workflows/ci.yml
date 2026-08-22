@@ -43,6 +43,9 @@ jobs:
       - run: npm run verify:package
 
       # The server must boot and list tools over stdio with no credentials.
+      # Matched by pattern rather than by an exact name: tool names are derived
+      # from the contract, so pinning one here goes stale whenever the naming
+      # rules change.
       - name: Smoke test (tools/list)
         run: |
           printf '%s\n' \
@@ -50,7 +53,7 @@ jobs:
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | timeout 15 node dist/index.js \
-            | grep -q '"beel_create_company_invoice"' \
+            | grep -qE '"beel_[a-z_]+_invoice"' \
             && echo "tools/list OK"
 
   worker:
