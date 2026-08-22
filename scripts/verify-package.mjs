@@ -21,8 +21,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/** A tool that must be present, proving the contract was packed and parsed. */
-const A_TOOL = 'beel_create_company_invoice';
+/**
+ * How many tools the installed server must expose for the contract to have
+ * shipped and parsed. A count rather than a specific name: names are derived,
+ * so pinning one here means this check goes stale the next time the naming
+ * rules change — which it did.
+ */
+const MIN_TOOLS = 100;
 
 /** The viewer resource, which the stdio server reads from disk at runtime. */
 const VIEWER_URI = 'ui://beel/invoice-pdf.html';
@@ -68,8 +73,15 @@ try {
   );
 
   const tools = replies.get(2)?.result?.tools ?? [];
-  if (!tools.some((t) => t.name === A_TOOL)) {
-    problems.push(`The installed server does not expose ${A_TOOL}; the OpenAPI contract did not ship.`);
+  if (tools.length < MIN_TOOLS) {
+    problems.push(
+      `The installed server exposes ${tools.length} tools, fewer than the ${MIN_TOOLS} expected; ` +
+        'the OpenAPI contract did not ship or could not be parsed.',
+    );
+  }
+  const oversized = tools.filter((t) => t.name.length > 40).map((t) => t.name);
+  if (oversized.length > 0) {
+    problems.push(`Tool names over 40 characters, which hosts may reject: ${oversized.join(', ')}`);
   }
 
   const viewer = replies.get(3);
