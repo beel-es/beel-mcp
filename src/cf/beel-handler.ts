@@ -1,7 +1,14 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { decodeJwt } from 'jose';
 import type { AuthRequest } from '@cloudflare/workers-oauth-provider';
-import { exchangeCode, pkcePair, randomToken, upstreamConfig } from './upstream.js';
+import {
+  callbackUrl,
+  exchangeCode,
+  pkcePair,
+  randomToken,
+  upstreamConfig,
+  type UpstreamConfig,
+} from './upstream.js';
 import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
@@ -83,11 +90,81 @@ app.get('/healthz', (c) => c.json({ status: 'ok', name: SERVER_NAME, runtime: 'c
 // The PDF relay for the viewer: inline + CORS, restricted to an allowlist.
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
 
+/**
+ * Build the upstream authorization URL for a pending request.
+ *
+ * Split out from the route so the URL is a value produced from configuration and
+ * the parsed request, rather than something assembled in the middle of a handler
+ * that is also writing to KV and minting a signature.
+ */
+async function buildUpstreamAuthorizeUrl(
+  upstream: UpstreamConfig,
+  params: {
+    scopes: string[];
+    state: string;
+    codeChallenge: string;
+    redirectUri: string;
+    identityAssertion?: string;
+  },
+): Promise<URL> {
+  const url = new URL(upstream.authorizeUrl);
+  const query: Record<string, string> = {
+    response_type: 'code',
+    client_id: upstream.clientId,
+    redirect_uri: params.redirectUri,
+    scope: params.scopes.join(' '),
+    state: params.state,
+    code_challenge: params.codeChallenge,
+    code_challenge_method: 'S256',
+  };
+  if (params.identityAssertion) {
+    query[IDENTITY_ASSERTION.PARAM] = params.identityAssertion;
+  }
+  for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
+  return url;
+}
+
+/**
+ * The end client's identity, signed for the consent screen.
+ *
+ * The display claims are what the user sees: a self-asserted name from DCR, a
+ * provable origin, and whether that origin is a well-known MCP host. The binding
+ * claims are what the backend checks — this server's own client_id and callback —
+ * so a valid assertion cannot be transplanted onto a different request.
+ *
+ * Returns `undefined` when no signing key is provisioned: the flow proceeds and
+ * every client simply renders as unverified, which is the safe degradation.
+ */
+async function signClientIdentity(
+  c: Context<{ Bindings: Env }>,
+  upstream: UpstreamConfig,
+  clientId: string,
+  redirectUri: string,
+): Promise<string | undefined> {
+  const hmacSecret = identityHmacSecret(c.env);
+  if (!hmacSecret) return undefined;
+
+  const identity = await resolveClientIdentity(
+    c.env.OAUTH_PROVIDER,
+    clientId,
+    parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
+  );
+  return createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
+    issuer: upstream.publicUrl,
+    clientId: upstream.clientId,
+    redirectUri,
+  });
+}
+
 app.get('/authorize', async (c) => {
   const oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
   if (!oauthReqInfo.clientId) return c.text('Invalid authorization request', 400);
 
   const upstream = upstreamConfig(c.env);
+  const redirectUri = callbackUrl(upstream);
+
+  // Single-use state, holding the client's parsed request and our PKCE verifier
+  // until the callback redeems it.
   const { verifier, challenge } = await pkcePair();
   const state = randomToken();
   const pending: PendingAuth = { oauthReqInfo, codeVerifier: verifier };
@@ -95,43 +172,18 @@ app.get('/authorize', async (c) => {
     expirationTtl: STATE_TTL_SECONDS,
   });
 
-  // The redirect the WORKER sends to the backend — not the MCP client's own. The
-  // backend binds the identity assertion against THIS value plus client_id.
-  const upstreamRedirectUri = new URL('/callback', c.req.url).href;
-
-  const url = new URL(upstream.authorizeUrl);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', upstream.clientId);
-  url.searchParams.set('redirect_uri', upstreamRedirectUri);
-  const requestedScopes = oauthReqInfo.scope.length
+  const scopes = oauthReqInfo.scope.length
     ? oauthReqInfo.scope
     : await defaultScopes(upstream.issuer);
-  url.searchParams.set('scope', requestedScopes.join(' '));
-  url.searchParams.set('state', state);
-  url.searchParams.set('code_challenge', challenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  // End-client identity for the consent screen: name is self-asserted (DCR),
-  // origin is provable, verified only against the well-known-hosts allowlist.
-  // Signed with a DEDICATED HMAC key (not the OAuth client secret) and bound to
-  // this client_id + redirect_uri so it can't be transplanted onto another request.
-  const identity = await resolveClientIdentity(
-    c.env.OAUTH_PROVIDER,
-    oauthReqInfo.clientId,
-    parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
-  );
-  const hmacSecret = identityHmacSecret(c.env);
-  if (hmacSecret) {
-    url.searchParams.set(
-      IDENTITY_ASSERTION.PARAM,
-      // The binding is what the backend sees in ITS request: our client_id and the
-      // worker's redirect. The downstream client's own details (Claude, Cursor…)
-      // travel in the DISPLAY claims — label, origin, verified — never the binding.
-      await createIdentityAssertion(identity, hmacSecret, upstream.issuer, {
-        clientId: upstream.clientId,
-        redirectUri: upstreamRedirectUri,
-      }),
-    );
-  }
+
+  const url = await buildUpstreamAuthorizeUrl(upstream, {
+    scopes,
+    state,
+    codeChallenge: challenge,
+    redirectUri,
+    identityAssertion: await signClientIdentity(c, upstream, oauthReqInfo.clientId, redirectUri),
+  });
+
   return c.redirect(url.href, 302);
 });
 
@@ -154,12 +206,10 @@ app.get('/callback', async (c) => {
   // Replay is already prevented upstream (BeeL redeems each code exactly once), and a
   // refresh/prefetch of this URL mid-login must not burn the user's only attempt.
   const upstream = upstreamConfig(c.env);
-  const tokens = await exchangeCode(
-    upstream,
-    code,
-    new URL('/callback', c.req.url).href,
-    codeVerifier,
-  );
+  // The same value the authorize step sent: OAuth requires the redirect_uri in
+  // the token exchange to match it exactly, so both must come from the one place
+  // that decides this server's public identity.
+  const tokens = await exchangeCode(upstream, code, callbackUrl(upstream), codeVerifier);
 
   const scopes = (tokens.scope ?? oauthReqInfo.scope.join(' ')).split(' ').filter(Boolean);
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({

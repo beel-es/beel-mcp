@@ -41,8 +41,9 @@ It must:
   A confidential client also works — set `BEEL_OAUTH_CLIENT_SECRET` and the server
   switches to `client_secret_basic` — but public gives the cleanest UX: the user pastes a
   URL and logs in, with no client id or secret to enter anywhere.
-- allow the worker's own callback, `https://<your-host>/callback`, as a redirect URI. This
-  is the redirect **the worker** sends to BeeL, not the MCP client's callback.
+- allow the worker's own callback, `<MCP_PUBLIC_URL>/callback`, as a redirect URI. This is
+  the redirect **the worker** sends to BeeL, not the MCP client's callback, and it is built
+  from configuration — so it must match `MCP_PUBLIC_URL` exactly.
 - grant the scopes the tools need. The consent screen requests the intersection of what
   the tools require (derived from the contract) with what the backend advertises in
   `/.well-known/oauth-authorization-server`, so a scope no tool uses is never requested.
@@ -65,6 +66,7 @@ reproducible from a clone.
 
 | Variable | Required | Notes |
 |---|---|---|
+| `MCP_PUBLIC_URL` | **yes** (self-hosting) | This server's own public origin, e.g. `https://mcp.example.com`. It is an identity, not a routing detail: the callback registered upstream, the `redirect_uri` required in the token exchange, and the issuer of the client-identity assertion all derive from it. Defaults to the hosted origin, so a deployment on any other domain **must** set it. |
 | `BEEL_OAUTH_ISSUER` | yes | Must equal the `iss` in BeeL's tokens. `authorize`/`token`/`revoke` derive from it as `<issuer>/oauth2/*`. |
 | `BEEL_BASE_URL` | yes | API base the user's token is forwarded to. |
 | `BEEL_OAUTH_CLIENT_ID` | no | Defaults to `beel-mcp`. |

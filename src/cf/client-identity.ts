@@ -1,6 +1,5 @@
 import { SignJWT } from 'jose';
 import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider';
-import { BEEL_DEFAULTS } from '../shared/defaults.js';
 
 /**
  * Identity of the END client (Claude, Cursor, …) as far as it can be known.
@@ -118,7 +117,6 @@ export async function resolveClientIdentity(
 /** Claim names of the identity assertion (mirrored by the backend verifier). */
 export const IDENTITY_ASSERTION = {
   PARAM: 'client_identity_assertion',
-  ISSUER: BEEL_DEFAULTS.publicUrl,
   CLAIM_LABEL: 'client_label',
   CLAIM_ORIGIN: 'client_origin',
   CLAIM_VERIFIED: 'client_verified',
@@ -140,7 +138,13 @@ export async function createIdentityAssertion(
   identity: ClientIdentity,
   hmacSecret: string,
   audience: string,
-  binding: { clientId: string; redirectUri: string | undefined },
+  /**
+   * `issuer` is this server's configured public origin, and `redirectUri` the
+   * callback derived from it. Both are passed in rather than read from a
+   * constant: a deployment on another origin must assert its own identity, and
+   * the two must agree or the backend cannot verify the binding.
+   */
+  binding: { issuer: string; clientId: string; redirectUri: string },
 ): Promise<string> {
   const key = new TextEncoder().encode(hmacSecret);
   return new SignJWT({
@@ -148,10 +152,10 @@ export async function createIdentityAssertion(
     [IDENTITY_ASSERTION.CLAIM_ORIGIN]: identity.origin ?? null,
     [IDENTITY_ASSERTION.CLAIM_VERIFIED]: identity.verified,
     [IDENTITY_ASSERTION.CLAIM_CLIENT_ID]: binding.clientId,
-    [IDENTITY_ASSERTION.CLAIM_REDIRECT_URI]: binding.redirectUri ?? null,
+    [IDENTITY_ASSERTION.CLAIM_REDIRECT_URI]: binding.redirectUri,
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setIssuer(IDENTITY_ASSERTION.ISSUER)
+    .setIssuer(binding.issuer)
     .setAudience(audience)
     .setIssuedAt()
     .setExpirationTime(`${IDENTITY_ASSERTION.TTL_SECONDS}s`)
