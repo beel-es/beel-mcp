@@ -73,6 +73,9 @@ reproducible from a clone.
 | `MCP_VERIFIED_CLIENTS` | no | JSON array of `{prefix,name}` extending the built-in list of well-known MCP callbacks. Can only extend it: every entry is re-validated as a non-loopback `https` callback. |
 | `BEEL_OAUTH_CLIENT_SECRET` | secret | Only for a confidential client. |
 | `BACKEND_REPOSITORY` | GitHub var | Only for `sync-spec.yml`: `owner/name` of the private backend repository the contract is bundled from. |
+
+Secrets set with `wrangler secret put` survive redeploys, so Workers Builds does not
+need them in its own build settings.
 | `MCP_IDENTITY_HMAC_KEY` | secret | Dedicated key for the client-identity assertion (see below). Falls back to the client secret if unset; give it its own key so the two rotate independently. |
 
 Individual OAuth endpoints can be overridden with `BEEL_OAUTH_AUTHORIZE_URL`,
@@ -85,20 +88,20 @@ Individual OAuth endpoints can be overridden with `BEEL_OAUTH_AUTHORIZE_URL`,
 
 ## 5. Deploy
 
-Deployment runs from GitHub Actions (`.github/workflows/deploy.yml`) on every push
-to the default branch, and can be triggered by hand from the Actions tab. The job
-re-runs the contract check, the typechecks and the test suite before uploading, then
-polls `/healthz` until the new version answers — so a deploy that uploads but does not
-serve fails loudly instead of looking green.
+Deployment runs through **Cloudflare Workers Builds**, connected to this repository:
+every push to the production branch builds and deploys, with no pipeline to maintain.
 
-Two repository secrets are required:
+### Required build configuration
 
-| Secret | Value |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | An API token scoped to **Workers Scripts: Edit** for this account. Nothing broader. |
-| `CLOUDFLARE_ACCOUNT_ID` | The account id shown in the Cloudflare dashboard. |
+In **Settings → Build → Branch control**, keep **"Builds for non-production branches"
+disabled**, so that only the production branch builds.
 
-To deploy from a laptop instead — for a first deploy, or to check a bundle:
+This is a security requirement rather than a preference: build environments hold
+deployment credentials, and they should only ever be reachable from a branch that
+requires write access to push to. Re-check it after any reconfiguration of the
+connection — nothing in this repository can enforce a setting that lives elsewhere.
+
+### Deploying by hand
 
 ```bash
 npx wrangler deploy --dry-run --outdir /tmp/worker-build   # bundles, no credentials
@@ -108,23 +111,6 @@ npx wrangler deploy                                        # uses your wrangler 
 Then point an MCP client at `https://<your-host>/mcp` and log in — that is the endpoint,
 not the root, which serves nothing. `GET /healthz` answers without auth and is what a
 health check should target.
-
-### Why Actions and not Workers Builds
-
-Cloudflare can build straight from a connected repository, and that is the simpler
-setup — but it is the wrong one for a public repository. A build system wired to the
-repo may build pull requests, a pull request can change the build command, and if the
-deploy credential is present in that environment then a stranger's PR can read it. It
-is a well-known way to lose a token.
-
-GitHub Actions does not have that failure mode by construction: a `pull_request` from a
-fork runs **without access to secrets**, and the deploy workflow only triggers on a push
-to the default branch — which already requires write access — or on a manual dispatch.
-There is no setting to get wrong.
-
-**If you migrate an existing deployment, disconnect Workers Builds from the repository
-in the Cloudflare dashboard.** Left connected it keeps deploying in parallel, so two
-pipelines race on every push and the credential stays exposed, which defeats the point.
 
 ## How a connection is established
 

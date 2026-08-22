@@ -13,22 +13,23 @@ in the subject line — those are escalated immediately.
 In scope: this MCP server, the remote deployment at `mcp.beel.es`, and the OAuth flow
 between them and the BeeL API.
 
-Out of scope: the BeeL API and web application (report those the same way, they
-are simply handled by a different team), and findings that require an attacker to
-already hold a valid BeeL API key or access token for the affected account.
+Out of scope here: the BeeL API and web application — report those to the same
+address and they will be routed — and findings that require already holding a
+valid BeeL credential for the affected account.
 
-## What this server is, security-wise
+## Design decisions worth knowing before you report
 
-Some deliberate design decisions are easy to mistake for bugs:
+These are intentional, and stating them saves everyone a round trip:
 
-- **The guardrails are not an authorization boundary.** Fiscal invariants are
-  enforced by the BeeL API. The checks in `src/guardrails/validate.ts` are a
-  pre-flight that mirrors a strict subset of the API's own rejections; they exist
-  to fail faster with a better message, never to grant or withhold access.
+- **The BeeL API is the authority on every fiscal invariant.** The checks in
+  `src/guardrails/validate.ts` are a pre-flight that mirrors a strict subset of
+  the API's own rejections, so they can only fail a request earlier and more
+  clearly. They are not an access-control layer and nothing depends on them
+  being exhaustive.
 - **The invoice-PDF relay grants no new access.** The presigned URL is itself the
   capability; the relay only re-serves those bytes inline for a sandboxed viewer,
-  and only for hosts explicitly listed in `BEEL_PDF_STORAGE_HOSTS`. With that
-  variable unset the relay is disabled.
+  and only for an explicitly configured allowlist of storage hosts. It fails
+  closed when unconfigured.
 - **Tool annotations are advisory.** `destructiveHint` and friends are hints MCP
   clients use to decide whether to confirm an action. They are not enforcement.
 

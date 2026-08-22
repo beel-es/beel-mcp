@@ -42,8 +42,9 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
 
 - **No constant lives in two places.** Endpoints, client ids, header names, TTLs
   and environment-variable names all come from `src/shared/defaults.ts`. This is
-  not style: two scope lists in two files once drifted apart and sent clients to
-  consent for scopes the backend rejected.
+  not a style rule: two copies of the same list are two things to remember, and
+  the failure when they disagree shows up in the OAuth consent screen rather
+  than in a test.
 - **No infrastructure in code.** Storage hosts, KV ids, routes and secrets are
   environment configuration. If you find yourself typing a hostname into a `.ts`
   file, add an environment variable to `ENV_VAR` instead.
@@ -52,8 +53,8 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
   `validate.ts`, and only if the contract documents the same rejection — the
   pre-flight must stay a strict subset of what the API refuses, or it will block
   valid invoices. What an error code means and what to do about it goes in
-  `catalog.ts`, never inlined at a call site: it used to be, in two places, and
-  they drifted.
+  `catalog.ts`, never inlined at a call site, so that the same code always reads
+  the same way to an agent no matter which layer caught it.
 - **A new guardrail is one Markdown file.** Add `rules/<id>.md` with `title`,
   `docPath` and `summary` front matter, register it in `rules.ts`, and map the
   operations it constrains in `enrich.ts`. No metadata lives outside the file.
@@ -65,14 +66,14 @@ sync. After a legitimate sync, regenerate the lock in the same commit with
 
 Three workflows, and none of them overlap:
 
-| Workflow | Trigger | What it does |
+| What | Trigger | Does |
 |---|---|---|
-| `ci.yml` | every push and pull request | contract lock, typechecks, tests, build, stdio smoke test. No secrets, so it is safe on PRs from forks |
-| `deploy.yml` | push to the default branch | re-runs the gates, then `wrangler deploy`, then polls `/healthz` |
+| `ci.yml` | every push and pull request | contract lock, typechecks, tests, build, stdio smoke test. Uses no secrets, so it is safe on pull requests from forks |
 | `sync-spec.yml` | `repository_dispatch` from the backend | re-bundles the contract, refreshes the lock, commits |
+| Cloudflare Workers Builds | push to the production branch | builds and deploys the Worker |
 
-Deployment lives in Actions rather than in a repository-connected build system on
-purpose — see the reasoning in [DEPLOY.md](./DEPLOY.md#why-actions-and-not-workers-builds).
+Workers Builds must have **"Builds for non-production branches" disabled**; see
+[DEPLOY.md](./DEPLOY.md#required-build-configuration).
 
 ## Pull requests
 

@@ -6,11 +6,11 @@ import { workflowTools } from '../src/tools/workflow-tools.js';
 import { prompts } from '../src/prompts/workflows.js';
 
 /**
- * The README states counts, and counts rot. It claimed "~80 API tools" against
- * 119, and "issue-invoice, fix-invoice" against seven prompts — both read as
- * carelessness to anyone who checks, which on a repository whose selling point
- * is that it cannot drift from the contract is the worst possible first
- * impression. Assert them instead of trusting a future editor to remember.
+ * The README states counts, and counts rot as the contract grows. On a project
+ * whose whole claim is that its surface is derived rather than maintained by
+ * hand, a number that no longer matches is the first thing a reader can check
+ * and the worst one to get wrong. So assert them rather than trusting an editor
+ * to remember.
  */
 const readme = readFileSync('README.md', 'utf8');
 

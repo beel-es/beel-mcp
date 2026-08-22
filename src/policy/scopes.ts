@@ -68,13 +68,13 @@ export function intersectScopes(needed: string[], grantable: readonly string[]):
 }
 
 /**
- * Which BeeL environment a granted scope set operates on. Single definition:
- * this used to be inlined as `scopes.includes('sandbox') ? 'test' : 'live'` in
- * two runtimes, free to drift apart.
+ * Which BeeL environment a granted scope set operates on. Defined once, and
+ * read by both runtimes, so the two can never disagree about whether a session
+ * is live.
  *
  * Absence of `sandbox` means LIVE, and that is deliberate: `sandbox` is never
  * granted by default, so a plain connection touches real fiscal data. The value
- * is surfaced to the agent (see `server.ts`) precisely so it knows that.
+ * is surfaced to the agent precisely so it knows that.
  */
 export function keyEnvFromScopes(scopes: readonly string[]): KeyEnv {
   return scopes.includes(SANDBOX_SCOPE) ? 'test' : 'live';

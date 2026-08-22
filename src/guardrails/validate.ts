@@ -72,10 +72,9 @@ export class GuardrailError extends Error {
  *
  * `fix` is required rather than borrowed from the error catalogue, and that is
  * the point: the catalogue is deliberately sparse because an API rejection
- * arrives with the API's own message explaining it. A pre-flight rejection has
- * no such message — this text is all the agent gets — so it must be written
- * here. An earlier version delegated, and trimming the catalogue silently
- * degraded these to "Resolve LINE_UNIT_PRICE_XOR_DECLARED_TOTAL."
+ * already arrives with the API's own message explaining it. A pre-flight
+ * rejection has no such message — this text is everything the agent gets — so
+ * each rule states its own, and the two layers stay independent.
  */
 function apiViolation(code: string, path: string, message: string, fix: string): GuardrailViolation {
   return { code, origin: 'api', path, message, fix };

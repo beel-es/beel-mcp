@@ -96,9 +96,8 @@ describe('docs search ranking', () => {
   const chunk = (page: string, heading: string, content: string) => ({ page, heading, content });
 
   it('does not let one enormous section win every query', () => {
-    // Regression: the corpus holds a 54 KB table of error codes that mentions
-    // nearly every term once, and with raw term frequency it came first for
-    // "factura simplificada" and "nif validar" alike — burying the real answer.
+    // The corpus holds a 54 KB reference table that mentions nearly every term.
+    // Under raw term frequency it outranks the section that actually answers.
     const giant = chunk('All error codes', 'Full table', `${'SIMPLIFICADA lorem ipsum '.repeat(2000)}`);
     const answer = chunk('Invoice types', 'F2 — Factura simplificada', 'A simplificada is capped at 3000 EUR including VAT.'.repeat(6));
     const [top] = searchChunks([giant, answer], ['simplificada'], 1);

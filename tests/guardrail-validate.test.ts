@@ -184,10 +184,8 @@ describe('executable guardrails — dispatch', () => {
 });
 
 describe('every violation carries a usable fix', () => {
-  // Regression guard: the fix text used to be borrowed from the error catalogue,
-  // so trimming that catalogue silently degraded these to "Resolve <CODE>." A
-  // pre-flight rejection has no API message behind it — this text is all the
-  // agent gets, so it must always say something actionable.
+  // A pre-flight rejection has no API message behind it: this text is everything
+  // the agent gets. It must always name a concrete change, never restate the code.
   const PAYLOADS: Array<[string, unknown]> = [
     ['createCompanyInvoice', { type: 'SIMPLIFIED', lines: [{ quantity: 1, unit_price: 10, total_excluding_tax: 10, discount_percentage: 5, irpf_rate: 15 }] }],
     ['createCompanyInvoice', { lines: [{ quantity: 1, unit_price: 10, equivalence_surcharge_rate: 5.2, main_tax: { regime_key: '01' } }] }],
