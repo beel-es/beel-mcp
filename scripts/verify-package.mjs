@@ -1,66 +1,93 @@
 #!/usr/bin/env node
 /**
- * Verifies what would actually ship to npm, after a build.
+ * Verifies the package by installing it and running it.
  *
- * This is deliberately not a unit test: it inspects build output and the packed
- * tarball, so it only means anything once `npm run build` has run. Wiring it
- * into the pipelines instead keeps the test suite runnable without a build,
- * while still failing loudly when the package is wrong — which is the failure
- * nobody notices until someone runs the published binary.
+ * Whether a file exists in `dist/` says nothing about whether a consumer gets
+ * it — that is decided by `files` in package.json, and the smoke test in the
+ * workflow cannot tell the difference because it runs `dist/index.js` directly.
+ * So this packs the tarball, installs it into a temporary directory, and drives
+ * the installed binary over the protocol.
+ *
+ * It deliberately asks npm nothing about what it packed. An earlier version
+ * parsed `npm pack --json` and broke when npm 12 changed that output's shape,
+ * reporting an empty package and stopping a release for no reason. Running the
+ * thing is both simpler and more honest: it fails only when a consumer would
+ * actually be broken.
  *
  *   npm run verify:package
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+/** A tool that must be present, proving the contract was packed and parsed. */
+const A_TOOL = 'beel_create_company_invoice';
+
+/** The viewer resource, which the stdio server reads from disk at runtime. */
+const VIEWER_URI = 'ui://beel/invoice-pdf.html';
+
+const REQUESTS = [
+  { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'verify', version: '0' } } },
+  { jsonrpc: '2.0', method: 'notifications/initialized' },
+  { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+  { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: VIEWER_URI } },
+];
+
+const workspace = mkdtempSync(join(tmpdir(), 'beel-mcp-verify-'));
 const problems = [];
 
-// npm rewrites a bin path that starts with "./" and warns that it had to correct
-// the manifest. Cheap to get right, and the warning is on every publish otherwise.
-for (const [name, target] of Object.entries(pkg.bin ?? {})) {
-  if (target.startsWith('./')) {
-    problems.push(`bin "${name}" is "${target}"; npm will rewrite it. Drop the leading "./".`);
-  }
-}
+try {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
-// The binary is what `npx @beel_es/mcp` executes.
-for (const [name, target] of Object.entries(pkg.bin ?? {})) {
-  const path = target.replace(/^\.\//, '');
-  if (!existsSync(path)) {
-    problems.push(`bin "${name}" points at ${path}, which the build did not produce.`);
-    continue;
-  }
-  if (!readFileSync(path, 'utf8').startsWith('#!')) {
-    problems.push(`${path} has no shebang, so npx cannot execute it.`);
-  }
-}
+  // Pack and install exactly what a consumer would receive.
+  const tarball = execFileSync('npm', ['pack', '--silent'], { encoding: 'utf8' }).trim().split('\n').pop();
+  execFileSync('npm', ['install', '--silent', '--no-save', join(process.cwd(), tarball)], {
+    cwd: workspace,
+    stdio: 'pipe',
+  });
+  rmSync(tarball);
 
-// The stdio server reads the viewer from disk at runtime. The Worker embeds the
-// same file as a text module, so only the npm package notices when it is absent.
-const VIEWER = 'dist/mcpapp/invoice-pdf.html';
-if (!existsSync(VIEWER)) {
-  problems.push(`${VIEWER} is missing. The bundler wipes dist/, so it must be built after it.`);
-}
+  const [binary] = Object.keys(pkg.bin ?? {});
+  if (!binary) throw new Error('package.json declares no binary to run.');
+  const installed = join(workspace, 'node_modules', '.bin', binary);
 
-// Ask npm what the tarball would contain, rather than assuming `files` is right.
-const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], { encoding: 'utf8' }));
-const shipped = new Set((packed[0]?.files ?? []).map((f) => f.path));
+  const output = execFileSync('node', [installed], {
+    input: REQUESTS.map((r) => JSON.stringify(r)).join('\n') + '\n',
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
 
-for (const required of ['dist/index.js', VIEWER, 'openapi/public-api.yaml', 'LICENSE', 'README.md']) {
-  if (!shipped.has(required)) problems.push(`${required} would not be published.`);
-}
-for (const path of shipped) {
-  if (/^(src|tests|scripts|\.github)\//.test(path)) {
-    problems.push(`${path} would be published, and has no business in a consumer's node_modules.`);
+  const replies = new Map(
+    output
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((m) => m.id !== undefined)
+      .map((m) => [m.id, m]),
+  );
+
+  const tools = replies.get(2)?.result?.tools ?? [];
+  if (!tools.some((t) => t.name === A_TOOL)) {
+    problems.push(`The installed server does not expose ${A_TOOL}; the OpenAPI contract did not ship.`);
   }
+
+  const viewer = replies.get(3);
+  if (viewer?.error) {
+    problems.push(`${VIEWER_URI} is unreadable once installed: ${viewer.error.message}`);
+  }
+
+  if (problems.length === 0) {
+    console.log(`Package verified by installing it: ${tools.length} tools, viewer readable.`);
+  }
+} catch (err) {
+  problems.push(err instanceof Error ? err.message : String(err));
+} finally {
+  rmSync(workspace, { recursive: true, force: true });
 }
 
 if (problems.length > 0) {
-  console.error('The package that would be published is wrong:\n');
+  console.error('The package a consumer would install is broken:\n');
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
 }
-
-const size = Math.round((packed[0]?.size ?? 0) / 1024);
-console.log(`Package verified: ${shipped.size} files, ${size} kB packed.`);

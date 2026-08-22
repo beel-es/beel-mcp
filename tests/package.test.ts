@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs';
 
 /**
  * What ships to npm is decided by `package.json` — the `files` list, the `bin`
- * entry, and the order the build steps run in. This asserts those decisions.
+ * entry, and the order the build steps run in. This asserts those decisions,
+ * and nothing that requires a build: the suite runs before one in CI.
  *
- * Whether the build actually produced them is a different question, and one this
- * suite cannot answer: tests run before the build in CI. `npm run verify:package`
- * checks the built output and the packed tarball, and runs in both pipelines.
+ * Whether the decisions actually produce a working package is a different
+ * question, and one only `npm run verify:package` can answer — it packs the
+ * tarball, installs it, and drives the installed binary over the protocol.
  */
 const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
   bin?: Record<string, string>;
