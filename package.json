@@ -28,7 +28,8 @@
     "spec:verify": "node scripts/spec-lock.mjs",
     "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",
     "tools:list": "tsx --import ./scripts/text-loader.mjs scripts/list-tools.mts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "repository": {
     "type": "git",

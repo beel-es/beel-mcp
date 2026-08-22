@@ -55,6 +55,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run verify:package
 
       # A tag that disagrees with package.json publishes a version nobody asked
       # for, under a name that suggests otherwise. Cheap to check, expensive to undo.
