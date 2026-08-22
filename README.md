@@ -1,7 +1,28 @@
-# BeeL MCP server — VeriFactu-compliant invoicing for AI agents
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/beel-logo-dark.svg">
+  <img src=".github/assets/beel-logo.svg" alt="BeeL" height="44">
+</picture>
+
+<h1>MCP server</h1>
+
+<p><strong>Facturación electrónica española con VeriFactu, para agentes de IA.</strong><br>
+Spanish e-invoicing with VeriFactu compliance, built for AI agents.</p>
 
 [![CI](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-224DA9.svg)](./LICENSE)
+[![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-224DA9)](https://modelcontextprotocol.io)
+[![Docs](https://img.shields.io/badge/docs-docs.beel.es-224DA9)](https://docs.beel.es/mcp)
+
+<a href="#quick-start"><b>Quick start</b></a> ·
+<a href="#the-fiscal-guardrails"><b>Fiscal guardrails</b></a> ·
+<a href="#configuration"><b>Configuration</b></a> ·
+<a href="./DEPLOY.md"><b>Self-hosting</b></a>
+
+</div>
+
+---
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI agent issue **legally
 compliant Spanish electronic invoices** — VeriFactu registration with AEAT, F1/F2 invoice
@@ -199,12 +220,34 @@ npm run spec:verify  # the vendored contract still matches its lock
 two disagree, which is what keeps a vendored contract honest. See
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## Related
+## The rest of the BeeL developer ecosystem
 
-- [`@beel_es/cli`](https://docs.beel.es/cli) — the same contract from the terminal
-- [BeeL API reference](https://docs.beel.es) · [MCP guide](https://docs.beel.es/mcp)
-- [Security policy](./SECURITY.md)
+Everything below derives from the same OpenAPI contract, so the vocabulary — invoice
+types, regime keys, series, VeriFactu states — is identical wherever you meet it.
+
+| | |
+|---|---|
+| [**REST API**](https://docs.beel.es) | The contract itself. Everything else is a projection of it |
+| [**CLI**](https://docs.beel.es/cli) | The same surface from a terminal, sandbox by default |
+| [**n8n node**](https://docs.beel.es/tools) | Invoicing inside a no-code workflow |
+| [**Claude Code plugin**](https://docs.beel.es/claude-code) | Implement, audit and maintain a BeeL integration |
+| [**Machine-readable docs**](https://docs.beel.es/llms.txt) | `llms.txt` for agents that would rather read than guess |
+
+## Contributing
+
+Bug reports and pull requests are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for
+how the project is laid out and which conventions are load-bearing. Security issues go to
+**security@beel.es** rather than a public issue; see [SECURITY.md](./SECURITY.md).
 
 ## License
 
-MIT © BeeL
+MIT © [BeeL](https://beel.es)
+
+<div align="center">
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/beel-logo-dark.svg">
+  <img src=".github/assets/beel-logo.svg" alt="BeeL" height="26">
+</picture>
+<p><sub><a href="https://beel.es">beel.es</a> · <a href="https://docs.beel.es">Documentación</a> · <a href="https://docs.beel.es/mcp">Guía del MCP</a></sub></p>
+</div>
