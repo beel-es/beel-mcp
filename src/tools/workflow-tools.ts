@@ -190,7 +190,7 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
   for (const b of blockers) missing.push(explainCode(b));
   if (verifactu && !verifactu.enabled) {
     missing.push(
-      'VeriFactu is disabled; enable it with beel_update_company_veri_factu_configuration if this NIF must reach AEAT.',
+      'VeriFactu is disabled; enable it with beel_update_verifactu_configuration if this NIF must reach AEAT.',
     );
   }
   if (payment_connection && !payment_connection.active) {
@@ -199,10 +199,10 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
 
   const firstBlocker = blockers[0];
   const next_action = ready
-    ? (missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_company_invoice.')
+    ? (missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_invoice.')
     : firstBlocker
       ? explainCode(firstBlocker)
-      : (missing[0] ?? 'Check beel_get_company_issuing_readiness.');
+      : (missing[0] ?? 'Check beel_get_issuing_readiness.');
 
   return {
     company_id: companyId,
@@ -267,7 +267,7 @@ export async function getSetupStatus(
       ? 'No NIFs yet. Add one with beel_create_company (scope companies:write).'
       : notReady
         ? `${notReady.nif ?? notReady.company_id}: ${notReady.next_action}`
-        : 'All NIFs can issue Live. Issue an invoice with beel_create_company_invoice.';
+        : 'All NIFs can issue Live. Issue an invoice with beel_create_invoice.';
 
   return { environment: config.env, account, companies, next_action };
 }

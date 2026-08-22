@@ -14,8 +14,8 @@ this worth checking in advance.
 1. **Auto-submit is on** for the series or integration used.
 2. **A VeriFactu configuration exists** — signed representation document, target
    environment, authorised NIFs. Read it with
-   `beel_get_company_veri_factu_configuration`, change it with
-   `beel_update_company_veri_factu_configuration`.
+   `beel_get_verifactu_configuration`, change it with
+   `beel_update_verifactu_configuration`.
 3. **The configuration's `enabled` flag is on** — the account-wide kill switch.
 
 ## Checking before you issue

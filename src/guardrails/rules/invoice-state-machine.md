@@ -18,14 +18,14 @@ voiding or correcting.
 
 | Operation | Tool | Allowed from |
 |---|---|---|
-| Edit | `beel_patch_company_invoice` | `DRAFT` only |
-| Delete | `beel_delete_company_invoice` | `DRAFT` only |
-| Issue | `beel_issue_company_invoice`, or create with `options.issue_directly` | `DRAFT` |
-| Schedule | `beel_set_company_invoice_schedule` | `DRAFT` only |
-| Mark sent / paid | `beel_set_company_invoice_status` | after issuing |
-| Send by email | `beel_send_company_invoice` | after issuing |
-| Void | `beel_void_company_invoice` | issued and not already voided |
-| Correct | `beel_create_company_corrective_invoice` | issued |
+| Edit | `beel_patch_invoice` | `DRAFT` only |
+| Delete | `beel_delete_invoice` | `DRAFT` only |
+| Issue | `beel_issue_invoice`, or create with `options.issue_directly` | `DRAFT` |
+| Schedule | `beel_set_invoice_schedule` | `DRAFT` only |
+| Mark sent / paid | `beel_set_invoice_status` | after issuing |
+| Send by email | `beel_send_invoice` | after issuing |
+| Void | `beel_void_invoice` | issued and not already voided |
+| Correct | `beel_create_corrective_invoice` | issued |
 
 ## The rules that matter
 
@@ -36,5 +36,5 @@ voiding or correcting.
 - **Correcting creates a new invoice** that references the original. The original becomes
   `RECTIFIED` (partial) or `VOIDED` (total). Nothing is ever erased from AEAT.
 - **Check before you mutate.** Read the current `status` with
-  `beel_get_company_invoice` rather than assuming; an operation the status does not allow
+  `beel_get_invoice` rather than assuming; an operation the status does not allow
   is rejected with `TRANSITION_NOT_SUPPORTED`.

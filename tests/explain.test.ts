@@ -46,7 +46,7 @@ describe('explaining API errors', () => {
       details: { blockers: ['NIF_NOT_REGISTERED', 'NIF_REPRESENTATION_REQUIRED'] },
     });
     expect(text).toContain('NIF_NOT_REGISTERED');
-    expect(text).toContain('beel_generate_company_representation');
+    expect(text).toContain('beel_generate_representation');
     expect(text.match(/Fix:/g)?.length).toBe(2);
     // Each bare blocker also gets its own documentation page.
     expect(text).toContain('errors/NIF_NOT_REGISTERED');
@@ -94,7 +94,7 @@ describe('explaining API errors', () => {
   });
 
   it('explainCode returns the remedy, or a usable fallback', () => {
-    expect(explainCode('NIF_NOT_REGISTERED')).toMatch(/beel_get_company_veri_factu_configuration/);
+    expect(explainCode('NIF_NOT_REGISTERED')).toMatch(/beel_get_verifactu_configuration/);
     expect(explainCode('UNKNOWN_BLOCKER')).toContain('errors/UNKNOWN_BLOCKER');
   });
 });

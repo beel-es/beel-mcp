@@ -61,7 +61,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   },
   COMPANY_NOT_ACTIVATED: {
     actor: 'configuration',
-    remedy: 'Activate the company with beel_activate_company_by_id.',
+    remedy: 'Activate the company with beel_activate_by_id.',
     guardrail: 'verifactu-gates',
   },
   COMPANY_NOT_ACTIVATED_IN_ENVIRONMENT: {
@@ -80,14 +80,14 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   NIF_NOT_REGISTERED: {
     actor: 'configuration',
     remedy:
-      'Inspect the state with beel_get_company_veri_factu_configuration, then complete ' +
+      'Inspect the state with beel_get_verifactu_configuration, then complete ' +
       'the AEAT registration for this NIF.',
     guardrail: 'verifactu-gates',
   },
   NIF_REPRESENTATION_REQUIRED: {
     actor: 'configuration',
     remedy:
-      'Generate the representation with beel_generate_company_representation, then have ' +
+      'Generate the representation with beel_generate_representation, then have ' +
       'it signed. Only required in production.',
     guardrail: 'verifactu-gates',
   },
@@ -99,18 +99,18 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   SERIES_DEFAULT_NOT_FOUND: {
     actor: 'configuration',
     remedy:
-      'Set one with beel_set_company_default_series, or pass an explicit series_id. The ' +
+      'Set one with beel_set_default_series, or pass an explicit series_id. The ' +
       'details name the document type required.',
     guardrail: 'series-and-numbering',
   },
   MISSING_DEFAULT_SERIES: {
     actor: 'configuration',
-    remedy: 'Set one with beel_set_company_default_series, or pass series_id explicitly.',
+    remedy: 'Set one with beel_set_default_series, or pass series_id explicitly.',
     guardrail: 'series-and-numbering',
   },
   SERIES_INCOMPATIBLE_DOC_TYPE: {
     actor: 'request',
-    remedy: 'List the available series with beel_list_company_series and pick a matching one.',
+    remedy: 'List the available series with beel_list_series and pick a matching one.',
     guardrail: 'series-and-numbering',
   },
   SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR: {
@@ -137,7 +137,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   TRANSITION_NOT_SUPPORTED: {
     actor: 'request',
     remedy:
-      'Read the current status with beel_get_company_invoice and pick an operation it ' +
+      'Read the current status with beel_get_invoice and pick an operation it ' +
       'allows. Issued invoices are amended by voiding or correcting, never edited.',
     guardrail: 'invoice-state-machine',
   },
@@ -150,7 +150,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   INVOICE_DUPLICATE_EXTERNAL_REFERENCE: {
     actor: 'request',
     remedy:
-      'Filter beel_list_company_invoices by external_ref first — this usually means the ' +
+      'Filter beel_list_invoices by external_ref first — this usually means the ' +
       'invoice you are about to create already exists.',
   },
   PROFORMA_ALREADY_CONVERTED: {

@@ -52,7 +52,7 @@ describe('beel_get_setup_status', () => {
     expect(co.blockers).toContain('SERIES_DEFAULT_NOT_FOUND');
     expect(co.default_series).toEqual({ all_configured: false, missing: ['F1'] });
     expect(co.verifactu).toEqual({ enabled: false, apply_by_default: false });
-    expect(co.next_action).toContain('beel_set_company_default_series');
+    expect(co.next_action).toContain('beel_set_default_series');
     expect(status.next_action).toContain('B1');
   });
 
@@ -70,7 +70,7 @@ describe('beel_get_setup_status', () => {
     const co = status.companies[0]!;
     expect(co.ready).toBe(true);
     expect(co.payment_connection).toEqual({ count: 1, active: true });
-    expect(status.next_action).toContain('beel_create_company_invoice');
+    expect(status.next_action).toContain('beel_create_invoice');
   });
 
   it('degrades gracefully when a sub-call fails', async () => {

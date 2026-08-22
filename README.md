@@ -153,7 +153,7 @@ human in the caller's language, `error.details` carries the specifics, and the R
 `type` field links to a documentation page for that exact code (around 357 of them). The
 server relays all of that untouched, and adds only the two things a response cannot
 carry: **the remedy as a tool call** — the docs address someone with the dashboard open
-("create a series in settings"), an agent needs `beel_set_company_default_series` — and
+("create a series in settings"), an agent needs `beel_set_default_series` — and
 **whether retrying can possibly help**, which is what stops an agent looping on a 403
 that needs an administrator. `src/guardrails/catalog.ts` holds only codes where one of
 those applies; anything else passes through, because a paraphrase would be worse than the

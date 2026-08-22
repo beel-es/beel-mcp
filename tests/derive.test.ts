@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pathParams, snakeCase, toolName, words } from '../src/spec/derive.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { MAX_TOOL_NAME_LENGTH } from '../src/spec/derive.js';
 import { docsTools } from '../src/tools/docs-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 
@@ -47,11 +48,25 @@ describe('the derived tool surface stays valid as the contract grows', () => {
   });
 
   it('produces names every MCP client will accept', () => {
-    // Clients validate tool names, and several cap them at 64 characters. A new
-    // deeply-nested operation could cross that and be silently dropped from the
-    // tool list rather than fail loudly.
-    const invalid = allTools.filter((name) => !/^[a-z][a-z0-9_]{0,63}$/.test(name));
-    expect(invalid).toEqual([]);
+    // Hosts and portals prepend their own server and connector names, and warn
+    // past 40 characters. A name that gets truncated or rejected is a tool the
+    // model cannot call at all, so this is a hard ceiling rather than a style
+    // preference — and it is what the shortening in derive.ts exists to respect.
+    const tooLong = allTools.filter((name) => name.length > MAX_TOOL_NAME_LENGTH);
+    expect(tooLong).toEqual([]);
+
+    const malformed = allTools.filter((name) => !/^[a-z][a-z0-9_]*$/.test(name));
+    expect(malformed).toEqual([]);
+  });
+
+  it('shortens only the names that need it', () => {
+    // Losing a word costs the model a hint, so it must buy something. Any name
+    // missing its "recurring invoice" noun should have been over the limit with it.
+    const shortened = buildApiTools().tools.filter((t) => t.tool.name.includes('recurring_next'));
+    for (const tool of shortened) {
+      const withNoun = tool.tool.name.replace('recurring_', 'recurring_invoice_');
+      expect(withNoun.length, tool.tool.name).toBeGreaterThan(MAX_TOOL_NAME_LENGTH);
+    }
   });
 
   it('prefixes every tool, so the namespace is unmistakably ours', () => {

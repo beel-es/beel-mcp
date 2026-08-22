@@ -37,7 +37,7 @@ The recipient is optional, with or without a NIF. Two constraints:
 ## Correctives are a separate operation, not a type
 
 `type: CORRECTIVE` is **not accepted** when creating an invoice. A corrective is always
-created from the invoice it corrects, with `beel_create_company_corrective_invoice`,
+created from the invoice it corrects, with `beel_create_corrective_invoice`,
 which is where `rectification_type`, `rectification_code` and `reason` are declared.
 
 `rectification_code` is the AEAT legal motive:
