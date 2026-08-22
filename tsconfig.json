@@ -3,8 +3,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022"],
-    "types": ["node"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -20,6 +24,14 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src", "tests"],
-  "exclude": ["dist", "node_modules", "src/cf"]
+  "include": [
+    "src",
+    "tests",
+    "scripts/verify-package.d.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/cf"
+  ]
 }

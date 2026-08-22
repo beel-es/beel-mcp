@@ -47,4 +47,42 @@ describe('what the published package declares', () => {
   it('keeps a packaging check that runs after the build', () => {
     expect(pkg.scripts['verify:package']).toBeDefined();
   });
+
+  it('reads the packed file list from either npm output shape', async () => {
+    // npm 12 changed `npm pack --json` from a one-element array to an object
+    // keyed by package name. Read blindly, the packaging check reports that
+    // nothing at all would be published — alarming, and completely wrong.
+    const { readPackedEntry } = await import('../scripts/verify-package.mjs');
+    const entry = { files: [{ path: 'dist/index.js' }], size: 1234 };
+
+    expect(readPackedEntry([entry])).toEqual(entry);
+    expect(readPackedEntry({ '@beel_es/mcp': entry })).toEqual(entry);
+  });
+
+  it('refuses to interpret an output shape it does not recognise', async () => {
+    // Failing loudly beats reporting an empty package as if it were the truth.
+    const { readPackedEntry } = await import('../scripts/verify-package.mjs');
+    expect(() => readPackedEntry({})).toThrow();
+    expect(() => readPackedEntry({ pkg: { files: 'not an array' } })).toThrow();
+  });
+
+  it('names what is missing, and what should not be there', async () => {
+    const { findProblems } = await import('../scripts/verify-package.mjs');
+    const manifest = { bin: { 'beel-mcp': 'dist/index.js' } };
+
+    const complete = findProblems(manifest, new Set([
+      'dist/index.js', 'dist/mcpapp/invoice-pdf.html',
+      'openapi/public-api.yaml', 'LICENSE', 'README.md',
+    ]));
+    expect(complete).toEqual([]);
+
+    const missing = findProblems(manifest, new Set(['dist/index.js']));
+    expect(missing.join(' ')).toMatch(/invoice-pdf\.html would not be published/);
+
+    const leaking = findProblems(manifest, new Set([
+      ...['dist/index.js', 'dist/mcpapp/invoice-pdf.html', 'openapi/public-api.yaml', 'LICENSE', 'README.md'],
+      'src/index.ts',
+    ]));
+    expect(leaking.join(' ')).toMatch(/src\/index\.ts would be published/);
+  });
 });
