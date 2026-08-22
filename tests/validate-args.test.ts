@@ -21,14 +21,14 @@ describe('argument validation against the derived inputSchema', () => {
   });
 
   it('reports a missing required argument by name', () => {
-    const tool = byName.get('beel_create_company_invoice');
+    const tool = byName.get('beel_create_invoice');
     expect(tool).toBeDefined();
     const issues = findArgumentIssues(tool!, {});
     expect(issues.join(' ')).toMatch(/company_id/);
   });
 
   it('rejects a wrongly typed argument', () => {
-    const tool = byName.get('beel_create_company_invoice');
+    const tool = byName.get('beel_create_invoice');
     expect(() => assertValidArguments(tool!, { company_id: 123 })).toThrow(/company_id/);
   });
 

@@ -11,8 +11,8 @@ Getting this wrong is not a UX problem, it is a misdeclaration.
 
 | The situation | What it is | What to call |
 |---|---|---|
-| The invoice **should never have existed** — wrong customer billed, accidental duplicate | **Anulación** | `beel_void_company_invoice` |
-| The invoice **should exist but its data is wrong** — amount, IVA rate, NIF, name, post-issue discount, bad debt | **Rectificativa** | `beel_create_company_corrective_invoice` |
+| The invoice **should never have existed** — wrong customer billed, accidental duplicate | **Anulación** | `beel_void_invoice` |
+| The invoice **should exist but its data is wrong** — amount, IVA rate, NIF, name, post-issue discount, bad debt | **Rectificativa** | `beel_create_corrective_invoice` |
 | A registro was **rejected by AEAT for a non-fiscal reason** — a typo in a description | **Subsanación** | Nothing: BeeL retries automatically. There is no public endpoint |
 
 **Voiding does not fix errors.** It states that the operation never happened. If the
