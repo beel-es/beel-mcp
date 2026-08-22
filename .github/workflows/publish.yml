@@ -9,11 +9,9 @@ name: Publish to npm
 # automatically, so the published package records the exact commit and workflow
 # it was built from.
 #
-# One-time setup on npmjs.com, under the package's Settings → Trusted Publisher:
-#   Provider: GitHub Actions · Repository: beel-es/beel-mcp
-#   Workflow: publish.yml · Environment: (leave empty)
-# See CONTRIBUTING.md for the bootstrap, since npm needs the package to exist
-# before that screen is reachable.
+# This does NOT work until a trusted publisher is attached to the package, and npm
+# requires the package to already exist before one can be. The first version is
+# therefore published by hand; see "First-time setup" in CONTRIBUTING.md.
 #
 # To release:  npm version <patch|minor|major> && git push --follow-tags
 

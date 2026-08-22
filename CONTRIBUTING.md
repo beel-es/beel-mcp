@@ -93,13 +93,28 @@ package, and npm attaches provenance automatically.
 
 ### First-time setup
 
-npm can only show a package's Trusted Publisher screen once the package exists, so the
-very first version has to be published another way. Either:
+Trusted publishing cannot bootstrap itself: npm requires the package to **already exist**
+on the registry before a trusted publisher can be attached to it. So the first version is
+published by hand, once, and every version after that comes from CI.
 
-- `npx npm@latest trust` (npm ≥ 11.10.0) configures the publisher without publishing, or
-- publish `0.1.0` once from a laptop after `npm login`, then configure it.
+```bash
+# 1. Authenticate interactively. Two-factor authentication must be enabled on the
+#    account — trusted publishing requires it.
+npm login
 
-Then, on npmjs.com → the package → Settings → Trusted Publisher:
+# 2. Publish the first version from a clean checkout. This one has no provenance;
+#    every later release does, because provenance comes from the CI environment.
+npm ci && npm publish
+
+# 3. Attach the trusted publisher (npm >= 11.15.0):
+npx npm@latest trust github @beel_es/mcp \
+  --repo beel-es/beel-mcp \
+  --file publish.yml \
+  --allow-publish
+```
+
+Step 3 can also be done through npmjs.com → the package → **Settings → Trusted
+Publisher**:
 
 | Field | Value |
 |---|---|
@@ -109,7 +124,8 @@ Then, on npmjs.com → the package → Settings → Trusted Publisher:
 | Workflow filename | `publish.yml` |
 | Environment | *(empty)* |
 
-After that no credential is involved in a release, and none needs storing anywhere.
+Verify it took with `npm trust list @beel_es/mcp`. After that no credential is involved
+in a release, and none needs storing anywhere.
 
 ## Pull requests
 

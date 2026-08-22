@@ -67,10 +67,10 @@ claude mcp add beel --env BEEL_API_KEY=beel_sk_test_xxx -- npx -y @beel_es/mcp
 Keys prefixed `beel_sk_test_` are safe to experiment with; `beel_sk_live_` issues real
 fiscal documents.
 
-The package is published from CI through npm [trusted
-publishing](https://docs.npmjs.com/trusted-publishers), so every release carries
-provenance: npm records the exact commit and workflow it was built from, and you can
-verify it with `npm audit signatures`.
+Releases are published from CI through npm [trusted
+publishing](https://docs.npmjs.com/trusted-publishers), so they carry provenance: npm
+records the exact commit and workflow each build came from. Verify it with `npm audit
+signatures`.
 
 ## What it provides
 
