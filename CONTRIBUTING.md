@@ -75,6 +75,58 @@ Three workflows, and none of them overlap:
 Workers Builds must have **"Builds for non-production branches" disabled**; see
 [DEPLOY.md](./DEPLOY.md#required-build-configuration).
 
+## Releasing
+
+```bash
+npm version <patch|minor|major>
+git push --follow-tags
+```
+
+The tag triggers `publish.yml`, which re-runs the contract check, the typechecks, the
+tests and a smoke test of the built binary before publishing. It refuses to publish when
+the tag and `package.json` disagree.
+
+There is **no npm token**. Authentication is [trusted
+publishing](https://docs.npmjs.com/trusted-publishers): GitHub mints a short-lived,
+workflow-specific OIDC token that npm verifies against the publisher configured for this
+package, and npm attaches provenance automatically.
+
+### First-time setup
+
+Trusted publishing cannot bootstrap itself: npm requires the package to **already exist**
+on the registry before a trusted publisher can be attached to it. So the first version is
+published by hand, once, and every version after that comes from CI.
+
+```bash
+# 1. Authenticate interactively. Two-factor authentication must be enabled on the
+#    account — trusted publishing requires it.
+npm login
+
+# 2. Publish the first version from a clean checkout. This one has no provenance;
+#    every later release does, because provenance comes from the CI environment.
+npm ci && npm publish
+
+# 3. Attach the trusted publisher (npm >= 11.15.0):
+npx npm@latest trust github @beel_es/mcp \
+  --repo beel-es/beel-mcp \
+  --file publish.yml \
+  --allow-publish
+```
+
+Step 3 can also be done through npmjs.com → the package → **Settings → Trusted
+Publisher**:
+
+| Field | Value |
+|---|---|
+| Provider | GitHub Actions |
+| Organization | `beel-es` |
+| Repository | `beel-mcp` |
+| Workflow filename | `publish.yml` |
+| Environment | *(empty)* |
+
+Verify it took with `npm trust list @beel_es/mcp`. After that no credential is involved
+in a release, and none needs storing anywhere.
+
 ## Pull requests
 
 Keep the diff to one concern. Include a test for any behaviour change — the fiscal

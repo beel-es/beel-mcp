@@ -2,12 +2,21 @@
   "name": "@beel_es/mcp",
   "version": "0.1.0",
   "description": "MCP server for the BeeL invoicing API \u2014 VeriFactu-compliant electronic invoicing tools for LLM agents, derived from the public OpenAPI contract.",
+  "bin": {
+    "beel-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "openapi",
+    "LICENSE",
+    "README.md"
+  ],
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "node scripts/build-mcpapp.mjs && tsup",
+    "build": "tsup && node scripts/build-mcpapp.mjs",
     "build:mcpapp": "node scripts/build-mcpapp.mjs",
     "dev": "node scripts/build-mcpapp.mjs && tsx --import ./scripts/text-loader.mjs src/index.ts",
     "test": "vitest run",
@@ -18,7 +27,9 @@
     "spec:lock": "node scripts/spec-lock.mjs --write",
     "spec:verify": "node scripts/spec-lock.mjs",
     "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",
-    "tools:list": "tsx --import ./scripts/text-loader.mjs scripts/list-tools.mts"
+    "tools:list": "tsx --import ./scripts/text-loader.mjs scripts/list-tools.mts",
+    "prepublishOnly": "npm run build",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "repository": {
     "type": "git",
@@ -40,7 +51,6 @@
     "beel"
   ],
   "license": "MIT",
-  "private": true,
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.3",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
@@ -66,5 +76,9 @@
   "homepage": "https://github.com/beel-es/beel-mcp#readme",
   "bugs": {
     "url": "https://github.com/beel-es/beel-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

@@ -5,6 +5,10 @@ export default defineConfig({
   format: ['esm'],
   platform: 'node',
   target: 'node20',
+  // Wipes dist/ before writing. The MCP App viewer is generated into dist/mcpapp
+  // by scripts/build-mcpapp.mjs, so that step runs AFTER this one — the reverse
+  // order silently deletes the viewer, and only the npm package notices (the
+  // Worker embeds it as a text module at bundle time instead of reading it).
   clean: true,
   minify: false,
   sourcemap: false,

@@ -38,6 +38,10 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # What would ship to npm: the binary, its shebang, the viewer the stdio
+      # server reads from disk, and nothing that belongs only in the repository.
+      - run: npm run verify:package
+
       # The server must boot and list tools over stdio with no credentials.
       - name: Smoke test (tools/list)
         run: |
