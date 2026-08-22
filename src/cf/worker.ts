@@ -9,12 +9,7 @@ import type { ResolvedConfig } from '../config.js';
 import { keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
 import { BeelAuthHandler } from './beel-handler.js';
-import {
-  INITIAL_ACCESS_TOKEN_TTL,
-  refreshUpstream,
-  upstreamConfig,
-  workerAccessTokenTTL,
-} from './upstream.js';
+import { refreshUpstream, upstreamConfig, workerAccessTokenTTL } from './upstream.js';
 
 /**
  * Cloudflare Worker entrypoint for the remote BeeL MCP server.
@@ -61,9 +56,9 @@ let currentEnv: Env | null = null;
 
 const provider = new OAuthProvider({
   apiRoute: '/mcp',
-  // Applies to the first token of a session only; every refresh replaces it
-  // with a TTL derived from the upstream token, via tokenExchangeCallback.
-  accessTokenTTL: INITIAL_ACCESS_TOKEN_TTL,
+  // The first token of a session; every refresh replaces this with a TTL taken
+  // from the upstream token itself, via tokenExchangeCallback.
+  accessTokenTTL: workerAccessTokenTTL(),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiHandler: BeelMcpAgent.serve('/mcp') as any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

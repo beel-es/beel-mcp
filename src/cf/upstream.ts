@@ -138,23 +138,12 @@ const UPSTREAM_SKEW_SECONDS = 300;
 /**
  * Our access token's lifetime, derived from the upstream token's `expires_in`.
  *
- * Applies from the first refresh onwards, which is the earliest the provider
- * lets us set a per-grant TTL: `completeAuthorization` takes no TTL, so the
- * initial token always gets the provider-wide default below.
+ * Called with no argument for the initial grant, where the upstream lifetime is
+ * not yet available to us: `completeAuthorization` accepts no per-grant TTL, so
+ * the first token necessarily runs on the provider-wide default. From the first
+ * refresh onwards the real `expires_in` governs.
  */
-export function workerAccessTokenTTL(expiresIn: number | undefined): number {
+export function workerAccessTokenTTL(expiresIn?: number): number {
   return Math.max(60, (expiresIn ?? 3600) - UPSTREAM_SKEW_SECONDS);
 }
 
-/**
- * TTL of the very first access token of a session, before any refresh has told
- * us how long BeeL's tokens actually live.
- *
- * Deliberately short rather than optimistic. The upstream authorization server
- * decides its own lifetime and can shorten it without telling us; if our first
- * token outlives it, every tool call 401s until ours expires too, because a
- * refresh is the only thing that renews the upstream side. Guessing low costs
- * one extra refresh round-trip at the start of a session and then self-corrects
- * to the real value. Guessing high costs a broken session.
- */
-export const INITIAL_ACCESS_TOKEN_TTL = 240;

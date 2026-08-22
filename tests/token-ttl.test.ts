@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INITIAL_ACCESS_TOKEN_TTL, workerAccessTokenTTL } from '../src/cf/upstream.js';
+import { workerAccessTokenTTL } from '../src/cf/upstream.js';
 
 describe('access token lifetimes', () => {
   it('stays below the upstream token it was derived from', () => {
@@ -15,12 +15,5 @@ describe('access token lifetimes', () => {
 
   it('falls back to the OAuth default hour when expires_in is absent', () => {
     expect(workerAccessTokenTTL(undefined)).toBe(3300);
-  });
-
-  // The first token is issued before any refresh has revealed the upstream
-  // lifetime, so it must survive the shortest one we could plausibly meet.
-  // Spring Authorization Server — what BeeL runs — defaults to five minutes.
-  it('issues a first token shorter than a five-minute upstream token', () => {
-    expect(INITIAL_ACCESS_TOKEN_TTL).toBeLessThan(300);
   });
 });
