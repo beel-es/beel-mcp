@@ -1,26 +1,25 @@
-<div align="center">
+<p align="center">
+  <a href="https://beel.es">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://docs.beel.es/docs-static/beel-logo-dark.svg">
+      <img src="https://docs.beel.es/docs-static/beel-logo.svg" alt="BeeL" width="220">
+    </picture>
+  </a>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/beel-logo-dark.svg">
-  <img src=".github/assets/beel-logo.svg" alt="BeeL" height="44">
-</picture>
+<h1 align="center">BeeL MCP server</h1>
 
-<h1>MCP server</h1>
+<p align="center">
+  Facturación electrónica española con VeriFactu, para agentes de IA.<br>
+  Spanish e-invoicing with VeriFactu compliance, built for AI agents.<br>
+  <a href="https://beel.es">beel.es</a> · <a href="https://docs.beel.es">API docs</a> · <a href="https://docs.beel.es/mcp">MCP guide</a> · <a href="https://www.npmjs.com/package/@beel_es/mcp">npm</a>
+</p>
 
-<p><strong>Facturación electrónica española con VeriFactu, para agentes de IA.</strong><br>
-Spanish e-invoicing with VeriFactu compliance, built for AI agents.</p>
-
-[![CI](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-224DA9.svg)](./LICENSE)
-[![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-224DA9)](https://modelcontextprotocol.io)
-[![Docs](https://img.shields.io/badge/docs-docs.beel.es-224DA9)](https://docs.beel.es/mcp)
-
-<a href="#quick-start"><b>Quick start</b></a> ·
-<a href="#the-fiscal-guardrails"><b>Fiscal guardrails</b></a> ·
-<a href="#configuration"><b>Configuration</b></a> ·
-<a href="./DEPLOY.md"><b>Self-hosting</b></a>
-
-</div>
+<p align="center">
+  <a href="https://www.npmjs.com/package/@beel_es/mcp"><img src="https://img.shields.io/npm/v/@beel_es/mcp.svg" alt="npm version"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/Model_Context_Protocol-server-224DA9" alt="MCP server"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 ---
 
@@ -247,9 +246,11 @@ MIT © [BeeL](https://beel.es)
 
 <div align="center">
 <br>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/beel-logo-dark.svg">
-  <img src=".github/assets/beel-logo.svg" alt="BeeL" height="26">
-</picture>
+<a href="https://beel.es">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://docs.beel.es/docs-static/beel-logo-dark.svg">
+    <img src="https://docs.beel.es/docs-static/beel-logo.svg" alt="BeeL" width="120">
+  </picture>
+</a>
 <p><sub><a href="https://beel.es">beel.es</a> · <a href="https://docs.beel.es">Documentación</a> · <a href="https://docs.beel.es/mcp">Guía del MCP</a></sub></p>
 </div>
