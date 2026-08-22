@@ -16,6 +16,14 @@ import { existsSync, readFileSync } from 'node:fs';
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const problems = [];
 
+// npm rewrites a bin path that starts with "./" and warns that it had to correct
+// the manifest. Cheap to get right, and the warning is on every publish otherwise.
+for (const [name, target] of Object.entries(pkg.bin ?? {})) {
+  if (target.startsWith('./')) {
+    problems.push(`bin "${name}" is "${target}"; npm will rewrite it. Drop the leading "./".`);
+  }
+}
+
 // The binary is what `npx @beel_es/mcp` executes.
 for (const [name, target] of Object.entries(pkg.bin ?? {})) {
   const path = target.replace(/^\.\//, '');
