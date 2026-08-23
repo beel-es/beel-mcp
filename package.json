@@ -66,7 +66,7 @@
     "@redocly/cli": "^1.25.0",
     "@types/node": "^22.0.0",
     "esbuild": "^0.27.0",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.2.108",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
