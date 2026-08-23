@@ -33,6 +33,27 @@ function allowedStorageHosts(env: EnvRecord): Set<string> {
   return new Set(readEnvList(env, ENV_VAR.pdfStorageHosts));
 }
 
+/**
+ * Wrap a body stream so it errors once more than `maxBytes` have flowed through
+ * it. The client sees the stream break (a truncated download) rather than the
+ * relay buffering or forwarding an unbounded response — the size cap holds even
+ * when the upstream sends no content-length or an untruthful one.
+ */
+function capBodyStream(body: ReadableStream<Uint8Array>, maxBytes: number): ReadableStream<Uint8Array> {
+  let seen = 0;
+  const limiter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      seen += chunk.byteLength;
+      if (seen > maxBytes) {
+        controller.error(new Error('Document exceeds maximum size'));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  return body.pipeThrough(limiter);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function pdfProxyHandler(c: Context<{ Bindings: any }>): Promise<Response> {
   const raw = c.req.query('u');
@@ -86,12 +107,21 @@ export async function pdfProxyHandler(c: Context<{ Bindings: any }>): Promise<Re
     return c.text(`Upstream ${upstream.status}`, upstream.status as 400);
   }
 
+  // content-length is only a hint: it may be absent or lie. Reject early when it
+  // declares an oversized body, but never trust it as the actual limit — that is
+  // enforced byte-by-byte while streaming below.
   const declaredLength = Number(upstream.headers.get('content-length') ?? '0');
   if (declaredLength > MAX_BYTES) {
     return c.text('Document too large', 413);
   }
 
-  return new Response(upstream.body, {
+  // Enforce the ceiling on the bytes that actually arrive, not on the declared
+  // length: a response with no (or a lying) content-length would otherwise stream
+  // unbounded through the relay. The counter aborts the stream once the cap is
+  // crossed, so an oversized or endless upstream cannot exhaust the Worker.
+  const body = upstream.body ? capBodyStream(upstream.body, MAX_BYTES) : null;
+
+  return new Response(body, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',

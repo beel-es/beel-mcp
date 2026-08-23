@@ -123,3 +123,27 @@ export function refreshUpstream(config: UpstreamConfig, refreshToken: string): P
     new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
   );
 }
+
+/**
+ * Margin that makes THIS server's access token expire before BeeL's.
+ *
+ * The MCP client only refreshes when our token expires, and that refresh is the
+ * only thing that drags the upstream token along (see `tokenExchangeCallback`).
+ * So ours must always run out first: if the upstream token dies while ours is
+ * still valid, every tool call 401s and nothing triggers a recovery until our
+ * own token finally expires.
+ */
+const UPSTREAM_SKEW_SECONDS = 300;
+
+/**
+ * Our access token's lifetime, derived from the upstream token's `expires_in`.
+ *
+ * Called with no argument for the initial grant, where the upstream lifetime is
+ * not yet available to us: `completeAuthorization` accepts no per-grant TTL, so
+ * the first token necessarily runs on the provider-wide default. From the first
+ * refresh onwards the real `expires_in` governs.
+ */
+export function workerAccessTokenTTL(expiresIn?: number): number {
+  return Math.max(60, (expiresIn ?? 3600) - UPSTREAM_SKEW_SECONDS);
+}
+

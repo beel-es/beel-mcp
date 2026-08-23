@@ -9,7 +9,7 @@ import type { ResolvedConfig } from '../config.js';
 import { keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
 import { BeelAuthHandler } from './beel-handler.js';
-import { refreshUpstream, upstreamConfig } from './upstream.js';
+import { refreshUpstream, upstreamConfig, workerAccessTokenTTL } from './upstream.js';
 
 /**
  * Cloudflare Worker entrypoint for the remote BeeL MCP server.
@@ -54,16 +54,11 @@ export class BeelMcpAgent extends McpAgent<Env, Record<string, never>, Props> {
 // tokenExchangeCallback gets no `env`; the wrapper fetch below captures it per request.
 let currentEnv: Env | null = null;
 
-// Margin that makes the worker's access token expire BEFORE BeeL's (1 h), so the
-// MCP client's refresh always fires first and each refresh drags the upstream
-// token along via tokenExchangeCallback. Without it the worker's token could
-// outlive BeeL's, giving a 401 with no auto-refresh — a manual reconnect.
-const UPSTREAM_SKEW_SECONDS = 300;
-const WORKER_ACCESS_TOKEN_TTL = 3600 - UPSTREAM_SKEW_SECONDS;
-
 const provider = new OAuthProvider({
   apiRoute: '/mcp',
-  accessTokenTTL: WORKER_ACCESS_TOKEN_TTL,
+  // The first token of a session; every refresh replaces this with a TTL taken
+  // from the upstream token itself, via tokenExchangeCallback.
+  accessTokenTTL: workerAccessTokenTTL(),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiHandler: BeelMcpAgent.serve('/mcp') as any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,8 +80,7 @@ const provider = new OAuthProvider({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? p.refreshToken,
       },
-      // Keep the worker's token below the upstream one after refreshing too.
-      accessTokenTTL: Math.max(60, (tokens.expires_in ?? 3600) - UPSTREAM_SKEW_SECONDS),
+      accessTokenTTL: workerAccessTokenTTL(tokens.expires_in),
     };
   },
 });

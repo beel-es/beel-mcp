@@ -1,0 +1,34 @@
+# Dependabot: vigila las dependencias de npm y las GitHub Actions.
+# Las alertas de seguridad (Dependabot security updates) se activan aparte, en
+# Settings → Code security del repo; este fichero controla las PRs de mantenimiento.
+version: 2
+updates:
+  # Dependencias de npm. Todo lo vulnerable hoy es devDependencies (build/CI), pero
+  # mantenerlas al día evita que una de runtime pase desapercibida el día que aparezca.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # Agrupa el ruido de patches/minors en una sola PR por franja; los majors van sueltos
+    # para revisarlos uno a uno (wrangler, el SDK de MCP y agents rompen entre majors).
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+    # El SDK de MCP está pineado a una versión exacta a propósito; que Dependabot
+    # proponga el salto de major, pero sin agruparlo con el resto.
+    labels:
+      - dependencies
+
+  # Las propias Actions del CI/publicación (checkout, setup-node, etc.).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - github-actions

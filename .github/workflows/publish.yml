@@ -32,6 +32,10 @@ jobs:
   publish:
     name: Build, verify and publish
     runs-on: ubuntu-latest
+    # Gate the release behind a protected environment. Configure `npm-publish` in
+    # Settings → Environments with required reviewers, so a push of a v* tag pauses
+    # here until a human approves — the last checkpoint before anything reaches npm.
+    environment: npm-publish
     steps:
       - uses: actions/checkout@v4
 
