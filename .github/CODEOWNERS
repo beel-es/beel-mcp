@@ -1,0 +1,11 @@
+# Toda la base de código requiere revisión de un owner por defecto.
+# (Sólo se hace obligatorio cuando el ruleset/branch protection de master
+#  marca "Require review from Code Owners".)
+*                       @carlosmgv02 @beel-it
+
+# Rutas sensibles: la cadena de publicación, el CI, la seguridad del Worker
+# y el contrato. Un cambio aquí siempre lo mira un owner.
+/.github/               @carlosmgv02 @beel-it
+/src/cf/                @carlosmgv02 @beel-it
+/openapi/               @carlosmgv02 @beel-it
+/package.json           @carlosmgv02 @beel-it
