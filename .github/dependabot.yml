@@ -23,6 +23,14 @@ updates:
     # proponga el salto de major, pero sin agruparlo con el resto.
     labels:
       - dependencies
+    ignore:
+      # pdfjs-dist es solo devDependency (tipos). El pdf.js real se carga desde el
+      # CDN pineado en src/mcpapp/contract.ts (PDFJS_VERSION = 4.10.38), así que el
+      # paquete npm debe seguir la MISMA major que el CDN. Un salto de major aquí
+      # rompe el build (la API render cambió) y desincroniza tipos y runtime.
+      # Los majors se adoptan a mano, subiendo también PDFJS_VERSION en el mismo cambio.
+      - dependency-name: pdfjs-dist
+        update-types: [version-update:semver-major]
 
   # Las propias Actions del CI/publicación (checkout, setup-node, etc.).
   - package-ecosystem: github-actions
