@@ -1,11 +1,13 @@
-# Toda la base de código requiere revisión de un owner por defecto.
-# (Sólo se hace obligatorio cuando el ruleset/branch protection de master
-#  marca "Require review from Code Owners".)
-*                       @carlosmgv02 @beel-it @massanaRoger
+# Owners por defecto de todo el repo: el equipo @beel-es/developers.
+# Se gestiona en un solo sitio (Settings → Teams de la org): añadir o quitar
+# personas del equipo actualiza esta regla en todos los repos que lo usen.
+# Sólo se hace obligatorio cuando el ruleset de master marca
+# "Require review from Code Owners".
+*                       @beel-es/developers
 
-# Rutas sensibles: la cadena de publicación, el CI, la seguridad del Worker
-# y el contrato. Un cambio aquí siempre lo mira un owner.
-/.github/               @carlosmgv02 @beel-it @massanaRoger
-/src/cf/                @carlosmgv02 @beel-it @massanaRoger
-/openapi/               @carlosmgv02 @beel-it @massanaRoger
-/package.json           @carlosmgv02 @beel-it @massanaRoger
+# Rutas sensibles (cadena de publicación, CI, seguridad del Worker, contrato):
+# un cambio aquí siempre lo revisa el equipo.
+/.github/               @beel-es/developers
+/src/cf/                @beel-es/developers
+/openapi/               @beel-es/developers
+/package.json           @beel-es/developers
