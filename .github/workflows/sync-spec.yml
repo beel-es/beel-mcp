@@ -29,9 +29,10 @@ jobs:
       - name: Checkout backend (develop) for the spec source
         uses: actions/checkout@v4
         with:
-          # The backend repository is private and named in a repository variable
-          # rather than here, so this workflow carries no reference to it.
-          repository: ${{ vars.BACKEND_REPOSITORY }}
+          # The backend repository is private and named in a repository SECRET
+          # (not a variable), so its name never appears in this public repo's
+          # workflow logs — GitHub masks secrets, variables it prints in clear.
+          repository: ${{ secrets.BACKEND_REPOSITORY }}
           ref: develop
           ssh-key: ${{ secrets.BACKEND_DEPLOY_KEY }}
           path: backend-src

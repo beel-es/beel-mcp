@@ -7,11 +7,11 @@
   </a>
 </p>
 
-<h1 align="center">BeeL MCP server</h1>
+<h1 align="center">BeeL MCP server — VeriFactu e-invoicing for AI agents</h1>
 
 <p align="center">
-  Facturación electrónica española con VeriFactu, para agentes de IA.<br>
-  Spanish e-invoicing with VeriFactu compliance, built for AI agents.<br>
+  Servidor <strong>MCP de facturación electrónica</strong> española con <strong>VeriFactu</strong> (AEAT): crea, emite y rectifica facturas desde <strong>Claude, ChatGPT, Cursor o VS Code</strong>.<br>
+  <strong>MCP server for Spanish e-invoicing</strong> with <strong>VeriFactu</strong> compliance — issue, correct and register invoices with AEAT straight from your AI agent.<br>
   <a href="https://beel.es">beel.es</a> · <a href="https://docs.beel.es">API docs</a> · <a href="https://docs.beel.es/mcp">MCP guide</a> · <a href="https://www.npmjs.com/package/@beel_es/mcp">npm</a>
 </p>
 
@@ -23,10 +23,12 @@
 
 ---
 
-An [MCP](https://modelcontextprotocol.io) server that lets an AI agent issue **legally
-compliant Spanish electronic invoices** — VeriFactu registration with AEAT, F1/F2 invoice
-types, R1–R5 correctives, NIF validation against the census, and the regime keys the
-regulation requires.
+An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server that lets an AI
+agent issue **legally compliant Spanish electronic invoices** — **VeriFactu** registration
+with **AEAT**, F1/F2 invoice types, R1–R5 correctives, NIF validation against the census,
+and the regime keys the regulation requires. Connect it to **Claude, ChatGPT, Cursor or
+VS Code** and your agent can handle Spanish invoicing — *facturación electrónica* and
+*factura electrónica VeriFactu* — end to end, without you writing a single API call.
 
 It is not a generated wrapper around an API. Three things make it usable by a model:
 
@@ -234,6 +236,30 @@ types, regime keys, series, VeriFactu states — is identical wherever you meet 
 | [**Claude Code plugin**](https://docs.beel.es/claude-code) | Implement, audit and maintain a BeeL integration |
 | [**Machine-readable docs**](https://docs.beel.es/llms.txt) | `llms.txt` for agents that would rather read than guess |
 
+## FAQ
+
+**What is the BeeL MCP server?**
+An [MCP](https://modelcontextprotocol.io) server that exposes Spanish VeriFactu e-invoicing
+as tools an AI agent can call — so Claude, ChatGPT, Cursor or VS Code can create customers,
+issue F1/F2 invoices, register them with AEAT, and post R1–R5 correctives on your behalf.
+
+**How do I connect VeriFactu invoicing to Claude / ChatGPT / Cursor?**
+Add `https://mcp.beel.es/mcp` as a connector and log in with your BeeL account — see
+[Quick start](#quick-start). Nothing to install, and no API key to paste for interactive use.
+
+**Is it actually VeriFactu-compliant?**
+Yes. Invoices are registered with AEAT under VeriFactu, numbering and series follow the
+regulation, and the [fiscal guardrails](#the-fiscal-guardrails) stop non-compliant requests
+before they ever become a fiscal document.
+
+**VeriFactu or TicketBAI?**
+This server targets **VeriFactu**, the national AEAT system. TicketBAI (the Basque Country
+regime) is out of scope.
+
+**Can I use it without an AI agent?**
+Yes — it is a standard MCP server, so any MCP-capable client works, and the same invoicing
+surface is available as a [REST API, CLI and n8n node](#the-rest-of-the-beel-developer-ecosystem).
+
 ## Contributing
 
 Bug reports and pull requests are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for
@@ -242,7 +268,7 @@ how the project is laid out and which conventions are load-bearing. Security iss
 
 ## License
 
-MIT © [BeeL](https://beel.es)
+MIT © [BeeL.](https://beel.es)
 
 <div align="center">
 <br>
