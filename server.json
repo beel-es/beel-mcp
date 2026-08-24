@@ -3,7 +3,7 @@
   "name": "es.beel/mcp",
   "title": "BeeL",
   "description": "Spanish e-invoicing with VeriFactu (AEAT): issue invoices, manage customers, validate NIFs.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "websiteUrl": "https://docs.beel.es/mcp",
   "repository": {
     "url": "https://github.com/beel-es/beel-mcp",
@@ -19,7 +19,7 @@
     {
       "registryType": "npm",
       "identifier": "@beel_es/mcp",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "transport": {
         "type": "stdio"
       },
