@@ -1,7 +1,7 @@
 {
-  "apiVersion": "1.7.1",
+  "apiVersion": "1.8.0",
   "openapi": "3.0.3",
-  "operationCount": 217,
-  "schemaCount": 248,
-  "sha256": "0236a84eaa332e4b190ef9d88ae210a56877bac627770a8700865e5d947dff14"
+  "operationCount": 220,
+  "schemaCount": 285,
+  "sha256": "824adace9b91387a5b9528e66a9910f8f16ff5c09d0ea88b5be499a1f1d4a0e5"
 }
