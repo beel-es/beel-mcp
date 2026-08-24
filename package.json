@@ -55,6 +55,7 @@
     "@cloudflare/workers-oauth-provider": "^0.10.3",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "@sentry/cloudflare": "^10.70.0",
     "agents": "^0.17.4",
     "ajv": "^8.20.0",
     "hono": "^4.13.1",
