@@ -126,16 +126,31 @@ function buildResponseInfo(doc: SpecNode, operation: SpecNode): {
   return { successContentTypes: list, binaryResponse };
 }
 
-/** OAuth2 scopes required by an operation (union across its security requirements). */
+/**
+ * Scopes required by an operation.
+ *
+ * The contract declares them in `x-required-scopes`. They used to live inside the
+ * `OAuth2` entry of `security`, but OAuth2 left the public contract and those arrays
+ * are empty now, so reading `security` alone yields nothing — and an MCP that asks for
+ * no scopes gets a key that cannot do its job. The `security` fallback stays for specs
+ * predating the move.
+ */
 function buildScopes(operation: SpecNode): string[] {
-  const security = operation.security;
-  if (!Array.isArray(security)) return [];
   const scopes = new Set<string>();
-  for (const requirement of security) {
-    const node = asNode(requirement);
-    if (!node) continue;
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) for (const s of value) if (typeof s === 'string') scopes.add(s);
+
+  const declared = operation['x-required-scopes'];
+  if (Array.isArray(declared)) {
+    for (const s of declared) if (typeof s === 'string') scopes.add(s);
+  }
+
+  const security = operation.security;
+  if (Array.isArray(security)) {
+    for (const requirement of security) {
+      const node = asNode(requirement);
+      if (!node) continue;
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) for (const s of value) if (typeof s === 'string') scopes.add(s);
+      }
     }
   }
   return [...scopes];
