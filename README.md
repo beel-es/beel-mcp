@@ -95,9 +95,14 @@ records the exact commit and workflow each build came from. Verify it with `npm 
 signatures`.
 
 Each release is also announced to the [MCP
-Registry](https://registry.modelcontextprotocol.io) as
-`io.github.beel-es/beel-mcp`, listing both transports, so clients that browse the
-registry find the server without being pointed at it.
+Registry](https://registry.modelcontextprotocol.io) as **`es.beel/mcp`**, listing both
+transports, so clients that browse the registry find the server without being pointed at
+it. The name is authenticated by a DNS record on `beel.es`, so it says the server comes
+from us and not merely from some repository.
+
+An earlier listing under `io.github.beel-es/beel-mcp` (v0.2.2) is deprecated. Registry
+names are identities rather than labels, so the two coexist instead of one redirecting to
+the other; anything already installed keeps working.
 
 ## What it provides
 

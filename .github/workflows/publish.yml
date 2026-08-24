@@ -115,10 +115,23 @@ jobs:
       # at the npm package and at the hosted server, so it is announced only once
       # both are actually reachable — hence last, after npm publish.
       #
-      # `login github-oidc` exchanges the workflow's OIDC token for the
-      # `io.github.beel-es/*` namespace. No secret, and nobody outside this
-      # repository can claim the name.
+      # `login dns` signs a timestamp with the ed25519 key whose public half is a
+      # TXT record on the apex of beel.es, which is what grants the `es.beel/*`
+      # namespace — the domain we own, rather than the `io.github.beel-es/*` that
+      # authenticating through the repository would give.
+      #
+      # This is the one credential in the release. GitHub OIDC needs none, and the
+      # earlier listing used it; a domain namespace cannot work that way, because
+      # the proof has to be something only the domain holder can produce. It is an
+      # environment secret rather than a repository one, so it is reachable only
+      # from the `npm-publish` environment and therefore only after the same human
+      # approval that gates npm.
+      #
+      # Rotating it means publishing a new public key in beel-infra and replacing
+      # this secret — both, or releases stop.
       - name: Announce the release to the MCP Registry
         run: |
-          ./mcp-publisher login github-oidc
+          ./mcp-publisher login dns --domain beel.es --private-key "$MCP_DNS_PRIVATE_KEY"
           ./mcp-publisher publish
+        env:
+          MCP_DNS_PRIVATE_KEY: ${{ secrets.MCP_DNS_PRIVATE_KEY }}
