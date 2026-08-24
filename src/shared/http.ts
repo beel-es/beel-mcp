@@ -24,12 +24,22 @@ export const ContentType = {
 } as const;
 
 /**
- * `Authorization: Basic base64(clientId:clientSecret)` — client_secret_basic.
- * The secret travels in the header rather than the body, which is the method
- * BeeL registers for this client.
+ * `Authorization: Basic base64(urlencode(clientId):urlencode(clientSecret))` —
+ * client_secret_basic.
+ *
+ * El URL-encode NO es cosmético, lo exige RFC 6749 §2.3.1, y el servidor cuenta con
+ * él: `ClientSecretBasicAuthenticationConverter` de Spring hace `URLDecoder.decode`
+ * sobre las dos mitades. Y `URLDecoder` traduce `+` por ESPACIO. Enviando el secreto
+ * en crudo, un secreto base64 —que usa `+` y `/`— llegaba corrompido al servidor:
+ * 401 invalid_client, `tokenRequest` lanzando y el callback devolviendo un 500 que no
+ * se parecía en nada a su causa.
+ *
+ * `encodeURIComponent` deja intactos los caracteres seguros, así que un secreto sin
+ * caracteres especiales viaja igual que antes: esto sólo arregla, no cambia.
  */
 export function basicAuthHeader(clientId: string, clientSecret: string): string {
-  return `${AuthScheme.Basic} ${btoa(`${clientId}:${clientSecret}`)}`;
+  const credentials = `${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`;
+  return `${AuthScheme.Basic} ${btoa(credentials)}`;
 }
 
 /** `Authorization: Bearer <token>`. */
