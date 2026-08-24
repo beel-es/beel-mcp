@@ -314,7 +314,6 @@ export const CHECKED_OPERATIONS: Record<string, Check> = {
 
   // Series operations carry the format/counter_reset pair directly.
   createCompanySeries: (body, out) => checkSeriesBlock(body, 'body', out),
-  updateSeries: (body, out) => checkSeriesBlock(body, 'body', out),
   patchCompanySeries: (body, out) => checkSeriesBlock(body, 'body', out),
 };
 

@@ -96,7 +96,7 @@ signatures`.
 
 ## What it provides
 
-- **119 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
+- **118 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
 - **4 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
   `beel_docs_get`, `beel_docs_list` over the documentation, and
