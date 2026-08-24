@@ -53,18 +53,6 @@ function sentryOptions(env: Env): Sentry.CloudflareOptions {
     // Solo errores. Las trazas de rendimiento no responden ninguna pregunta que nos
     // hagamos hoy y multiplicarían el volumen de un plan que ya comparte el backend.
     tracesSampleRate: 0,
-    integrations: [
-      // Sentry solo captura EXCEPCIONES, y las degradaciones no lanzan ninguna: el puente
-      // sin secreto de cliente, o con uno que el authorization server rechaza, sigue
-      // funcionando —peor— y lo cuenta por console.error. Sin esto, los dos marcadores
-      // que el propio código emite para que alguien se entere (OAUTH_CLIENT_SECRET_AUSENTE
-      // y _RECHAZADO) se quedarían en unos logs que nadie mira, que es exactamente el
-      // agujero por el que una caída de 18 minutos pasó desapercibida.
-      //
-      // Acotado a `error`: `warn` y `log` son ruido de operación, y su volumen se llevaría
-      // por delante la cuota compartida con el backend.
-      Sentry.captureConsoleIntegration({ levels: ['error'] }),
-    ],
     // El bearer upstream viaja en los props del grant y en cada llamada a la API:
     // nada de eso puede salir del Worker aunque el evento lo arrastre.
     sendDefaultPii: false,
