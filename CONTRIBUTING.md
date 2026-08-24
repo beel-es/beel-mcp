@@ -175,15 +175,22 @@ To change what the registry shows — description, transports, environment varia
 renaming it strands the existing listing rather than moving it.
 
 The server was listed as `io.github.beel-es/beel-mcp` up to v0.2.2, before the domain
-namespace existed. That listing is deprecated with:
+namespace existed. That listing had to be **deleted**, not deprecated:
 
 ```bash
-mcp-publisher login github-oidc   # or: login github, interactively
-mcp-publisher status io.github.beel-es/beel-mcp deprecated
+mcp-publisher login github --token "$(gh auth token)"
+mcp-publisher status --status deleted --all-versions io.github.beel-es/beel-mcp
 ```
 
-It is deprecated rather than deleted: clients that already installed it keep resolving,
-and the entry points at the same npm package and the same hosted server.
+A remote URL may belong to only one server, and the check that enforces it filters on
+`status != 'deleted'` and nothing else — so a deprecated listing goes on holding
+`https://mcp.beel.es/mcp` and the new name cannot claim it. Deprecating first is the
+obvious move and it fails, with an error that names the old server without saying why it
+still counts.
+
+Note the auth: the old name lives under `io.github.beel-es`, so retiring it needs GitHub
+auth, not the DNS key. `login github --token` takes a PAT and avoids the interactive
+device flow.
 
 ## Pull requests
 

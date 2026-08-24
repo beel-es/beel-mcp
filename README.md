@@ -100,9 +100,9 @@ transports, so clients that browse the registry find the server without being po
 it. The name is authenticated by a DNS record on `beel.es`, so it says the server comes
 from us and not merely from some repository.
 
-An earlier listing under `io.github.beel-es/beel-mcp` (v0.2.2) is deprecated. Registry
-names are identities rather than labels, so the two coexist instead of one redirecting to
-the other; anything already installed keeps working.
+An earlier listing under `io.github.beel-es/beel-mcp` (v0.2.2) was retired when the name
+moved. Registry names are identities rather than labels, so a rename is a new entry rather
+than a redirect; both point at the same npm package and the same hosted server.
 
 ## What it provides
 

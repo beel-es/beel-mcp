@@ -108,8 +108,22 @@ jobs:
         run: ./mcp-publisher validate
 
       # No token: the OIDC exchange happens inside npm publish itself.
+      #
+      # Skipped when the version is already on npm, so that re-running this job
+      # retries only what actually failed. The release has two destinations and
+      # npm is the first: when the registry step failed — twice, on 0.2.1 and
+      # 0.3.0 — the version was already public, `npm publish` refused it on the
+      # retry, and the only way forward was to burn a version number to reach a
+      # step that had nothing to do with npm. This makes the job resumable
+      # instead. It never overwrites: npm forbids that, and so does this check.
       - name: Publish
-        run: npm publish
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@beel_es/mcp@${version}" version >/dev/null 2>&1; then
+            echo "@beel_es/mcp@${version} is already on npm — skipping, this is a retry."
+            exit 0
+          fi
+          npm publish
 
       # The registry is a discovery index, not a distribution channel: it points
       # at the npm package and at the hosted server, so it is announced only once
