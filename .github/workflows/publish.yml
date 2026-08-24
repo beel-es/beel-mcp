@@ -56,6 +56,12 @@ jobs:
       - name: Verify the OpenAPI contract matches its lock
         run: npm run spec:verify
 
+      # The registry rejects a version it already holds, and this check runs
+      # before npm publish on purpose: a manifest caught drifting afterwards
+      # would leave npm released and the registry a version behind.
+      - name: Verify the registry manifest matches the package version
+        run: npm run manifest:verify
+
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -86,6 +92,33 @@ jobs:
             | timeout 20 node dist/index.js \
             | grep -qE '"beel_[a-z_]+_invoice"'
 
+      # The official CLI rather than one of the marketplace actions: the CLI reads
+      # `server.json`, while the actions take the same fields as workflow inputs —
+      # a second copy of the manifest, free to drift from the one this repository
+      # verifies. Fetched here, before anything is published, so that an invalid
+      # manifest stops the release instead of stranding it half-done.
+      - name: Install the registry publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v${PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" \
+            | tar -xz mcp-publisher
+        env:
+          PUBLISHER_VERSION: 1.8.1
+
+      - name: Validate the registry manifest
+        run: ./mcp-publisher validate
+
       # No token: the OIDC exchange happens inside npm publish itself.
       - name: Publish
         run: npm publish
+
+      # The registry is a discovery index, not a distribution channel: it points
+      # at the npm package and at the hosted server, so it is announced only once
+      # both are actually reachable — hence last, after npm publish.
+      #
+      # `login github-oidc` exchanges the workflow's OIDC token for the
+      # `io.github.beel-es/*` namespace. No secret, and nobody outside this
+      # repository can claim the name.
+      - name: Announce the release to the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
