@@ -132,6 +132,31 @@ Publisher**:
 Verify it took with `npm trust list @beel_es/mcp`. After that no credential is involved
 in a release, and none needs storing anywhere.
 
+### The MCP Registry
+
+After npm, the same workflow announces the release to the [MCP
+Registry](https://registry.modelcontextprotocol.io) from `server.json`, which lists both
+the npm package and the hosted server.
+
+Nothing to set up: `mcp-publisher login github-oidc` exchanges the workflow's OIDC token
+for the `io.github.beel-es/*` namespace, which only this repository can claim. Same shape
+as npm trusted publishing, and likewise no secret.
+
+`server.json` is hand-written except for the version, which is derived from
+`package.json` — the registry refuses to republish a version it already holds, so a stale
+manifest would fail the release. `npm version` regenerates it and stages it in the same
+commit via the `version` lifecycle script; CI verifies it did (`npm run manifest:verify`),
+and the release validates the manifest against the live registry before publishing
+anything.
+
+To change what the registry shows — description, transports, environment variables — edit
+`server.json` and check it with `mcp-publisher validate`. The name is a public identifier:
+renaming it strands the existing listing rather than moving it.
+
+The namespace could instead be `es.beel/mcp`, which reads better and is authenticated by a
+DNS TXT record on the domain. That is a migration, not a setting — the current listing does
+not follow the name.
+
 ## Pull requests
 
 Keep the diff to one concern. Include a test for any behaviour change — the fiscal

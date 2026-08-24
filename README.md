@@ -94,6 +94,11 @@ publishing](https://docs.npmjs.com/trusted-publishers), so they carry provenance
 records the exact commit and workflow each build came from. Verify it with `npm audit
 signatures`.
 
+Each release is also announced to the [MCP
+Registry](https://registry.modelcontextprotocol.io) as
+`io.github.beel-es/beel-mcp`, listing both transports, so clients that browse the
+registry find the server without being pointed at it.
+
 ## What it provides
 
 - **119 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
