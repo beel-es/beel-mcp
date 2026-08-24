@@ -1,5 +1,6 @@
 import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
+import { IDEMPOTENCY_KEY_PARAM } from './manifest.js';
 import { resolvePointer } from './refs.js';
 
 /** A minimal JSON Schema object — what MCP tools expose as `inputSchema`. */
@@ -131,6 +132,26 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
   if (op.requestBody && op.requestBody.contentType.includes('json')) {
     properties.body = withDescription(projector.project(op.requestBody.schema));
     if (op.requestBody.required) required.push('body');
+  }
+  // Escotilla de idempotencia. Sin ella, la clave sale SIEMPRE de un hash del
+  // cuerpo, así que dos operaciones legítimamente idénticas dentro de 24 h —dos
+  // facturas iguales al mismo cliente el mismo día— colapsan en una: la API
+  // devuelve el resultado de la primera y el agente cree que creó la segunda.
+  // Un hash no puede distinguir un reintento de una repetición querida; solo
+  // quien llama lo sabe. Opcional, para que el hash siga cubriendo el reintento
+  // ciego, que es el caso que sí puede resolver.
+  if (op.method === 'POST' && (op.headerParams ?? []).some((p) => p.name === IDEMPOTENCY_KEY_PARAM)) {
+    properties.idempotency_key = {
+      type: 'string',
+      pattern: '^[a-zA-Z0-9_-]+$',
+      maxLength: 255,
+      description:
+        'Optional idempotency key for this operation. Omit it and one is derived from the ' +
+        'request itself, which makes a blind retry safe but also collapses a SECOND, ' +
+        'deliberately identical operation into the first for 24 hours. Set it — to an order ' +
+        'id, or anything unique per intended operation — whenever you mean to create ' +
+        'something that may look identical to what you just created.',
+    };
   }
 
   const out: JsonSchema = { type: 'object', properties };
