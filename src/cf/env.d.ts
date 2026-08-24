@@ -19,4 +19,8 @@ interface Env {
   BEEL_DOCS_URL?: string;
   /** Comma-separated storage hosts the invoice-PDF relay may fetch from. */
   BEEL_PDF_STORAGE_HOSTS?: string;
+  /** DSN de Better Stack Error Tracking (protocolo Sentry). Ausente = no se envía nada. */
+  SENTRY_DSN?: string;
+  /** Etiqueta del entorno en los eventos. Por defecto `production`. */
+  SENTRY_ENVIRONMENT?: string;
 }
