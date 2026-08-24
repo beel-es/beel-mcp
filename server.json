@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.beel-es/beel-mcp",
+  "title": "BeeL",
+  "description": "Spanish e-invoicing with VeriFactu (AEAT): issue invoices, manage customers, validate NIFs.",
+  "version": "0.2.2",
+  "websiteUrl": "https://docs.beel.es/mcp",
+  "repository": {
+    "url": "https://github.com/beel-es/beel-mcp",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.beel.es/mcp"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@beel_es/mcp",
+      "version": "0.2.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BEEL_API_KEY",
+          "description": "BeeL API key. The prefix picks the environment: beel_sk_test_ for Test, beel_sk_live_ for Live. May be omitted if you have signed in with the BeeL CLI, which the server reads as a fallback.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

@@ -33,6 +33,12 @@ jobs:
       - name: Verify the OpenAPI contract matches its lock
         run: npm run spec:verify
 
+      # The registry manifest carries the released version, and the registry
+      # refuses to republish one it already holds. Catching the drift here beats
+      # catching it at the end of a release, after npm has already gone out.
+      - name: Verify the registry manifest matches the package version
+        run: npm run manifest:verify
+
       # Typechecks both the Node and the Worker configurations.
       - run: npm run typecheck
       - run: npm test

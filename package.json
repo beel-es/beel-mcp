@@ -1,7 +1,8 @@
 {
   "name": "@beel_es/mcp",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "MCP server for the BeeL invoicing API — VeriFactu-compliant electronic invoicing tools for LLM agents, derived from the public OpenAPI contract.",
+  "mcpName": "io.github.beel-es/beel-mcp",
   "bin": {
     "beel-mcp": "dist/index.js"
   },
@@ -26,10 +27,13 @@
     "sync:spec": "node scripts/bundle-spec.mjs",
     "spec:lock": "node scripts/spec-lock.mjs --write",
     "spec:verify": "node scripts/spec-lock.mjs",
+    "manifest:write": "node scripts/server-manifest.mjs --write",
+    "manifest:verify": "node scripts/server-manifest.mjs",
     "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",
     "tools:list": "tsx --import ./scripts/text-loader.mjs scripts/list-tools.mts",
     "prepublishOnly": "npm run build",
-    "verify:package": "node scripts/verify-package.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "version": "npm run manifest:write && git add server.json"
   },
   "repository": {
     "type": "git",
