@@ -29,6 +29,9 @@ export interface RequestBodySpec {
   schema?: SpecNode;
 }
 
+/** Nombre del header de idempotencia en el contrato, y de la entrada opcional que lo pisa. */
+export const IDEMPOTENCY_KEY_PARAM = 'Idempotency-Key';
+
 export interface OperationSpec {
   operationId: string;
   method: Uppercase<HttpMethod>;

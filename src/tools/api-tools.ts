@@ -78,6 +78,12 @@ export async function executeApiTool(
   const path = substitutePath(op, args);
   const query = collectQuery(op, args);
   const body = op.requestBody ? args.body : undefined;
+  // Viaja como header, nunca como cuerpo ni query: no forma parte del material del
+  // hash, así que dos llamadas iguales con claves distintas siguen siendo dos.
+  const idempotencyKey =
+    typeof args.idempotency_key === 'string' && args.idempotency_key.length > 0
+      ? args.idempotency_key
+      : undefined;
   // Pre-flight the fiscal invariants the schema cannot express. Runs before the
   // request so a rejected payload never burns an idempotency key. See
   // guardrails/validate.ts for why this can only ever be a subset of the API's
@@ -88,6 +94,7 @@ export async function executeApiTool(
     path,
     query,
     body,
+    idempotencyKey,
   });
   return result.data;
 }
