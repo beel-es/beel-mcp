@@ -4,6 +4,7 @@
  * This module owns that second leg: authorize URL, PKCE, code exchange, refresh.
  */
 
+import * as Sentry from '@sentry/cloudflare';
 import { ContentType, HttpHeader, basicAuthHeader } from '../shared/http.js';
 import { BEEL_DEFAULTS, ENV_VAR, OAUTH_PATH } from '../shared/defaults.js';
 import { readEnv, readEnvUrl, type EnvRecord } from '../shared/env.js';
@@ -81,6 +82,21 @@ let rejectedSecretWarned = false;
  * Marcadores estables al principio del mensaje. Son el asidero de una alerta: se busca
  * por ellos, no por una frase que cualquiera puede reescribir al editar el texto.
  */
+/**
+ * Reporta una degradación al rastreador de errores, además de dejarla en los logs.
+ *
+ * Se hace EXPLÍCITAMENTE y no capturando `console.error` en bloque, porque en este
+ * proyecto `console.error` no significa «esto es un error»: significa «esto va por
+ * stderr», que es donde tiene que ir la telemetría para no corromper el canal JSON-RPC
+ * del modo stdio. Raspar la consola convertía cada llamada exitosa a una tool en una
+ * alerta —`{"evt":"tool_call","outcome":"ok"}` llegando a Slack— y enterraba lo que sí
+ * importa. Aquí se dice qué se reporta, y solo eso.
+ */
+function reportar(mensaje: string): void {
+  console.error(mensaje);
+  Sentry.captureMessage(mensaje, 'error');
+}
+
 export const OAUTH_MARKER = {
   missingSecret: 'OAUTH_CLIENT_SECRET_AUSENTE',
   rejectedSecret: 'OAUTH_CLIENT_SECRET_RECHAZADO',
@@ -115,7 +131,7 @@ export function resetOAuthWarningsForTests(): void {
 function warnMissingClientSecret(): void {
   if (missingSecretWarned) return;
   missingSecretWarned = true;
-  console.error(
+  reportar(
     `${OAUTH_MARKER.missingSecret}: ${ENV_VAR.oauthClientSecret} sin definir. El puente ` +
       'autentica como cliente PÚBLICO y el authorization server no emite refresh token, ' +
       'así que la sesión caduca con el access token (60 min) y obliga a reconectar. ' +
@@ -137,7 +153,7 @@ function warnMissingClientSecret(): void {
 function reportRejectedClientSecret(status: number): void {
   if (rejectedSecretWarned) return;
   rejectedSecretWarned = true;
-  console.error(
+  reportar(
     `${OAUTH_MARKER.rejectedSecret}: el authorization server respondió ${status} ` +
       `invalid_client con ${ENV_VAR.oauthClientSecret} puesto. Se continúa como cliente ` +
       'PÚBLICO para no dejar a nadie sin conectar, al precio de perder el refresh token. ' +
