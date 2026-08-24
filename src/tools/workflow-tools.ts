@@ -128,6 +128,24 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/**
+ * El array de una respuesta de listado, que la API entrega bajo una clave del objeto
+ * (`{ companies: [...] }`, `{ defaults: [...] }`, `{ connections: [...] }`) y no como raíz
+ * — `executeApiTool` desenvuelve `data`, no la clave de dentro.
+ *
+ * Existe porque aplicar {@link asArray} directamente a esas respuestas daba SIEMPRE lista
+ * vacía, en silencio y sin error: el informe decía "No NIFs yet" a cuentas con NIF, y daba
+ * las series por configuradas y el cobro por desconectado sin haber leído ninguno. Un array
+ * pelado se sigue aceptando para no atarse a la forma exacta del envelope.
+ */
+function listOf(value: unknown, key: string): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  const nested = asRecord(value)[key];
+  return Array.isArray(nested) ? nested : [];
+}
+
 /** Run a sub-call, swallowing failures so one bad endpoint never sinks the report. */
 async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
@@ -160,7 +178,7 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
   const ready = typeof readiness.ready === 'boolean' ? readiness.ready : blockers.length === 0;
 
   const seriesData = await safe(() => call('getCompanyDefaultSeries', { company_id: companyId }));
-  const seriesList = asArray(seriesData);
+  const seriesList = listOf(seriesData, 'defaults');
   const missingSeries = seriesList
     .map(asRecord)
     .filter((s) => s.exists === false)
@@ -176,7 +194,7 @@ async function reportForCompany(call: OperationCaller, company: Record<string, u
     : { enabled: vf.enabled === true, apply_by_default: vf.apply_by_default === true };
 
   const pcData = await safe(() => call('listCompanyPaymentConnections', { company_id: companyId }));
-  const connections = asArray(pcData).map(asRecord);
+  const connections = listOf(pcData, 'connections').map(asRecord);
   const payment_connection = pcData === null
     ? null
     : {
@@ -255,7 +273,7 @@ export async function getSetupStatus(
   let companies: CompanyReport[] = [];
   if (accountId) {
     const listData = await safe(() => call('listCompanies', { account_id: accountId }));
-    const items = asArray(listData).map(asRecord);
+    const items = listOf(listData, 'companies').map(asRecord);
     const scoped = filterId ? items.filter((c) => String(c.id ?? '') === filterId) : items;
     companies = await Promise.all(scoped.map((c) => reportForCompany(call, c)));
   }
