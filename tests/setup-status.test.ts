@@ -32,14 +32,16 @@ describe('beel_get_setup_status', () => {
   it('aggregates identity, companies and per-NIF readiness into a checklist', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1', name: 'Ada', email: 'ada@example.com' },
-      listCompanies: [{ id: 'co-1', nif: 'B1', legal_name: 'One SL' }],
+      listCompanies: { companies: [{ id: 'co-1', nif: 'B1', legal_name: 'One SL' }] },
       getCompanyIssuingReadiness: { ready: false, blockers: ['SERIES_DEFAULT_NOT_FOUND'] },
-      getCompanyDefaultSeries: [
-        { document_type: 'F1', exists: false },
-        { document_type: 'F2', exists: true },
-      ],
+      getCompanyDefaultSeries: {
+        defaults: [
+          { document_type: 'F1', exists: false },
+          { document_type: 'F2', exists: true },
+        ],
+      },
       getCompanyVeriFactuConfiguration: { enabled: false, apply_by_default: false },
-      listCompanyPaymentConnections: [],
+      listCompanyPaymentConnections: { connections: [] },
     });
 
     const status = await getSetupStatus(config, {}, caller);
@@ -59,11 +61,11 @@ describe('beel_get_setup_status', () => {
   it('marks a fully-configured NIF as ready', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1' },
-      listCompanies: [{ id: 'co-1', nif: 'B9' }],
+      listCompanies: { companies: [{ id: 'co-1', nif: 'B9' }] },
       getCompanyIssuingReadiness: { ready: true, blockers: [] },
-      getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
+      getCompanyDefaultSeries: { defaults: [{ document_type: 'F1', exists: true }] },
       getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true },
-      listCompanyPaymentConnections: [{ status: 'ACTIVE' }],
+      listCompanyPaymentConnections: { connections: [{ status: 'ACTIVE' }] },
     });
 
     const status = await getSetupStatus(config, {}, caller);
@@ -77,10 +79,10 @@ describe('beel_get_setup_status', () => {
     const caller = fakeCaller(
       {
         getMyIdentity: { account_id: 'acc-1' },
-        listCompanies: [{ id: 'co-1', nif: 'B1' }],
+        listCompanies: { companies: [{ id: 'co-1', nif: 'B1' }] },
         getCompanyIssuingReadiness: { ready: false, blockers: ['NIF_NOT_REGISTERED'] },
-        getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
-        listCompanyPaymentConnections: [],
+        getCompanyDefaultSeries: { defaults: [{ document_type: 'F1', exists: true }] },
+        listCompanyPaymentConnections: { connections: [] },
       },
       new Set(['getCompanyVeriFactuConfiguration']),
     );
@@ -101,14 +103,61 @@ describe('beel_get_setup_status', () => {
     expect(status.next_action).toContain('BEEL_API_KEY');
   });
 
+  // Los listados llegan con el array bajo su clave (`data` ya viene desenvuelto). Cuando
+  // esto se leía con Array.isArray sobre la respuesta entera, el informe daba SIEMPRE cero
+  // NIFs —"No NIFs yet" a una cuenta con NIF—, las series por configuradas sin leerlas y el
+  // cobro por desconectado. Las fixtures de antes pasaban arrays pelados, así que reproducían
+  // la suposición del código en vez del contrato de la API y no podían verlo.
+  it('reads the listing envelope the API actually returns', async () => {
+    const caller = fakeCaller({
+      getMyIdentity: { account_id: 'acc-1', name: 'Ada' },
+      listCompanies: {
+        companies: [{ id: 'co-1', nif: 'B1' }],
+        pagination: { current_page: 1, total_items: 1 },
+      },
+      getCompanyIssuingReadiness: { ready: true, blockers: [] },
+      getCompanyDefaultSeries: { defaults: [{ document_type: 'F1', exists: false }] },
+      getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true },
+      listCompanyPaymentConnections: { connections: [{ status: 'ACTIVE' }] },
+    });
+
+    const status = await getSetupStatus(config, {}, caller);
+
+    expect(status.companies).toHaveLength(1);
+    expect(status.companies[0]!.nif).toBe('B1');
+    expect(status.next_action).not.toContain('No NIFs yet');
+    // Sin desenvolver, estos dos mentían en direcciones opuestas: series "todo configurado"
+    // y cobro "sin conexión activa", ambos sin haber leído un solo elemento.
+    expect(status.companies[0]!.default_series).toEqual({
+      all_configured: false,
+      missing: ['F1'],
+    });
+    expect(status.companies[0]!.payment_connection).toEqual({ count: 1, active: true });
+  });
+
+  it('still accepts a bare array, so the envelope shape is not load-bearing', async () => {
+    const caller = fakeCaller({
+      getMyIdentity: { account_id: 'acc-1' },
+      listCompanies: [{ id: 'co-1', nif: 'B1' }],
+      getCompanyIssuingReadiness: { ready: true, blockers: [] },
+      getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
+      getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true },
+      listCompanyPaymentConnections: [{ status: 'ACTIVE' }],
+    });
+
+    const status = await getSetupStatus(config, {}, caller);
+    expect(status.companies).toHaveLength(1);
+    expect(status.companies[0]!.payment_connection).toEqual({ count: 1, active: true });
+  });
+
   it('respects the company_id filter', async () => {
     const caller = fakeCaller({
       getMyIdentity: { account_id: 'acc-1' },
-      listCompanies: [{ id: 'co-1', nif: 'B1' }, { id: 'co-2', nif: 'B2' }],
+      listCompanies: { companies: [{ id: 'co-1', nif: 'B1' }, { id: 'co-2', nif: 'B2' }] },
       getCompanyIssuingReadiness: { ready: true, blockers: [] },
-      getCompanyDefaultSeries: [{ document_type: 'F1', exists: true }],
+      getCompanyDefaultSeries: { defaults: [{ document_type: 'F1', exists: true }] },
       getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: false },
-      listCompanyPaymentConnections: [],
+      listCompanyPaymentConnections: { connections: [] },
     });
 
     const status = await getSetupStatus(config, { company_id: 'co-2' }, caller);
