@@ -74,6 +74,23 @@ export async function pkcePair(): Promise<{ verifier: string; challenge: string 
   return { verifier, challenge: base64url(new Uint8Array(digest)) };
 }
 
+let missingSecretWarned = false;
+
+/**
+ * Aviso único: sin `BEEL_OAUTH_CLIENT_SECRET` el puente cae a cliente público y pierde
+ * el refresh token. Sin esto, el síntoma (reconectar cada hora) no apunta a su causa.
+ */
+function warnMissingClientSecret(): void {
+  if (missingSecretWarned) return;
+  missingSecretWarned = true;
+  console.warn(
+    `${ENV_VAR.oauthClientSecret} sin definir: el puente autentica como cliente PÚBLICO y ` +
+      'el authorization server no emite refresh token, así que la sesión caduca con el ' +
+      'access token (60 min) y obliga a reconectar. Provisionar el secreto con ' +
+      `\`wrangler secret put ${ENV_VAR.oauthClientSecret}\`.`,
+  );
+}
+
 async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Promise<UpstreamTokens> {
   const headers: Record<string, string> = { [HttpHeader.ContentType]: ContentType.Form };
   if (config.clientSecret) {
@@ -84,6 +101,17 @@ async function tokenRequest(config: UpstreamConfig, params: URLSearchParams): Pr
     headers[HttpHeader.Authorization] = basicAuthHeader(config.clientId, config.clientSecret);
   } else {
     // Public client (no secret): PKCE (S256) is the protection.
+    //
+    // Y ADEMÁS la sesión durará lo que dure el access token: Spring Authorization Server
+    // NO emite refresh token a un cliente que autentica con `none`
+    // (OAuth2AuthorizationCodeAuthenticationProvider), así que a los 60 min hay que volver
+    // a pasar por el consentimiento. Se percibe como «cada despliegue mata el token»,
+    // porque los despliegues son más frecuentes que la hora.
+    //
+    // BeeL registra este cliente con los DOS métodos, así que esto es una degradación por
+    // configuración ausente, no un diseño. Se avisa una vez por proceso —no por petición—
+    // para que aparezca en los logs del Worker sin ahogarlos.
+    warnMissingClientSecret();
     params.set('client_id', config.clientId);
   }
   const response = await fetch(config.tokenUrl, {

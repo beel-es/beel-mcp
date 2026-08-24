@@ -14,8 +14,17 @@ import { applyToolPolicy } from './tool-policy.js';
 /** The scope that marks a session as operating on sandbox (test) data. */
 export const SANDBOX_SCOPE = 'sandbox';
 
-/** Scopes never requested by default, even when the backend would grant them. */
-export const NON_DEFAULT_SCOPES = new Set<string>([SANDBOX_SCOPE]);
+/**
+ * Scopes never requested by default, even when the backend would grant them.
+ *
+ * `sandbox` NO está aquí, y esa ausencia es el arreglo: pedirlo no es *usarlo*.
+ * El backend decide el entorno por el scope CONCEDIDO, y su pantalla de consentimiento
+ * sólo sabe acotar lo que el cliente pidió — nunca añadir. Con `sandbox` fuera de la
+ * petición, el selector de entorno de la pantalla no tenía nada que conceder y el token
+ * salía SIEMPRE de producción, con el usuario creyendo lo contrario. Sobre facturación
+ * eso son facturas fiscales reales, numeradas y enviadas a la AEAT.
+ */
+export const NON_DEFAULT_SCOPES = new Set<string>([]);
 
 /**
  * Scopes requested upstream when the MCP client asks for none (Claude sends no
@@ -57,14 +66,25 @@ export function requiredScopes(operations: OperationSpec[]): string[] {
 
 /**
  * Least-privilege intersection of what the tools NEED with what the backend
- * GRANTS (both minus non-default scopes like `sandbox`). Pure — no runtime deps —
- * so it is unit-testable from Node. Fails CLOSED: an empty intersection returns
- * `needed` (the tool set), NEVER the whole grantable catalogue.
+ * GRANTS. Pure — no runtime deps — so it is unit-testable from Node. Fails
+ * CLOSED: an empty intersection returns `needed` (the tool set), NEVER the whole
+ * grantable catalogue.
+ *
+ * `sandbox` se añade aparte y a propósito: no lo necesita ninguna herramienta —no es
+ * un permiso— pero tiene que VIAJAR en la petición para que el selector de entorno de
+ * la pantalla de consentimiento pueda concederlo. Pedirlo no fuerza sandbox: quien
+ * decide es el usuario en esa pantalla, y sin su visto bueno el backend no lo concede.
+ * Sólo se pide si el backend lo anuncia, porque Spring tumba el authorize entero con
+ * `invalid_scope` ante una sola entrada desconocida.
  */
 export function intersectScopes(needed: string[], grantable: readonly string[]): string[] {
   const grantableSet = new Set(grantable.filter((s) => !NON_DEFAULT_SCOPES.has(s)));
-  const scopes = needed.filter((s) => grantableSet.has(s));
-  return scopes.length ? scopes : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
+  const matched = needed.filter((s) => grantableSet.has(s));
+  const scopes = matched.length ? matched : needed.filter((s) => !NON_DEFAULT_SCOPES.has(s));
+  if (grantable.includes(SANDBOX_SCOPE) && !scopes.includes(SANDBOX_SCOPE)) {
+    return [...scopes, SANDBOX_SCOPE];
+  }
+  return scopes;
 }
 
 /**
