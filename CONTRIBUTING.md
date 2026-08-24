@@ -138,9 +138,23 @@ After npm, the same workflow announces the release to the [MCP
 Registry](https://registry.modelcontextprotocol.io) from `server.json`, which lists both
 the npm package and the hosted server.
 
-Nothing to set up: `mcp-publisher login github-oidc` exchanges the workflow's OIDC token
-for the `io.github.beel-es/*` namespace, which only this repository can claim. Same shape
-as npm trusted publishing, and likewise no secret.
+The server is listed as `es.beel/mcp`. That namespace comes from the domain, not from this
+repository: `mcp-publisher login dns` signs a timestamp with an ed25519 key whose public
+half is a TXT record on the apex of `beel.es`, declared in `beel-infra`.
+
+```
+beel.es  TXT  "v=MCPv1; k=ed25519; p=<base64 public key>"
+```
+
+It has to sit on the apex — the registry rejects the same value under a selector such as
+`_mcp-auth.beel.es`, and says so.
+
+The private half is the seed, hex-encoded, in the `MCP_DNS_PRIVATE_KEY` secret of the
+`npm-publish` environment — so it is reachable only after the same human approval that
+gates npm. It is the one credential in the release: npm needs none, but a domain namespace
+cannot work without proof only the domain holder can produce. Rotating it means publishing
+a new public key in `beel-infra` **and** replacing the secret; do one without the other and
+releases stop.
 
 The claim runs both ways: `server.json` names the npm package, and `package.json`
 names the server back through `mcpName`. The registry reads that field out of the
@@ -160,9 +174,16 @@ To change what the registry shows — description, transports, environment varia
 `server.json` and check it with `mcp-publisher validate`. The name is a public identifier:
 renaming it strands the existing listing rather than moving it.
 
-The namespace could instead be `es.beel/mcp`, which reads better and is authenticated by a
-DNS TXT record on the domain. That is a migration, not a setting — the current listing does
-not follow the name.
+The server was listed as `io.github.beel-es/beel-mcp` up to v0.2.2, before the domain
+namespace existed. That listing is deprecated with:
+
+```bash
+mcp-publisher login github-oidc   # or: login github, interactively
+mcp-publisher status io.github.beel-es/beel-mcp deprecated
+```
+
+It is deprecated rather than deleted: clients that already installed it keep resolving,
+and the entry points at the same npm package and the same hosted server.
 
 ## Pull requests
 
