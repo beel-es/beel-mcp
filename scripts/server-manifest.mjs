@@ -46,6 +46,18 @@ if (npmPackage && npmPackage.identifier !== pkg.name) {
   process.exit(1);
 }
 
+// The registry proves the claim on a package by reading `mcpName` back out of the
+// published tarball: it is how @beel_es/mcp says it belongs to this server name,
+// and not the other way round. Without it the registry rejects the release — but
+// only after npm has published, because the check reads the published package. So
+// it is asserted here, where it costs a line, rather than discovered there.
+if (pkg.mcpName !== manifest.name) {
+  console.error(
+    `::error::package.json mcpName is ${pkg.mcpName ? `"${pkg.mcpName}"` : 'missing'}; the registry requires it to equal the server name "${manifest.name}".`,
+  );
+  process.exit(1);
+}
+
 const sites = versionSites(manifest);
 
 if (process.argv.includes('--write')) {

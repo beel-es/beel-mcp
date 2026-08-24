@@ -142,6 +142,13 @@ Nothing to set up: `mcp-publisher login github-oidc` exchanges the workflow's OI
 for the `io.github.beel-es/*` namespace, which only this repository can claim. Same shape
 as npm trusted publishing, and likewise no secret.
 
+The claim runs both ways: `server.json` names the npm package, and `package.json`
+names the server back through `mcpName`. The registry reads that field out of the
+*published* tarball to confirm the package really belongs to this server, so a missing
+or mismatched `mcpName` fails the release — and fails it late, after npm has already
+published, since the check needs the package to exist. `manifest:verify` asserts it
+here instead, where it costs nothing.
+
 `server.json` is hand-written except for the version, which is derived from
 `package.json` — the registry refuses to republish a version it already holds, so a stale
 manifest would fail the release. `npm version` regenerates it and stages it in the same
