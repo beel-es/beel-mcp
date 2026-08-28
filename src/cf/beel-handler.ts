@@ -12,7 +12,12 @@ import {
 import { IDENTITY_ASSERTION, createIdentityAssertion, parseKnownClients, resolveClientIdentity } from './client-identity.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
-import { FALLBACK_GRANTABLE_SCOPES, intersectScopes, requiredScopes } from '../policy/scopes.js';
+import {
+  FALLBACK_GRANTABLE_SCOPES,
+  intersectScopes,
+  keyEnvFromScopes,
+  requiredScopes,
+} from '../policy/scopes.js';
 import { CACHE_TTL_MS, ENV_VAR, OAUTH_PATH, SERVER_NAME } from '../shared/defaults.js';
 import { readEnv } from '../shared/env.js';
 import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
@@ -215,6 +220,18 @@ app.get('/callback', async (c) => {
   const tokens = await exchangeCode(upstream, code, callbackUrl(upstream), codeVerifier);
 
   const scopes = (tokens.scope ?? oauthReqInfo.scope.join(' ')).split(' ').filter(Boolean);
+  // Una línea por conexión con el entorno REAL del token. Sin esto, «conecté Producción y
+  // me salió Test» era invisible desde `wrangler tail`: la línea por tool call no lleva
+  // entorno, y el scope que BeeL concedió no quedaba en ningún sitio. Los scopes no son
+  // secreto (viajan en la URL de consentimiento); el bearer sigue sin salir del Worker.
+  console.error(
+    JSON.stringify({
+      evt: 'oauth_callback',
+      env: keyEnvFromScopes(scopes),
+      scope_source: tokens.scope ? 'token' : 'request',
+      scopes,
+    }),
+  );
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
     request: oauthReqInfo,
     userId: subjectFromJwt(tokens.access_token) ?? upstream.clientId,
