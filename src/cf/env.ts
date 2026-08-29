@@ -31,6 +31,8 @@ export type Env = {
   MCP_VERIFIED_CLIENTS?: string;
   /** This server's own public origin, used to build its callback URL. */
   MCP_PUBLIC_URL?: string;
+  /** `true` serves initialize and the list methods on the MCP endpoint without a token. */
+  MCP_PUBLIC_DISCOVERY?: string;
   BEEL_BASE_URL?: string;
   BEEL_DOCS_URL?: string;
   /** Comma-separated storage hosts the invoice-PDF relay may fetch from. */

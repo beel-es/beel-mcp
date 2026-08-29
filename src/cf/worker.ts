@@ -8,9 +8,10 @@ import { setInvoicePdfAppHtml } from '../mcpapp/resource.js';
 import type { Env } from './env.js';
 import { createServer } from '../server.js';
 import type { ResolvedConfig } from '../config.js';
-import { keyEnvFromScopes } from '../policy/scopes.js';
+import { advertisedScopes, keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
 import { BeelAuthHandler } from './beel-handler.js';
+import { handlePublicDiscovery, publicDiscoveryEnabled } from './public-discovery.js';
 import { WORKER_PATH, WORKER_TTL } from './constants.js';
 import { sentryOptions } from './telemetry.js';
 import { createTokenExchangeCallback, type SessionProps } from './token-exchange.js';
@@ -99,11 +100,22 @@ function createProvider(env: Env): OAuthProvider {
     // Refresh the upstream BeeL token whenever the MCP client refreshes ours, so
     // the bearer in props never outlives its upstream counterpart.
     tokenExchangeCallback: createTokenExchangeCallback(env),
+    // Advertised in both discovery documents, so a client can request least
+    // privilege before it ever sees the consent screen.
+    scopesSupported: advertisedScopes(),
+    resourceMetadata: {
+      scopes_supported: advertisedScopes(),
+      resource_name: SERVER_INFO.name,
+    },
   });
 }
 
 export default Sentry.withSentry(workerSentryOptions, {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (publicDiscoveryEnabled(env)) {
+      const response = await handlePublicDiscovery(request);
+      if (response) return response;
+    }
     return createProvider(env).fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>);

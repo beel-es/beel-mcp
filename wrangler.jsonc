@@ -23,5 +23,6 @@
     "BEEL_OAUTH_CLIENT_ID": "beel-mcp",
     "BEEL_BASE_URL": "https://app.beel.es/api",
     "BEEL_DOCS_URL": "https://docs.beel.es",
+    "MCP_PUBLIC_DISCOVERY": "true",
   },
 }
