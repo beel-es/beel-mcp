@@ -17,6 +17,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@beel_es/mcp"><img src="https://img.shields.io/npm/v/@beel_es/mcp.svg" alt="npm version"></a>
+  <a href="https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml"><img src="https://github.com/beel-es/beel-mcp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/github/v/release/beel-es/beel-mcp?label=changelog" alt="Changelog"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/Model_Context_Protocol-server-224DA9" alt="MCP server"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
