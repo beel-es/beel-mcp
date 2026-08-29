@@ -3,6 +3,20 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.5.0](https://github.com/beel-es/beel-mcp/compare/v0.4.2...v0.5.0) (2026-08-29)
+
+
+### Novedades
+
+* **discovery:** public resources/read and prompts/get, CSP meta in the viewer (#BEE-1443) ([#86](https://github.com/beel-es/beel-mcp/issues/86)) ([6edf8cd](https://github.com/beel-es/beel-mcp/commit/6edf8cd01d2d6de874c69fd6f7e8efef87b73a1a))
+* **oauth:** advertise scopes_supported and add opt-in public discovery (#BEE-1443) ([#84](https://github.com/beel-es/beel-mcp/issues/84)) ([3ddaf71](https://github.com/beel-es/beel-mcp/commit/3ddaf7130e225fc7a79d9dd2462f2e6646550a19))
+* **oauth:** agent_auth block in the authorization-server metadata (#BEE-1443) ([#88](https://github.com/beel-es/beel-mcp/issues/88)) ([dc72c12](https://github.com/beel-es/beel-mcp/commit/dc72c12344089285198d93aff6aed758a9329b27))
+
+
+### Documentación
+
+* AGENTS.md for coding agents and an Agent Plugins manifest (#BEE-1443) ([#87](https://github.com/beel-es/beel-mcp/issues/87)) ([2fda2d9](https://github.com/beel-es/beel-mcp/commit/2fda2d99459f5e360ca8dd70f79f29029a0ad811))
+
 ## [0.4.2](https://github.com/beel-es/beel-mcp/compare/v0.4.1...v0.4.2) (2026-08-29)
 
 
