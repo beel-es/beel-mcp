@@ -14,6 +14,7 @@ import type { EnvRecord } from '../shared/env.js';
 import { toolName } from '../spec/derive.js';
 import {
   appCsp,
+  appCspMeta,
   type AppCsp,
   INVOICE_PDF_APP_URI,
   INVOICE_PDF_OPERATION,
@@ -57,5 +58,14 @@ function resolveHtmlFromDisk(): string | null {
  */
 export function readInvoicePdfApp(env?: EnvRecord): { html: string; csp: AppCsp } | null {
   const html = injectedHtml ?? resolveHtmlFromDisk();
-  return html ? { html, csp: appCsp(env) } : null;
+  if (!html) return null;
+  const csp = appCsp(env);
+  return { html: withCspMeta(html, csp), csp };
+}
+
+/** Declare the CSP inside the document too, right after `<head>`. Idempotent. */
+export function withCspMeta(html: string, csp: AppCsp): string {
+  if (/http-equiv="Content-Security-Policy"/i.test(html)) return html;
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${appCspMeta(csp)}" />`;
+  return html.replace(/<head>/i, `<head>\n${meta}`);
 }

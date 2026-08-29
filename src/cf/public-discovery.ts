@@ -25,6 +25,10 @@ const PUBLIC_METHODS: ReadonlySet<string> = new Set([
   'prompts/list',
   'resources/list',
   'resources/templates/list',
+  // Resources and prompts are static documents: guardrails, error catalogue
+  // and the viewer HTML. Nothing in them is per user.
+  'resources/read',
+  'prompts/get',
 ]);
 
 export function publicDiscoveryEnabled(env: EnvRecord): boolean {
