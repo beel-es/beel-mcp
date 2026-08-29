@@ -10,6 +10,7 @@ import { createServer } from '../server.js';
 import type { ResolvedConfig } from '../config.js';
 import { advertisedScopes, keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
+import { withAgentAuth } from './agent-auth.js';
 import { BeelAuthHandler } from './beel-handler.js';
 import { handlePublicDiscovery, publicDiscoveryEnabled } from './public-discovery.js';
 import { WORKER_PATH, WORKER_TTL } from './constants.js';
@@ -116,6 +117,6 @@ export default Sentry.withSentry(workerSentryOptions, {
       const response = await handlePublicDiscovery(request);
       if (response) return response;
     }
-    return createProvider(env).fetch(request, env, ctx);
+    return withAgentAuth(request, await createProvider(env).fetch(request, env, ctx));
   },
 } satisfies ExportedHandler<Env>);
