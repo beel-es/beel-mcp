@@ -24,6 +24,12 @@ export const WORKER_PATH = {
 /** Lifetimes, in seconds, of everything the Worker mints or stores. */
 export const WORKER_TTL = {
   /**
+   * How long a dynamically registered client lives without being used. DCR is
+   * unauthenticated by design, so registrations are unbounded input; without a
+   * TTL every registration is a permanent KV record.
+   */
+  clientRegistrationSeconds: 30 * 24 * 60 * 60,
+  /**
    * How long a pending authorization stays redeemable in KV.
    *
    * It has to cover a full interactive login — password, second factor, a

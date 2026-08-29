@@ -204,8 +204,60 @@ async function signClientIdentity(
   });
 }
 
+/**
+ * The provider rejects a malformed authorization request by throwing an
+ * `AuthorizationError` (unknown client, unregistered redirect_uri, bad
+ * response_type…). Recognised structurally rather than by `instanceof` so this
+ * module stays loadable outside the Workers runtime.
+ */
+function asAuthorizationError(
+  error: unknown,
+): { code: string; description: string; redirectUri?: string; state?: string } | null {
+  if (!(error instanceof Error) || error.name !== 'AuthorizationError') return null;
+  const e = error as Error & {
+    code?: unknown;
+    description?: unknown;
+    redirectUri?: unknown;
+    state?: unknown;
+  };
+  if (typeof e.code !== 'string') return null;
+  return {
+    code: e.code,
+    description: typeof e.description === 'string' ? e.description : '',
+    redirectUri: typeof e.redirectUri === 'string' ? e.redirectUri : undefined,
+    state: typeof e.state === 'string' ? e.state : undefined,
+  };
+}
+
+/**
+ * RFC 6749 §4.1.2.1: once the client and its redirect_uri are known, the error
+ * goes back to the client; before that point it must be rendered locally, since
+ * redirecting to an unvalidated URI would make this endpoint an open redirector.
+ * Either way it is a 4xx — a caller's mistake never becomes an error report.
+ */
+function authorizationErrorResponse(
+  c: Context<{ Bindings: Env }>,
+  error: { code: string; description: string; redirectUri?: string; state?: string },
+): Response {
+  if (error.redirectUri) {
+    const target = new URL(error.redirectUri);
+    target.searchParams.set('error', error.code);
+    if (error.description) target.searchParams.set('error_description', error.description);
+    if (error.state) target.searchParams.set('state', error.state);
+    return c.redirect(target.href, 302);
+  }
+  return c.text(`${error.code}: ${error.description || 'invalid authorization request'}`, 400);
+}
+
 app.get(WORKER_PATH.authorize, async (c) => {
-  const oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
+  let oauthReqInfo: AuthRequest;
+  try {
+    oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
+  } catch (error) {
+    const rejected = asAuthorizationError(error);
+    if (!rejected) throw error;
+    return authorizationErrorResponse(c, rejected);
+  }
   if (!oauthReqInfo.clientId) return c.text('Invalid authorization request', 400);
 
   const upstream = upstreamConfig(c.env);

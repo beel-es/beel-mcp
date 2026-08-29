@@ -142,6 +142,60 @@ describe('/authorize', () => {
     expect(target.searchParams.get('scope')).toBe('invoices:read');
   });
 
+  it('answers 400, not 500, when the provider rejects the request before knowing the client', async () => {
+    const rejection = Object.assign(new Error('client_id is required'), {
+      name: 'AuthorizationError',
+      code: 'invalid_request',
+      description: 'client_id is required',
+    });
+    const { env } = fakeEnv({
+      OAUTH_PROVIDER: {
+        parseAuthRequest: async () => {
+          throw rejection;
+        },
+      },
+    });
+    const response = await call(env, WORKER_PATH.authorize);
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('invalid_request');
+  });
+
+  it('returns the error to the client once its redirect_uri has been validated', async () => {
+    const rejection = Object.assign(new Error('scope not allowed'), {
+      name: 'AuthorizationError',
+      code: 'invalid_scope',
+      description: 'scope not allowed',
+      redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+      state: 'client-state',
+    });
+    const { env } = fakeEnv({
+      OAUTH_PROVIDER: {
+        parseAuthRequest: async () => {
+          throw rejection;
+        },
+      },
+    });
+    const response = await call(env, WORKER_PATH.authorize);
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get('location') ?? '');
+    expect(location.origin + location.pathname).toBe('https://claude.ai/api/mcp/auth_callback');
+    expect(location.searchParams.get('error')).toBe('invalid_scope');
+    expect(location.searchParams.get('state')).toBe('client-state');
+  });
+
+  it('still surfaces failures that are not authorization errors', async () => {
+    const { env } = fakeEnv({
+      OAUTH_PROVIDER: {
+        parseAuthRequest: async () => {
+          throw new Error('kv unavailable');
+        },
+      },
+    });
+    // Anything that is not the caller's mistake stays a 500: it must reach the
+    // error tracker rather than be dressed up as an OAuth error.
+    expect((await call(env, WORKER_PATH.authorize)).status).toBe(500);
+  });
+
   it('refuses a request that names no client', async () => {
     const { env } = fakeEnv({
       OAUTH_PROVIDER: { parseAuthRequest: async () => ({ clientId: '', scope: [] }) },
