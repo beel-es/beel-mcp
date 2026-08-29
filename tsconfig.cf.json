@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"],
+    "noEmit": true
+  },
+  "exclude": [
+    "dist",
+    "node_modules",
+    "tests",
+    // Node-only entrypoint: the Worker's entry is src/cf/worker.ts.
+    "src/index.ts"
+  ],
+  "include": ["src"]
+}

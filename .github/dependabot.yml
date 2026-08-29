@@ -1,0 +1,45 @@
+# Dependabot watches the npm dependencies and the GitHub Actions.
+# Security alerts (Dependabot security updates) are enabled separately, in the
+# repository's Settings → Code security; this file governs maintenance PRs only.
+version: 2
+updates:
+  # npm dependencies. The published package bundles everything it needs, so these
+  # are build and CI inputs — which is exactly why they must stay current: a
+  # compromised build input ends up inside the tarball consumers install.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # Patch and minor noise is grouped into one PR per band; majors stay separate
+    # so each is reviewed on its own (wrangler, the MCP SDK and agents break
+    # across majors).
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+    # The MCP SDK is pinned to an exact version on purpose: Dependabot may still
+    # propose the major bump, but never grouped with anything else.
+    labels:
+      - dependencies
+    ignore:
+      # pdfjs-dist supplies types only; the pdf.js that actually runs is fetched
+      # from the CDN version pinned in src/mcpapp/contract.ts. The npm package must
+      # therefore track the SAME major as the CDN, or the types describe an API the
+      # runtime does not have. Majors are adopted by hand, moving PDFJS_VERSION in
+      # the same change.
+      - dependency-name: pdfjs-dist
+        update-types: [version-update:semver-major]
+
+  # The Actions used by CI and the release. They are pinned to commit SHAs in the
+  # workflows, so Dependabot is what keeps those pins current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - github-actions

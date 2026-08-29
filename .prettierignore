@@ -1,0 +1,9 @@
+dist
+node_modules
+openapi
+package-lock.json
+src/mcpapp/generated
+
+# Prose is formatted by hand: Prettier reflows Markdown in ways that make the
+# diff of a one-line edit unreadable.
+*.md

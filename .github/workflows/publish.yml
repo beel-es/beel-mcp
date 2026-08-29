@@ -1,0 +1,156 @@
+name: Publish to npm
+
+# Publishes @beel_es/mcp when a version tag is pushed.
+#
+# Authentication is npm **trusted publishing** (OIDC): GitHub mints a
+# short-lived, workflow-specific token that npm verifies against the trusted
+# publisher configured for this package. There is no NPM_TOKEN — no long-lived
+# credential to store, leak or rotate — and npm attaches provenance
+# automatically, so the published package records the exact commit and workflow
+# it was built from.
+#
+# This does NOT work until a trusted publisher is attached to the package, and npm
+# requires the package to already exist before one can be. The first version is
+# therefore published by hand; see "First-time setup" in CONTRIBUTING.md.
+#
+# To release:  npm version <patch|minor|major> && git push --follow-tags
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # mints the OIDC token npm verifies; nothing else needs it
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, verify and publish
+    runs-on: ubuntu-latest
+    # Gate the release behind a protected environment. Configure `npm-publish` in
+    # Settings → Environments with required reviewers, so a push of a v* tag pauses
+    # here until a human approves — the last checkpoint before anything reaches npm.
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1.
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # Pinned to a major: trusted publishing needs npm >= 11.5.1, and a floating
+      # `@latest` lets an unreviewed npm release change how a publish behaves.
+      - name: Use an npm that supports trusted publishing
+        run: npm install -g npm@11
+
+      - run: npm ci
+
+      # Publish only what passes. A green CI run on an earlier commit says
+      # nothing about the commit being released.
+      - name: Verify the OpenAPI contract matches its lock
+        run: npm run spec:verify
+
+      # The registry rejects a version it already holds, and this check runs
+      # before npm publish on purpose: a manifest caught drifting afterwards
+      # would leave npm released and the registry a version behind.
+      - name: Verify the registry manifest matches the package version
+        run: npm run manifest:verify
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify:package
+
+      # A tag that disagrees with package.json publishes a version nobody asked
+      # for, under a name that suggests otherwise. Cheap to check, expensive to undo.
+      - name: Check the tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag v$tag does not match package.json version $pkg."
+            exit 1
+          fi
+          echo "Publishing version $pkg."
+
+      # The published binary is what `npx @beel_es/mcp` executes; if it cannot
+      # list its tools, the release is broken in the only way that matters.
+      - name: Smoke test the built server
+        run: npm run smoke
+
+      # The official CLI rather than one of the marketplace actions: the CLI reads
+      # `server.json`, while the actions take the same fields as workflow inputs —
+      # a second copy of the manifest, free to drift from the one this repository
+      # verifies. Fetched here, before anything is published, so that an invalid
+      # manifest stops the release instead of stranding it half-done.
+      #
+      # The download is checked against the release's own checksum file before it
+      # is unpacked: a pinned version alone does not stop an asset from being
+      # replaced, and this binary runs with the release credential in scope.
+      - name: Install the registry publisher
+        run: |
+          base="https://github.com/modelcontextprotocol/registry/releases/download/v${PUBLISHER_VERSION}"
+          curl -fsSL -o mcp-publisher.tar.gz "${base}/mcp-publisher_linux_amd64.tar.gz"
+          curl -fsSL -o checksums.txt "${base}/registry_${PUBLISHER_VERSION}_checksums.txt"
+          grep ' mcp-publisher_linux_amd64\.tar\.gz$' checksums.txt \
+            | sed 's/mcp-publisher_linux_amd64\.tar\.gz/mcp-publisher.tar.gz/' > expected.sha256
+          test -s expected.sha256 || { echo "::error::No checksum published for mcp-publisher_linux_amd64.tar.gz."; exit 1; }
+          sha256sum --check --strict expected.sha256
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          rm -f mcp-publisher.tar.gz checksums.txt expected.sha256
+        env:
+          PUBLISHER_VERSION: 1.8.1
+
+      - name: Validate the registry manifest
+        run: ./mcp-publisher validate
+
+      # No token: the OIDC exchange happens inside npm publish itself.
+      #
+      # Skipped when the version is already on npm, so that re-running this job
+      # retries only what actually failed. The release has two destinations and
+      # npm is the first, so a failure in a later step would otherwise leave the
+      # job unrepeatable: the version is already public and `npm publish` refuses
+      # it, with no way forward but to burn a version number. This keeps the job
+      # resumable. It never overwrites — npm forbids that, and so does this check.
+      - name: Publish
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@beel_es/mcp@${version}" version >/dev/null 2>&1; then
+            echo "@beel_es/mcp@${version} is already on npm — skipping, this is a retry."
+            exit 0
+          fi
+          npm publish
+
+      # The registry is a discovery index, not a distribution channel: it points
+      # at the npm package and at the hosted server, so it is announced only once
+      # both are actually reachable — hence last, after npm publish.
+      #
+      # `login dns` signs a timestamp with the ed25519 key whose public half is a
+      # TXT record on the apex of beel.es, which is what grants the `es.beel/*`
+      # namespace — the domain we own, rather than the `io.github.beel-es/*` that
+      # authenticating through the repository would give.
+      #
+      # This is the one credential in the release. GitHub OIDC needs none, and the
+      # earlier listing used it; a domain namespace cannot work that way, because
+      # the proof has to be something only the domain holder can produce. It is an
+      # environment secret rather than a repository one, so it is reachable only
+      # from the `npm-publish` environment and therefore only after the same human
+      # approval that gates npm.
+      #
+      # Rotating it means publishing a new public key in the DNS/infrastructure
+      # repository and replacing this secret — both, or releases stop.
+      - name: Announce the release to the MCP Registry
+        run: |
+          ./mcp-publisher login dns --domain beel.es --private-key "$MCP_DNS_PRIVATE_KEY"
+          ./mcp-publisher publish
+        env:
+          MCP_DNS_PRIVATE_KEY: ${{ secrets.MCP_DNS_PRIVATE_KEY }}
