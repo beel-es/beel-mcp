@@ -276,8 +276,12 @@ surface is available as a [REST API, CLI and n8n node](#the-rest-of-the-beel-dev
 ## Contributing
 
 Bug reports and pull requests are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for
-how the project is laid out and which conventions are load-bearing. Security issues go to
-**security@beel.es** rather than a public issue; see [SECURITY.md](./SECURITY.md).
+how the project is laid out and which conventions are load-bearing, and
+[Discussions](https://github.com/beel-es/beel-mcp/discussions) for questions. Issues
+labelled [`good first issue`](https://github.com/beel-es/beel-mcp/labels/good%20first%20issue)
+are a reasonable place to start. Everyone participating is expected to follow the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Security issues go to **security@beel.es** rather
+than a public issue; see [SECURITY.md](./SECURITY.md).
 
 ## License
 

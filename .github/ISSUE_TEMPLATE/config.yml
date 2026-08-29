@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/beel-es/beel-mcp/blob/master/SECURITY.md
+    about: Please report vulnerabilities privately to security@beel.es, never in a public issue.
+  - name: Questions and ideas
+    url: https://github.com/beel-es/beel-mcp/discussions
+    about: Usage questions, integration help and open-ended ideas go to Discussions.
+  - name: BeeL API documentation
+    url: https://docs.beel.es
+    about: The API contract the tools are derived from.
