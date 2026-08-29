@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "es.beel/mcp",
+  "title": "BeeL",
+  "description": "Spanish e-invoicing with VeriFactu (AEAT): issue invoices, manage customers, validate NIFs.",
+  "version": "0.4.0",
+  "websiteUrl": "https://docs.beel.es/mcp",
+  "repository": {
+    "url": "https://github.com/beel-es/beel-mcp",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.beel.es/mcp"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@beel_es/mcp",
+      "version": "0.4.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BEEL_API_KEY",
+          "description": "BeeL API key. The prefix selects the environment: beel_sk_test_ for Test, beel_sk_live_ for Live. It may be omitted on a machine where the BeeL CLI has been signed in (`beel login`), whose credentials the server reads from ~/.config/beel/config.json as a fallback; with neither, the server starts and refuses every API call with an actionable error.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "BEEL_ENV",
+          "description": "Which stored CLI credential to use when BEEL_API_KEY is not set: test (default) or live. Ignored when BEEL_API_KEY is set, since the key's prefix already says which environment it belongs to.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

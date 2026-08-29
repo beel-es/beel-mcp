@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Least privilege. CI only reads the code; it publishes nothing and needs no
+# secrets, which is also what makes it safe to run on pull requests from forks.
+permissions:
+  contents: read
+
+# One run per branch or PR; supersede an in-flight run when new commits land.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The vendored OpenAPI contract must be a generated copy, never a hand edit:
+      # the tool surface is derived from it, so an edited spec makes every tool
+      # advertise a contract the API does not honour.
+      - name: Verify the OpenAPI contract matches its lock
+        run: npm run spec:verify
+
+      # The registry manifest carries the released version, and the registry
+      # refuses to republish one it already holds. Catching the drift here beats
+      # catching it at the end of a release, after npm has already gone out.
+      - name: Verify the registry manifest matches the package version
+        run: npm run manifest:verify
+
+      # Typechecks both the Node and the Worker configurations.
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # What would ship to npm: the binary, its shebang, the viewer the stdio
+      # server reads from disk, and nothing that belongs only in the repository.
+      - run: npm run verify:package
+
+      # The server must boot and list tools over stdio with no credentials.
+      # Defined in scripts/smoke-stdio.mjs so CI and the release check the same thing.
+      - run: npm run smoke
+
+      # Style and static analysis are blocking: the tree is lint-clean and formatted.
+      - name: Lint
+        run: npm run lint
+      - name: Check formatting
+        run: npm run format:check
+
+  worker:
+    name: Worker bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # A dry-run deploy proves the Worker still bundles (text modules, spec,
+      # viewer HTML) without needing any Cloudflare credentials.
+      - name: Build the Worker bundle
+        run: npx wrangler deploy --dry-run --outdir /tmp/worker-build

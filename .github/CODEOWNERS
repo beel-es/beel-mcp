@@ -1,0 +1,12 @@
+# Default owners for the whole repository: the @beel-es/developers team.
+# Membership is managed in one place (org Settings → Teams), so adding or
+# removing a person updates this rule in every repository that uses it.
+# It only becomes mandatory where the branch ruleset requires a Code Owner review.
+*                       @beel-es/developers
+
+# Sensitive paths — the publishing chain, CI, Worker security and the contract.
+# A change here is always reviewed by the team.
+/.github/               @beel-es/developers
+/src/cf/                @beel-es/developers
+/openapi/               @beel-es/developers
+/package.json           @beel-es/developers

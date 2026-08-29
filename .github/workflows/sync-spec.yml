@@ -1,0 +1,96 @@
+name: Sync OpenAPI spec
+
+# Reads the backend repository (private) with a deploy key. Its triggers both
+# require write access, so a fork can never run it or reach the secrets.
+
+# Keeps the vendored contract in sync with the backend. Triggers:
+#  - repository_dispatch (event_type: openapi-updated), fired by the backend repo
+#    when its public-api.yaml changes.
+#  - manual workflow_dispatch.
+on:
+  repository_dispatch:
+    types: [openapi-updated]
+  workflow_dispatch:
+
+# Commits the refreshed contract back to the default branch.
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beel-mcp
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout backend (develop) for the spec source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The backend repository is private and named in a repository SECRET
+          # (not a variable), so its name never appears in this public repo's
+          # workflow logs — GitHub masks secrets, variables it prints in clear.
+          repository: ${{ secrets.BACKEND_REPOSITORY }}
+          ref: develop
+          ssh-key: ${{ secrets.BACKEND_DEPLOY_KEY }}
+          path: backend-src
+          sparse-checkout: backend/src/main/resources/openapi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Re-bundle the spec
+        run: node scripts/bundle-spec.mjs backend-src/backend/src/main/resources/openapi/public-api.yaml
+
+      # Drift is the failure mode this workflow exists to prevent, so it is
+      # reported rather than silently committed: the size of a sync is the signal
+      # for how long the vendored contract had been lying about the API.
+      - name: Report contract drift
+        run: |
+          if git diff --quiet -- openapi/public-api.yaml; then
+            echo "No drift: the vendored contract already matches the backend."
+          else
+            echo "::warning::The vendored OpenAPI contract had drifted from the backend."
+            git diff --stat -- openapi/public-api.yaml
+          fi
+
+      - name: Refresh the contract lock
+        run: node scripts/spec-lock.mjs --write
+
+      # Everything CI would run, run here instead. A push made with GITHUB_TOKEN
+      # does not trigger workflows, so the commit this job creates would never be
+      # checked by ci.yml: whatever is verified about a synced contract has to be
+      # verified before the push, not after it.
+      - name: Validate (typecheck + tests + build)
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - run: npm run verify:package
+      - run: npm run smoke
+
+      - name: Build the Worker bundle
+        run: npx wrangler deploy --dry-run --outdir /tmp/worker-build
+
+      - name: Commit spec changes
+        id: commit
+        run: |
+          rm -rf backend-src
+          if git diff --quiet -- openapi/public-api.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No spec changes."
+          else
+            git config user.name "beel-bot"
+            git config user.email "it@beel.es"
+            git add openapi/public-api.yaml openapi/spec.lock.json
+            git commit -m "chore(spec): sync public-api.yaml from the backend"
+            git push origin master
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi

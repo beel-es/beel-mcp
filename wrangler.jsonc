@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "beel-mcp",
+  "main": "src/cf/worker.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  // Builds the viewer HTML (dist/mcpapp/invoice-pdf.html) BEFORE bundling, because
+  // worker.ts imports it as a text module. pdf.js is not built in; it loads from a CDN.
+  "build": { "command": "node scripts/build-mcpapp.mjs" },
+  // The spec, the viewer HTML and the guardrail prose travel as text modules.
+  "rules": [
+    { "type": "Text", "globs": ["**/*.yaml", "**/*.html", "**/*.md"], "fallthrough": true },
+  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BeelMcpAgent"] }],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_OBJECT", "class_name": "BeelMcpAgent" }],
+  },
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "26365feb273f42c2bb15fdc9db7f3bbe" }],
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "mcp.beel.es", "custom_domain": true }],
+  "vars": {
+    "BEEL_OAUTH_ISSUER": "https://app.beel.es/api",
+    "BEEL_OAUTH_CLIENT_ID": "beel-mcp",
+    "BEEL_BASE_URL": "https://app.beel.es/api",
+    "BEEL_DOCS_URL": "https://docs.beel.es",
+  },
+}
