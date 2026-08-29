@@ -3,6 +3,13 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.4.1](https://github.com/beel-es/beel-mcp/compare/v0.4.0...v0.4.1) (2026-08-29)
+
+
+### Documentación
+
+* CHANGELOG versionado y badges de CI y releases en el README ([#76](https://github.com/beel-es/beel-mcp/issues/76)) ([79fcf89](https://github.com/beel-es/beel-mcp/commit/79fcf89e3bf95e3658f3a4b8757e7ed5d5fd59ed))
+
 ## 0.4.0 (2026-08-29)
 
 ### Novedades
