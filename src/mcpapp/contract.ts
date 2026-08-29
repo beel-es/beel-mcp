@@ -44,6 +44,9 @@ export const PDFJS_VERSION = '4.10.38';
 export const PDFJS_MODULE_URL = `${PDFJS_CDN_ORIGIN}/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.mjs`;
 export const PDFJS_WORKER_URL = `${PDFJS_CDN_ORIGIN}/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
 
+/** Hosts allowed to embed the viewer (`frame-ancestors`). */
+export const APP_HOST_ORIGINS = ['https://claude.ai', 'https://chatgpt.com'] as const;
+
 /** The viewer's ui:// resource and its mimetype (the MCP Apps profile). */
 export const INVOICE_PDF_APP_URI = 'ui://beel/invoice-pdf.html';
 export const MCP_APP_MIME = 'text/html;profile=mcp-app';
@@ -78,4 +81,26 @@ export interface InvoicePdfAppData {
   /** Presigned PDF URL; routed through the relay so it is served inline with CORS. */
   download_url: string;
   file_name?: string;
+}
+
+/**
+ * The same policy as a `Content-Security-Policy` meta tag, for a reader that
+ * inspects the document itself rather than `_meta.ui.csp`. The inline bundle
+ * needs `'unsafe-inline'`; every network origin is one of the two lists above.
+ */
+export function appCspMeta(csp: AppCsp): string {
+  const resources = csp.resourceDomains.join(' ');
+  const connect = csp.connectDomains.join(' ');
+  return [
+    "default-src 'none'",
+    `script-src 'unsafe-inline' ${resources}`,
+    `style-src 'unsafe-inline' ${resources}`,
+    `img-src 'self' data: blob: ${resources}`,
+    `font-src ${resources}`,
+    `connect-src ${connect}`,
+    `worker-src blob: ${resources}`,
+    `frame-ancestors ${APP_HOST_ORIGINS.join(' ')}`,
+    "form-action 'none'",
+    "base-uri 'none'",
+  ].join('; ');
 }
