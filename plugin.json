@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "beel-mcp",
+  "version": "0.4.2",
+  "description": "Spanish e-invoicing with VeriFactu (AEAT) for AI agents: issue, correct and register invoices, manage customers and NIFs, validate NIFs against the census. Hosted MCP server at https://mcp.beel.es/mcp (Streamable HTTP + OAuth 2.1) or local stdio via npm.",
+  "author": {
+    "name": "BeeL.",
+    "email": "hola@beel.es",
+    "url": "https://beel.es"
+  },
+  "homepage": "https://docs.beel.es/mcp",
+  "repository": "https://github.com/beel-es/beel-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "verifactu", "invoicing", "einvoicing", "spain", "aeat", "agents", "openapi"],
+  "extensions": {
+    "io.modelcontextprotocol": {
+      "servers": [
+        {
+          "name": "beel",
+          "transport": "streamable-http",
+          "url": "https://mcp.beel.es/mcp",
+          "serverCard": "https://beel.es/.well-known/mcp/server-card.json"
+        },
+        {
+          "name": "beel-local",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@beel_es/mcp"],
+          "env": { "BEEL_API_KEY": "beel_sk_test_…" }
+        }
+      ]
+    },
+    "es.beel": {
+      "skills": "https://beel.es/.well-known/agent-skills/index.json",
+      "agentInstructions": "https://beel.es/agents.md",
+      "auth": "https://beel.es/auth.md"
+    }
+  }
+}
