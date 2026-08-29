@@ -68,7 +68,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@redocly/cli": "^1.25.0",
     "@sentry/cloudflare": "^10.70.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.3.0",
     "agents": "^0.17.4",
     "esbuild": "^0.28.2",
     "eslint": "^10.9.1",
