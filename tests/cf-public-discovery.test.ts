@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   handlePublicDiscovery,
   isPublicDiscoveryCandidate,
@@ -9,7 +9,7 @@ import { advertisedScopes, SANDBOX_SCOPE } from '../src/policy/scopes.js';
 import { specScopes } from '../src/spec/scopes.js';
 import { SERVER_NAME } from '../src/shared/defaults.js';
 import { appCsp, appCspMeta, INVOICE_PDF_APP_URI, MCP_APP_MIME } from '../src/mcpapp/contract.js';
-import { withCspMeta } from '../src/mcpapp/resource.js';
+import { setInvoicePdfAppHtml, withCspMeta } from '../src/mcpapp/resource.js';
 
 const MCP = 'https://mcp.beel.es/mcp';
 
@@ -102,6 +102,14 @@ describe('advertised scopes', () => {
 });
 
 describe('public resources', () => {
+  // The viewer is built by `build:mcpapp`; the tests inject a stand-in so they
+  // do not depend on dist/.
+  beforeAll(() => {
+    setInvoicePdfAppHtml(
+      '<!DOCTYPE html><html><head><title>Factura</title></head><body></body></html>',
+    );
+  });
+
   it('reads the guardrail index and the viewer without a token', async () => {
     const index = await handlePublicDiscovery(rpc('resources/read', { uri: 'beel://guardrails' }));
     expect(index?.status).toBe(200);
