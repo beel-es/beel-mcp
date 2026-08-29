@@ -12,9 +12,11 @@ on:
     types: [openapi-updated]
   workflow_dispatch:
 
-# Commits the refreshed contract back to the default branch.
+# Opens (or refreshes) a pull request with the synced contract; nothing writes to master directly.
 permissions:
-  contents: write
+  contents: write # pushes the sync branch; master itself stays behind the ruleset
+  pull-requests: write
+  actions: write # dispatches CI on the sync branch so the PR carries its checks
 
 jobs:
   sync:
@@ -89,8 +91,24 @@ jobs:
           else
             git config user.name "beel-bot"
             git config user.email "it@beel.es"
+            git checkout -B chore/sync-spec
             git add openapi/public-api.yaml openapi/spec.lock.json
             git commit -m "chore(spec): sync public-api.yaml from the backend"
-            git push origin master
+            git push --force origin chore/sync-spec
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # The contract lands through the same door as everything else: a PR with
+      # green checks and a maintainer's merge. Events raised with GITHUB_TOKEN do
+      # not start workflows, so CI is dispatched on the branch explicitly.
+      - name: Open or update the sync pull request
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh pr view chore/sync-spec -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh pr create -R "$GITHUB_REPOSITORY" --base master --head chore/sync-spec \
+              --title "chore(spec): sync public-api.yaml from the backend" \
+              --body "Automated contract sync. Review the diff of openapi/public-api.yaml before merging."
+          fi
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref chore/sync-spec

@@ -72,8 +72,11 @@ jobs:
       # A tag that disagrees with package.json publishes a version nobody asked
       # for, under a name that suggests otherwise. Cheap to check, expensive to undo.
       - name: Check the tag matches the package version
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::Publish only runs from a v* tag (got $GITHUB_REF)."; exit 1 ;;
+          esac
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./package.json').version")"
           if [ "$tag" != "$pkg" ]; then

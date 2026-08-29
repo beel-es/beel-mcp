@@ -11,7 +11,7 @@ import type { ResolvedConfig } from '../config.js';
 import { keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
 import { BeelAuthHandler } from './beel-handler.js';
-import { WORKER_PATH } from './constants.js';
+import { WORKER_PATH, WORKER_TTL } from './constants.js';
 import { sentryOptions } from './telemetry.js';
 import { createTokenExchangeCallback, type SessionProps } from './token-exchange.js';
 import { upstreamConfig, workerAccessTokenTTL } from './upstream.js';
@@ -90,6 +90,7 @@ function createProvider(env: Env): OAuthProvider {
     // The first token of a session; every refresh replaces this with a TTL taken
     // from the upstream token itself, via tokenExchangeCallback.
     accessTokenTTL: workerAccessTokenTTL(),
+    clientRegistrationTTL: WORKER_TTL.clientRegistrationSeconds,
     apiHandler,
     defaultHandler: BeelAuthHandler,
     authorizeEndpoint: WORKER_PATH.authorize,
