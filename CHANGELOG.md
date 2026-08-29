@@ -3,6 +3,19 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.4.2](https://github.com/beel-es/beel-mcp/compare/v0.4.1...v0.4.2) (2026-08-29)
+
+
+### Correcciones
+
+* **security:** errores de autorización como 4xx, TTL en registros DCR, publish solo desde tag y sync-spec por PR ([#82](https://github.com/beel-es/beel-mcp/issues/82)) ([6353e83](https://github.com/beel-es/beel-mcp/commit/6353e83b76f6bb37f43cab9d0b979b1cb7ba8475))
+* **spec:** el contrato sincronizado deja de citar los hosts de almacenamiento en sus ejemplos ([#83](https://github.com/beel-es/beel-mcp/issues/83)) ([195acec](https://github.com/beel-es/beel-mcp/commit/195acecf4a7429a06397cab1536fa36cdfd47ae2))
+
+
+### Documentación
+
+* **community:** plantillas de PR e issues, código de conducta y guía para contribuir ([#80](https://github.com/beel-es/beel-mcp/issues/80)) ([ff82f9a](https://github.com/beel-es/beel-mcp/commit/ff82f9a60b7433eb565acacb16848e1e674bf175))
+
 ## [0.4.1](https://github.com/beel-es/beel-mcp/compare/v0.4.0...v0.4.1) (2026-08-29)
 
 
