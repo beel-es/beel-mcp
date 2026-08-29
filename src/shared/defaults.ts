@@ -79,6 +79,8 @@ export const ENV_VAR = {
   /** Set to 'true' to accept an http:// loopback API base URL (local development only). */
   allowInsecureBaseUrl: 'BEEL_ALLOW_INSECURE_BASE_URL',
   publicUrl: 'MCP_PUBLIC_URL',
+  /** Set to 'true' to answer initialize/tools/list on the MCP endpoint without a token. */
+  publicDiscovery: 'MCP_PUBLIC_DISCOVERY',
   identityHmacKey: 'MCP_IDENTITY_HMAC_KEY',
   verifiedClients: 'MCP_VERIFIED_CLIENTS',
   pdfStorageHosts: 'BEEL_PDF_STORAGE_HOSTS',

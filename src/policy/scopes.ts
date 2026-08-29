@@ -115,6 +115,15 @@ export function intersectScopes(needed: string[], grantable: readonly string[]):
  * by default, so a plain connection touches real fiscal data. The value is
  * surfaced to the agent precisely so that it knows.
  */
+/**
+ * Scopes advertised in the OAuth metadata (RFC 8414 `scopes_supported` and the
+ * RFC 9728 protected-resource document): what the exposed tools need, plus
+ * `sandbox` so a client can ask for the test environment up front.
+ */
+export function advertisedScopes(): string[] {
+  return [...new Set([...requiredScopes(specManifest()), SANDBOX_SCOPE])].sort();
+}
+
 export function keyEnvFromScopes(scopes: readonly string[]): KeyEnv {
   return scopes.includes(SANDBOX_SCOPE) ? 'test' : 'live';
 }
