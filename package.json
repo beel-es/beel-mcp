@@ -92,8 +92,6 @@
     "access": "public"
   },
   "overrides": {
-    "tsup": {
-      "esbuild": "$esbuild"
-    }
+    "esbuild": "$esbuild"
   }
 }
