@@ -45,7 +45,7 @@ jobs:
           PR: ${{ steps.release.outputs.pr }}
         run: |
           branch="$(echo "$PR" | jq -r '.headBranchName')"
-          gh workflow run ci.yml --ref "$branch"
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref "$branch"
 
       # The tag exists now; publishing stays a separate, human-approved workflow.
       - name: Start the publish workflow for the new tag
@@ -53,4 +53,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag_name }}
-        run: gh workflow run publish.yml --ref "$TAG"
+        run: gh workflow run publish.yml -R "$GITHUB_REPOSITORY" --ref "$TAG"
