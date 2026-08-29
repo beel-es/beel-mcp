@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
   pull_request:
+  # Started by the release workflow on the release PR, whose GITHUB_TOKEN-made
+  # events would otherwise not trigger this file.
+  workflow_dispatch:
 
 # Least privilege. CI only reads the code; it publishes nothing and needs no
 # secrets, which is also what makes it safe to run on pull requests from forks.

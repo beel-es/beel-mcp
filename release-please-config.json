@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "changelog-sections": [
+    { "type": "feat", "section": "Novedades" },
+    { "type": "fix", "section": "Correcciones" },
+    { "type": "perf", "section": "Rendimiento" },
+    { "type": "refactor", "section": "Cambios internos" },
+    { "type": "docs", "section": "Documentación" },
+    { "type": "chore", "hidden": true },
+    { "type": "build", "hidden": true },
+    { "type": "ci", "hidden": true },
+    { "type": "test", "hidden": true }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "@beel_es/mcp",
+      "extra-files": [
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[0].version" }
+      ]
+    }
+  }
+}

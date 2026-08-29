@@ -1,0 +1,56 @@
+# Versioning and releases, driven by the commit history.
+#
+# release-please reads the Conventional Commits on master (`feat:` → minor,
+# `fix:` → patch, `feat!:`/`BREAKING CHANGE` → major) and keeps a single
+# "release PR" open: version bump in package.json, package-lock.json and
+# server.json, plus the CHANGELOG entry. Merging that PR is the release: the
+# tag and the GitHub Release are created here, and the publish workflow is
+# started for that tag.
+#
+# Two dispatches are explicit because events raised with GITHUB_TOKEN never
+# start other workflows: CI has to be run on the release PR so its required
+# checks exist, and the publish has to be started for the new tag.
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write # tags and GitHub Releases
+  pull-requests: write # the release PR
+  actions: write # dispatching CI and the publish workflow
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release PR or tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # The release PR needs the same checks as any other PR before the ruleset
+      # lets it merge; a PR opened by GITHUB_TOKEN does not get them on its own.
+      - name: Run CI on the release PR
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.release.outputs.pr }}
+        run: |
+          branch="$(echo "$PR" | jq -r '.headBranchName')"
+          gh workflow run ci.yml --ref "$branch"
+
+      # The tag exists now; publishing stays a separate, human-approved workflow.
+      - name: Start the publish workflow for the new tag
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run publish.yml --ref "$TAG"

@@ -128,10 +128,19 @@ edits stay readable in a diff.
 
 ## Releasing
 
-```bash
-npm version <patch|minor|major>
-git push --follow-tags
-```
+Versions are not bumped by hand. [release-please](https://github.com/googleapis/release-please)
+reads the Conventional Commits merged into `master` and keeps one **release PR** open with
+the next version (`feat:` → minor, `fix:` → patch, `feat!:` or a `BREAKING CHANGE` footer →
+major; while the major is 0, breaking changes bump the minor), the CHANGELOG entry and the
+version in `package.json`, `package-lock.json` and `server.json`. The release workflow
+dispatches CI on that PR so its required checks exist.
+
+**Merging the release PR is the release.** The workflow creates the tag and the GitHub
+Release and starts `publish.yml` for that tag, which still pauses in the `npm-publish`
+environment for a human approval before anything reaches npm or the MCP Registry.
+
+Commit titles therefore matter: they become the CHANGELOG. `chore:`, `ci:`, `build:` and
+`test:` are hidden from it; everything else is listed under its section.
 
 `npm run verify:package` packs the tarball, installs it into a temporary
 directory and drives the installed binary over the protocol. It is the only
@@ -146,9 +155,10 @@ consumers install a package that is never loaded. What ships is `dist/` plus
 (`src/spec/load.ts`), so it cannot be dropped from `files` — only the Worker, which
 has no filesystem, embeds the contract as a text module instead.
 
-The tag triggers `publish.yml`, which re-runs the contract check, the typechecks, the
-tests and a smoke test of the built binary before publishing. It refuses to publish when
-the tag and `package.json` disagree.
+`publish.yml` re-runs the contract check, the typechecks, the tests and a smoke test of
+the built binary before publishing, and refuses to publish when the tag and `package.json`
+disagree. It can also be started by hand from Actions for an existing `v*` tag, and it is
+safe to re-run: a version already on npm is skipped, not republished.
 
 There is **no npm token**. Authentication is [trusted
 publishing](https://docs.npmjs.com/trusted-publishers): GitHub mints a short-lived,
