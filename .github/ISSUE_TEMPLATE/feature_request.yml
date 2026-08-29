@@ -1,0 +1,22 @@
+name: Feature request
+description: A tool, guardrail, prompt or behaviour you would like the server to have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What an agent cannot do today, or does badly, and in which flow.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: If it maps to an operation of the BeeL API, name it (see https://docs.beel.es/api-reference).
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I checked it is not already exposed (`npx @beel_es/mcp` → tools/list) or deliberately excluded (README, "What is deliberately not a tool").

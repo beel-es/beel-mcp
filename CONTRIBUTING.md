@@ -266,5 +266,11 @@ Note the auth: a name under `io.github.*` is retired with GitHub auth, not the D
 
 ## Pull requests
 
+Fork, branch from `master`, open the PR against `master`; the template asks for what
+changed, why, and how it was verified. CI runs on every PR — for a first contribution a
+maintainer approves the run, so do not be surprised if it waits a few minutes. Every PR
+needs green checks and a maintainer's merge; the PR title becomes the CHANGELOG line, so
+write it as a Conventional Commit.
+
 Keep the diff to one concern. Include a test for any behaviour change — the fiscal
 rules especially, where a regression is a wrong invoice rather than a wrong pixel.

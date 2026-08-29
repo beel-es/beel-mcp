@@ -1,0 +1,42 @@
+name: Bug report
+description: Something the server does wrong — a tool that fails, a wrong schema, a bad remedy.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not include API keys, OAuth tokens, real NIFs or invoice data.** Security issues go to security@beel.es (see SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx @beel_es/mcp --version`, or the date if you use the hosted server (mcp.beel.es).
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: How are you running it?
+      options:
+        - Hosted (mcp.beel.es) via OAuth
+        - Local (`npx @beel_es/mcp`) with an API key
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Desktop 1.x, Cursor 2.x, ChatGPT, VS Code …
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The tool call (name and arguments, redacted) and the response you got.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
