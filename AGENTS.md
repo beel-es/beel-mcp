@@ -37,6 +37,24 @@ npm run tools:list  # every tool the server exposes, with its scopes
 - **Every string an agent reads is product copy.** Tool descriptions, guardrail hints and error remedies must be precise and short; no marketing.
 - **Conventional Commits.** Releases are cut by release-please from the commit history.
 
+## This repository is public
+
+Everything written here — PR titles and bodies, commit messages, review comments —
+is permanent and read by anyone, and GitHub keeps every earlier edit of a PR body in
+its history. Describe the change, not the internal context:
+
+- No secret values and no secret **names** (environment variables, `wrangler secret`
+  names, where a value is kept). Provisioning instructions belong in `DEPLOY.md`.
+- No infrastructure that the code does not already expose: hosting or observability
+  providers, account or project ids, DSNs, storage hosts, command output from
+  `wrangler`, `dig` or dashboards.
+- No incident narratives (what broke in production, when, for how long). State the
+  defect and the fix.
+- No private repositories, their PR numbers, or copied ticket text. A Linear id
+  (`BEE-nnnn`) on its own is fine.
+- No business context: customers, plans, billing, team.
+- No session or dashboard URLs.
+
 ## Before opening a PR
 
 `npm test && npm run typecheck && npm run lint && npm run format:check` clean, the change covered by a test, and the PR body says what an agent can now do that it could not before.
