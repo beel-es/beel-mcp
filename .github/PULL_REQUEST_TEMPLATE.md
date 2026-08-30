@@ -17,3 +17,4 @@
 - [ ] `npm run format` has been run.
 - [ ] No literal operation ids, tool names, scopes or error codes were hardcoded — they come from the contract (see CONTRIBUTING.md).
 - [ ] Comments explain invariants, not history.
+- [ ] The body names no secret names, providers, account ids, incidents, private repositories or session URLs (this repository is public; see AGENTS.md).
