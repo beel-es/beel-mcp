@@ -3,6 +3,13 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.5.1](https://github.com/beel-es/beel-mcp/compare/v0.5.0...v0.5.1) (2026-08-30)
+
+
+### Documentación
+
+* **agents:** what must not be written in a public PR ([#89](https://github.com/beel-es/beel-mcp/issues/89)) ([b53aa91](https://github.com/beel-es/beel-mcp/commit/b53aa91049a6b2fa09cb22b3bd5ba6141e06fb34))
+
 ## [0.5.0](https://github.com/beel-es/beel-mcp/compare/v0.4.2...v0.5.0) (2026-08-29)
 
 
