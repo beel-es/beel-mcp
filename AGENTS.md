@@ -25,7 +25,7 @@ npm run tools:list  # every tool the server exposes, with its scopes
 - `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the rules as markdown (`rules/`), and the error catalogue (`catalog.ts`).
 - `src/tools/` — API tools, docs tools, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
-- `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), public discovery, token exchange, PDF relay. Deployment notes in `DEPLOY.md`.
+- `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.
 - `src/mcpapp/` — the invoice viewer MCP App and its CSP contract.
 - `tests/` — vitest; one file per module. A behaviour change without a test is not done.
 
