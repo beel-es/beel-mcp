@@ -81,20 +81,24 @@ export function substitutePath(op: OperationSpec, args: Record<string, unknown>)
 /**
  * Map arguments onto query parameters.
  *
- * Array values are comma-joined because that is what the contract asks for:
- * every array query parameter it declares is `style: form, explode: false`.
- * `tests/api-query-style.test.ts` fails if an operation ever adopts another
- * style, rather than letting this serialise it the wrong way in silence.
+ * Array values follow the style the contract declares for each parameter. Every
+ * array query parameter is `style: form`; with `explode: false` the items are
+ * comma-joined into one value, and with `explode: true` (OpenAPI's default for
+ * `form`) each item travels as its own repeated parameter. The query-style test
+ * fails if an operation ever adopts another style, rather than letting this
+ * serialise it the wrong way in silence.
  */
 export function collectQuery(
   op: OperationSpec,
   args: Record<string, unknown>,
-): Record<string, string> {
-  const query: Record<string, string> = {};
+): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {};
   for (const p of op.queryParams) {
     const value = args[p.name];
     if (value === undefined || value === null) continue;
-    query[p.name] = Array.isArray(value) ? value.map(String).join(',') : String(value);
+    if (!Array.isArray(value)) query[p.name] = String(value);
+    else if (p.explode === false) query[p.name] = value.map(String).join(',');
+    else query[p.name] = value.map(String);
   }
   return query;
 }

@@ -21,6 +21,14 @@ export interface ParamSpec {
   required: boolean;
   description?: string;
   schema: SpecNode;
+  /**
+   * Query only: whether an array value is sent as one repeated parameter per item
+   * (`?status=A&status=B`) rather than one comma-joined value. OpenAPI's default for
+   * a `form` query parameter is `true`; the contract states it on every array one.
+   */
+  explode?: boolean;
+  /** Query only: the serialisation style the contract declares, if any. */
+  style?: string;
 }
 
 export interface RequestBodySpec {
@@ -97,6 +105,12 @@ function buildParams(doc: SpecNode, raw: unknown[]): ParamSpec[] {
       required: Boolean(node.required),
       description: node.description as string | undefined,
       schema: asNode(node.schema) ?? {},
+      ...(where === 'query'
+        ? {
+            style: typeof node.style === 'string' ? node.style : undefined,
+            explode: typeof node.explode === 'boolean' ? node.explode : undefined,
+          }
+        : {}),
     });
   }
   return params;
