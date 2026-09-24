@@ -87,10 +87,21 @@ export function filterRules(catalog: RulesCatalog, filters: RuleFilters): Rule[]
   });
 }
 
+/**
+ * How strong a rule is. MUST and MUST_NOT both read «required»: the title and
+ * the statement already say what to do or not to do, and a «MUST_NOT» in front
+ * of a title written as an instruction («Keep invoicing when AEAT is
+ * unreachable») reads as its opposite. The `severity` filter still takes the
+ * catalogue's values.
+ */
+export function strength(rule: Rule): string {
+  return rule.severity === 'SHOULD' ? 'recommended' : 'required';
+}
+
 export function listLine(rule: Rule, format: ResponseFormat): string {
   const statement =
     format === 'detailed' ? rule.statement : truncate(rule.statement, CONCISE_STATEMENT_CHARS);
-  return `${rule.id} · ${rule.severity} · ${statement} · ${rule.enforced_by}`;
+  return `${rule.id} · ${strength(rule)} · ${statement} · ${rule.enforced_by}`;
 }
 
 function domainLine(domain: RuleDomain): string {
@@ -146,7 +157,7 @@ function renderExample(
 /** One rule. `concise` is statement, why and link; `detailed` is everything the catalogue holds. */
 export function renderRule(rule: Rule, format: ResponseFormat): string {
   const lines = [
-    `${rule.id} · ${rule.severity} · ${rule.title}`,
+    `${rule.id} · ${rule.title} (${strength(rule)})`,
     `Domain: ${rule.domain} · enforced by: ${rule.enforced_by} · impact: ${rule.impact}`,
     '',
     rule.statement,

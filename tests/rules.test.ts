@@ -181,11 +181,13 @@ describe(`${RULES_LIST}`, () => {
     }
   });
 
-  it('prints one line per rule: ID · SEVERITY · statement · enforced_by', async () => {
+  it('prints one line per rule: ID · strength · statement · enforced_by', async () => {
     const text = await executeRulesTool(RULES_LIST, { domain: 'void' });
     const lines = text.split('\n').filter((l) => /^VOI-\d{3} · /.test(l));
     expect(lines).toHaveLength(snapshot.domains.find((d) => d.slug === 'void')!.rules.length);
-    expect(lines[0]).toMatch(/^VOI-001 · MUST · .+ · issuer$/);
+    expect(lines[0]).toMatch(/^VOI-001 · required · .+ · issuer$/);
+    // A MUST_NOT rule whose title is an instruction never reads as its opposite.
+    expect(text).not.toMatch(/MUST_NOT|MUST NOT/);
     expect(text).not.toContain('Domains (filter');
   });
 
