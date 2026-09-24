@@ -3,6 +3,20 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.5.1](https://github.com/beel-es/beel-mcp/compare/v0.5.0...v0.5.1) (2026-09-24)
+
+
+### Correcciones
+
+* **oauth:** answer every token-less request to /mcp with the challenge ([#99](https://github.com/beel-es/beel-mcp/issues/99)) ([21c5e2c](https://github.com/beel-es/beel-mcp/commit/21c5e2ccffc25f5dc3cc183c399343c304dd3d09))
+* **oauth:** report why the token endpoint rejected an exchange ([#102](https://github.com/beel-es/beel-mcp/issues/102)) ([b8d045f](https://github.com/beel-es/beel-mcp/commit/b8d045f9c530ff72c9dfd9d3e15d145033c5c6a0))
+* **oauth:** tell a transient upstream failure from a configuration fault ([#104](https://github.com/beel-es/beel-mcp/issues/104)) ([82a463e](https://github.com/beel-es/beel-mcp/commit/82a463e5522382893aaa83ae0449ae17c728861a))
+
+
+### Documentación
+
+* **agents:** what must not be written in a public PR ([#89](https://github.com/beel-es/beel-mcp/issues/89)) ([b53aa91](https://github.com/beel-es/beel-mcp/commit/b53aa91049a6b2fa09cb22b3bd5ba6141e06fb34))
+
 ## [0.5.0](https://github.com/beel-es/beel-mcp/compare/v0.4.2...v0.5.0) (2026-08-29)
 
 
