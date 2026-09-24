@@ -59,6 +59,13 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'list with a next action per NIF.',
     guardrail: 'verifactu-gates',
   },
+  PROFILE_INCOMPLETE: {
+    actor: 'configuration',
+    remedy:
+      'Fill the fields named in error.details.missing_fields (entity_type, legal_name, ' +
+      'address) with beel_patch_company, then retry.',
+    guardrail: 'verifactu-gates',
+  },
   COMPANY_NOT_ACTIVATED: {
     actor: 'configuration',
     remedy: 'Activate the company with beel_activate_company.',
