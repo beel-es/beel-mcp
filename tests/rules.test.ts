@@ -51,6 +51,10 @@ describe('the bundled snapshot', () => {
     expect(snapshot.rules.length).toBeGreaterThan(50);
   });
 
+  it('carries the terms of use the catalogue is published with', () => {
+    expect(snapshot.license).toMatchObject({ permitted: expect.any(Array) });
+  });
+
   it('is exactly what `npm run sync:rules` writes — never edited by hand', () => {
     const text = readFileSync(SNAPSHOT_PATH, 'utf8');
     expect(text).toBe(formatSnapshot(JSON.parse(text)));

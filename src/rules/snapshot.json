@@ -3,6 +3,19 @@
   "schema": "https://docs.beel.es/api/rules.schema.json",
   "source": "https://docs.beel.es/rules",
   "text_format": "plain text; `inline code` in backticks is the only markup",
+  "license": {
+    "holder": "Honey Solutions, S.L.",
+    "summary": "The legal texts quoted in `legal_basis` (BOE, AEAT) are public and are quoted verbatim with a link to their source. The catalogue itself — the selection of rules, their wording, structure and the mapping to BeeL.'s API and error codes — is © Honey Solutions, S.L.",
+    "permitted": [
+      "Reading and using it to build, run and support integrations with the BeeL. API, by people and by AI agents.",
+      "Quoting individual rules, with a link to their page on docs.beel.es."
+    ],
+    "not_permitted": [
+      "Republishing or redistributing the catalogue, or a substantial part of it, outside an integration with BeeL.",
+      "Using it to build or train another invoicing product or rules catalogue."
+    ],
+    "disclaimer": "Informational content about how the law and BeeL. apply to invoicing; it is not legal or tax advice."
+  },
   "domains": [
     {
       "slug": "lifecycle",
@@ -265,6 +278,7 @@
           "ISSUED",
           "SENT",
           "PAID",
+          "OVERDUE",
           "RECTIFIED",
           "VOIDED"
         ],
@@ -702,15 +716,15 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "Voiding an invoice under VeriFactu generates a cancellation record (registro de anulación) that identifies the original by its number and issue date; the original registration record is never removed. Follow the cancellation as a record of its own, with its own status.",
-      "why": "AEAT keeps both records, linked. Reading only the invoice's registration status after a void hides whether AEAT accepted the cancellation.",
+      "statement": "Voiding an invoice under VeriFactu generates a cancellation record (registro de anulación) that identifies the original by its number and issue date; the original registration record is never removed. The invoice's verifactu.submission_status becomes VOIDED once AEAT has accepted the cancellation.",
+      "why": "AEAT keeps both records, linked. A successful void call means the cancellation was submitted, not that AEAT accepted it.",
       "applies_to": {
         "statuses": [
           "VOIDED"
         ],
         "operations": [
           "voidCompanyInvoice",
-          "listCompanyInvoiceVerifactuRecords"
+          "getCompanyInvoice"
         ],
         "scope": "Invoices of a company under VeriFactu."
       },
@@ -734,12 +748,12 @@
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "Treating the invoice's verifactu.submission_status right after a void as the answer to the cancellation."
+          "text": "Treating the 200 of the void call as proof that AEAT accepted the cancellation."
         },
         "correct": {
-          "text": "Listing the invoice's VeriFactu records and reading the VOID record's own status.",
+          "text": "After voiding, reading the invoice until its verifactu.submission_status is VOIDED.",
           "lang": "http",
-          "code": "GET /v1/companies/{company_id}/invoices/{invoice_id}/verifactu-records"
+          "code": "GET /v1/companies/{company_id}/invoices/{invoice_id}"
         }
       },
       "related": [
@@ -1025,8 +1039,8 @@
       "severity": "MUST",
       "impact": "medium",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "A corrective states the number and the issue date of the invoice it rectifies. In the API a corrective is always created against its original, the {invoice_id} of the request, and each corrective rectifies one invoice.",
+      "enforced_by": "api",
+      "statement": "A corrective states the number and the issue date of the invoice it rectifies. In the API a corrective is always created against its original, the {invoice_id} of the request, and each corrective rectifies one invoice; BeeL. prints the original's number and issue date on the corrective's PDF and, under VeriFactu, sends them in its billing record.",
       "why": "Without an unambiguous reference to the original, neither the customer nor AEAT can tell what is being corrected.",
       "applies_to": {
         "invoice_types": [
@@ -1749,8 +1763,8 @@
       "severity": "MUST_NOT",
       "impact": "critical",
       "kind": "aeat",
-      "enforced_by": "issuer",
-      "statement": "Treat every issued number as consumed for good. A voided invoice, or a test issued in production, keeps its number in the series; the invoice that replaces it gets a new one.",
+      "enforced_by": "api",
+      "statement": "Treat every issued number as consumed for good. A voided invoice, or a test issued in production, keeps its number in the series; the invoice that replaces it gets a new one. BeeL. never gives two invoices of a company the same number: a series whose format could print the numbers of another series of the company is rejected with SERIES_FORMAT_OVERLAPS.",
       "why": "The number identifies the invoice in AEAT's records. A second invoice with the same number would be a duplicate that AEAT does not accept.",
       "applies_to": {
         "statuses": [
@@ -1759,9 +1773,23 @@
           "PAID",
           "RECTIFIED",
           "VOIDED"
+        ],
+        "operations": [
+          "createCompanySeries",
+          "patchCompanySeries",
+          "issueCompanyInvoice"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "SERIES_FORMAT_OVERLAPS",
+          "url": "https://docs.beel.es/errors/SERIES_FORMAT_OVERLAPS"
+        },
+        {
+          "code": "SERIES_NUMBER_COLLISION",
+          "url": "https://docs.beel.es/errors/SERIES_NUMBER_COLLISION"
+        }
+      ],
       "legal_basis": [
         {
           "type": "aeat",
@@ -1781,10 +1809,10 @@
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "Voiding invoice A-2026-0042 and trying to issue its replacement with the same number."
+          "text": "Creating a series with the fixed format F-{YYYY}-{NUM:4} next to series F, whose format is {CODIGO}-{YYYY}-{NUM:4}: both would print F-2026-0042, and the new series is rejected with SERIES_FORMAT_OVERLAPS."
         },
         "correct": {
-          "text": "Voiding A-2026-0042 and issuing the replacement as a new invoice, which takes the next number of the series."
+          "text": "Voiding F-2026-0042 and issuing the replacement as a new invoice, which takes the next number of the series."
         }
       },
       "related": [
@@ -1807,8 +1835,8 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "Within a series, invoice numbers follow one another without gaps or jumps. BeeL. takes the next number of the series at issue, so numbers are only correlative if every invoice of that series is issued through it.",
+      "enforced_by": "api",
+      "statement": "Within a series, invoice numbers follow one another without gaps or jumps. BeeL. takes the next number of the series at issue, gives it back if the issue fails, and applies the series' initial number only to the first period the series numbers in: later periods start at 1. Numbers are only correlative if every invoice of that series is issued through BeeL.",
       "why": "A gap or a jump in a series is what an inspection reads as a missing invoice.",
       "applies_to": {
         "invoice_types": [
@@ -1904,8 +1932,8 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "A business that issues both full and simplified invoices in the same calendar year numbers them in separate series. A typed BeeL. series accepts only its own document type, so keep one series for each type.",
+      "enforced_by": "api",
+      "statement": "A business that issues both full and simplified invoices in the same calendar year numbers them in separate series. Every new BeeL. series has a document type and accepts only that type, so keep one series for each type; a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED.",
       "why": "Full and simplified invoices sharing a series would leave neither sequence correlative.",
       "applies_to": {
         "invoice_types": [
@@ -1914,7 +1942,8 @@
         ],
         "operations": [
           "createCompanyInvoice",
-          "issueCompanyInvoice"
+          "issueCompanyInvoice",
+          "createCompanySeries"
         ]
       },
       "error_codes": [
@@ -1925,6 +1954,10 @@
         {
           "code": "SERIES_INCOMPATIBLE_DOC_TYPE",
           "url": "https://docs.beel.es/errors/SERIES_INCOMPATIBLE_DOC_TYPE"
+        },
+        {
+          "code": "SERIES_UNASSIGNED_TYPE_NOT_ALLOWED",
+          "url": "https://docs.beel.es/errors/SERIES_UNASSIGNED_TYPE_NOT_ALLOWED"
         }
       ],
       "legal_basis": [
@@ -1942,7 +1975,7 @@
           "text": "Creating a SIMPLIFIED invoice with the series_id of your standard-invoice series: it is rejected with SERIES_INCOMPATIBLE_DOC_TYPE, and issuing or updating an invoice in such a series with SERIES_DOCUMENT_TYPE_INCOMPATIBLE."
         },
         "correct": {
-          "text": "Omitting series_id, so the default series for simplified invoices is used, or passing a series created for that type."
+          "text": "Keeping a default series for simplified invoices and omitting series_id, so that series is used, or passing a series created for that type. A company whose default is an older UNASSIGNED series and has no default of the type numbers the invoice in it, so create a default series for each type."
         }
       },
       "related": [
@@ -1965,15 +1998,16 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "Corrective invoices go in a series specific to correctives, never in the series of ordinary invoices. Without a series_id, BeeL. numbers a corrective in the default corrective series; a typed series of another type is rejected.",
+      "enforced_by": "api",
+      "statement": "Corrective invoices go in a series specific to correctives, never in the series of ordinary invoices. Without a series_id, BeeL. numbers a corrective in the company's default corrective series; a typed series of another type is rejected, and a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED. A company with an older UNASSIGNED default and no corrective default numbers correctives in that series, so keep a default series for correctives.",
       "why": "The law requires correctives to be told apart from ordinary invoices by their series.",
       "applies_to": {
         "invoice_types": [
           "CORRECTIVE"
         ],
         "operations": [
-          "createCompanyCorrectiveInvoice"
+          "createCompanyCorrectiveInvoice",
+          "createCompanySeries"
         ]
       },
       "error_codes": [
@@ -1984,6 +2018,10 @@
         {
           "code": "SERIES_INCOMPATIBLE_DOC_TYPE",
           "url": "https://docs.beel.es/errors/SERIES_INCOMPATIBLE_DOC_TYPE"
+        },
+        {
+          "code": "SERIES_UNASSIGNED_TYPE_NOT_ALLOWED",
+          "url": "https://docs.beel.es/errors/SERIES_UNASSIGNED_TYPE_NOT_ALLOWED"
         }
       ],
       "legal_basis": [
@@ -2001,7 +2039,7 @@
           "text": "Passing the series_id of your ordinary series when creating a corrective invoice."
         },
         "correct": {
-          "text": "Omitting series_id on the corrective, so the default corrective series numbers it.",
+          "text": "Keeping a default corrective series and omitting series_id on the corrective, so that series numbers it.",
           "lang": "http",
           "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/corrective\n\n{ \"rectification_type\": \"TOTAL\", \"rectification_code\": \"R1\", \"reason\": \"Invoice issued with the wrong VAT rate\" }"
         }
@@ -2084,17 +2122,34 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "aeat",
-      "enforced_by": "aeat",
-      "statement": "The full invoice number, series prefix included, is at most 60 characters and uses only printable ASCII characters, without double quotes, single quotes, less-than, greater-than or equals signs. Choose series codes and formats that keep every number within these limits.",
+      "enforced_by": "api",
+      "statement": "The full invoice number, series prefix included, is at most 60 characters and uses only printable ASCII characters, without double quotes, single quotes, less-than, greater-than or equals signs. BeeL. checks the longest number a series can generate when you create it or change its code or format, counting the counter as at least nine digits (SERIES_FORMAT_NUMBER_TOO_LONG), and checks the actual number again at issue: an invoice whose number AEAT would not accept is not issued, and the number is not consumed (INVOICE_NUMBER_TOO_LONG).",
       "why": "AEAT identifies the invoice by this number, in the record and in the QR, and does not accept a number outside these limits.",
       "applies_to": {
         "operations": [
           "createCompanySeries",
-          "patchCompanySeries"
-        ],
-        "scope": "VeriFactu enabled."
+          "patchCompanySeries",
+          "issueCompanyInvoice"
+        ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "SERIES_FORMAT_NUMBER_TOO_LONG",
+          "url": "https://docs.beel.es/errors/SERIES_FORMAT_NUMBER_TOO_LONG"
+        },
+        {
+          "code": "SERIES_FORMAT_INVALID_CHARACTERS",
+          "url": "https://docs.beel.es/errors/SERIES_FORMAT_INVALID_CHARACTERS"
+        },
+        {
+          "code": "INVOICE_NUMBER_TOO_LONG",
+          "url": "https://docs.beel.es/errors/INVOICE_NUMBER_TOO_LONG"
+        },
+        {
+          "code": "INVOICE_NUMBER_INVALID_CHARACTERS",
+          "url": "https://docs.beel.es/errors/INVOICE_NUMBER_INVALID_CHARACTERS"
+        }
+      ],
       "legal_basis": [
         {
           "type": "aeat",
@@ -2114,7 +2169,7 @@
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A series format that produces numbers like SHOP=2026/\"0001\", with characters AEAT does not accept."
+          "text": "A series with a 50-character code and the format {CODIGO}-{YYYY}-{NUM:4}: its longest number reaches 65 characters, and the series is rejected with SERIES_FORMAT_NUMBER_TOO_LONG."
         },
         "correct": {
           "text": "A series format that produces short numbers such as SHOP-2026-0001."
@@ -2300,7 +2355,7 @@
       "impact": "high",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "A full invoice shows the full name or legal name of the issuer and of the recipient. Send the recipient's legal_name, not a trade name; BeeL. takes the issuer's from the company's tax profile and refuses to issue while that profile is incomplete.",
+      "statement": "A full invoice shows the full name or legal name of the issuer and of the recipient. Send the recipient's legal_name, not a trade name; BeeL. takes the issuer's from the company's tax profile and, while that profile is incomplete, refuses to issue with EMISSION_NOT_READY, listing PROFILE_INCOMPLETE among its blockers.",
       "why": "The legal name is what identifies each party for tax purposes; a trade name alone does not.",
       "applies_to": {
         "invoice_types": [
@@ -2308,13 +2363,18 @@
           "CORRECTIVE"
         ],
         "operations": [
-          "createCompanyInvoice"
+          "createCompanyInvoice",
+          "issueCompanyInvoice"
         ]
       },
       "error_codes": [
         {
           "code": "RECIPIENT_FISCAL_NAME_REQUIRED",
           "url": "https://docs.beel.es/errors/RECIPIENT_FISCAL_NAME_REQUIRED"
+        },
+        {
+          "code": "EMISSION_NOT_READY",
+          "url": "https://docs.beel.es/errors/EMISSION_NOT_READY"
         },
         {
           "code": "PROFILE_INCOMPLETE",
@@ -2499,6 +2559,10 @@
         {
           "code": "RECIPIENT_ADDRESS_REQUIRED",
           "url": "https://docs.beel.es/errors/RECIPIENT_ADDRESS_REQUIRED"
+        },
+        {
+          "code": "EMISSION_NOT_READY",
+          "url": "https://docs.beel.es/errors/EMISSION_NOT_READY"
         },
         {
           "code": "PROFILE_INCOMPLETE",
@@ -2815,8 +2879,8 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "When the recipient is the one liable for the VAT, the invoice carries the mention «inversión del sujeto pasivo», on any document of it, one you render included. Classify those lines as reverse charge.",
+      "enforced_by": "api",
+      "statement": "When the recipient is the one liable for the VAT, the invoice carries the mention «inversión del sujeto pasivo», on any document of it, one you render included. Classify those lines as reverse charge: BeeL. then prints the mention on the invoice's PDF, in a block of its own apart from the exemptions.",
       "why": "The mention is what tells the recipient that it has to self-assess the VAT; without it the invoice reads as if VAT had been left out by mistake.",
       "applies_to": {
         "invoice_types": [
@@ -3739,6 +3803,10 @@
           "url": "https://docs.beel.es/errors/LINE_MAIN_TAX_REQUIRED"
         },
         {
+          "code": "EMISSION_NOT_READY",
+          "url": "https://docs.beel.es/errors/EMISSION_NOT_READY"
+        },
+        {
           "code": "PROFILE_INCOMPLETE",
           "url": "https://docs.beel.es/errors/PROFILE_INCOMPLETE"
         }
@@ -3830,8 +3898,8 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "beel",
-      "enforced_by": "api",
-      "statement": "In BeeL., an invoice that identifies its recipient is a standard invoice (F1): a simplified invoice takes no recipient NIF. When a customer asks for its NIF and address on the invoice, issue it as STANDARD.",
+      "enforced_by": "integrator",
+      "statement": "Issue an invoice that identifies its recipient as a standard invoice (F1). The billing record of a simplified invoice (F2) carries no recipient (SIM-005), so a nif sent on a SIMPLIFIED invoice never reaches AEAT: when a customer asks for its NIF and address on the invoice, issue it as STANDARD.",
       "why": "The law also allows a simplified invoice completed with the recipient's details (SIM-009), which AEAT registers as F1; BeeL. documents that case as a standard invoice, so the invoice type and the record agree.",
       "applies_to": {
         "invoice_types": [
@@ -3843,17 +3911,12 @@
           "patchCompanyInvoice"
         ]
       },
-      "error_codes": [
-        {
-          "code": "SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT",
-          "url": "https://docs.beel.es/errors/SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT"
-        }
-      ],
+      "error_codes": [],
       "legal_basis": [],
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A simplified invoice whose recipient carries the customer's nif: the API answers SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT."
+          "text": "A simplified invoice whose recipient carries the customer's nif, expecting AEAT to register the customer."
         },
         "correct": {
           "text": "A standard invoice with the customer's NIF, name and address, whatever the amount."
@@ -6472,7 +6535,7 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "api",
+      "enforced_by": "integrator",
       "statement": "Records of each taxpayer are kept apart, in a chain of their own. Create one company per NIF and issue each invoice from the company of the NIF that issues it; show your users which one they are operating.",
       "why": "A system used by several taxpayers must keep their records separate and meet the requirements for each one; an invoice issued from the wrong company lands in another taxpayer's chain.",
       "applies_to": {
@@ -6622,13 +6685,12 @@
       "impact": "critical",
       "kind": "beel",
       "enforced_by": "integrator",
-      "statement": "Track each issued invoice's verifactu.submission_status (NOT_SUBMITTED, PENDING, ACCEPTED, REJECTED, VOIDED) through the verifactu.status.updated webhook and a periodic reconciliation. A REJECTED invoice is not registered: read its error_code and fix it.",
+      "statement": "Track each issued invoice's verifactu.submission_status (NOT_SUBMITTED, PENDING, ACCEPTED, REJECTED, VOIDED) through the verifactu.status.updated webhook and a periodic reconciliation. A transient AEAT error keeps the invoice PENDING while BeeL. retries it. A REJECTED invoice is not registered: read its error_code and fix it.",
       "why": "A 200 on issue means BeeL. accepted the invoice, not that AEAT registered it. A rejection nobody reads leaves an invoice outside AEAT's records.",
       "applies_to": {
         "scope": "Invoices of a company under VeriFactu.",
         "operations": [
-          "getCompanyInvoice",
-          "listCompanyInvoiceVerifactuRecords"
+          "getCompanyInvoice"
         ]
       },
       "error_codes": [],

@@ -69,6 +69,8 @@ export interface RulesCatalog {
   schema: string;
   source: string;
   text_format: string;
+  /** Terms of use of the catalogue, as published. Passed through untouched. */
+  license?: unknown;
   domains: RuleDomain[];
   rules: Rule[];
 }
