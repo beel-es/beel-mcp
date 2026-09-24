@@ -269,12 +269,14 @@ describe('/callback rejects what it cannot trust', () => {
     return { response, text: await response.text(), record: record && JSON.parse(record) };
   }
 
-  it('never claims a link was reused: the state already guarantees it was not', async () => {
+  it('invites a new attempt when the code itself is refused', async () => {
     const { response, text } = await rejectedExchange(400, { error: 'invalid_grant' });
 
     expect(response.status).toBe(400);
-    expect(text).not.toMatch(/already been used/i);
     expect(text).toContain('invalid_grant');
+    expect(text).toMatch(/start the connection again/i);
+    // The state is single-use, so a refused code is never a reused link.
+    expect(text).not.toMatch(/already been used/i);
   });
 
   it('records why BeeL refused the code, description included', async () => {
@@ -292,20 +294,22 @@ describe('/callback rejects what it cannot trust', () => {
     });
   });
 
-  it('calls a rejected client what it is: a server fault no retry fixes', async () => {
+  it('says a rejected client is a configuration fault no retry fixes', async () => {
     const { response, text, record } = await rejectedExchange(401, { error: 'invalid_client' });
 
     expect(response.status).toBe(502);
     expect(text).toContain('invalid_client');
-    expect(text).toMatch(/retrying will not fix it/);
+    expect(text).toMatch(/retrying will not help/i);
     expect(record?.oauth_error).toBe('invalid_client');
   });
 
-  it('names the HTTP status when the upstream gives no OAuth error', async () => {
-    const { response, text, record } = await rejectedExchange(503, 'down');
+  it('treats a server error upstream as possibly transient, naming its status', async () => {
+    const { response, text, record } = await rejectedExchange(500, 'down');
 
     expect(response.status).toBe(502);
-    expect(text).toContain('http_503');
+    expect(text).toContain('http_500');
+    expect(text).toMatch(/try again in a few minutes/i);
+    expect(text).not.toMatch(/retrying will not help/i);
     expect(record?.oauth_error).toBeNull();
   });
 
