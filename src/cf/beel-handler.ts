@@ -440,29 +440,40 @@ async function completeCallback(
 }
 
 /**
- * What the person connecting sees when BeeL refuses to exchange the code.
+ * What the person connecting sees when the authorization server does not
+ * exchange the code, by who can act on it.
  *
- * Never "this link was already used": the state is spent before the exchange, so
- * a code only ever reaches the token endpoint once, and that sentence would send
- * someone to retry a failure that retrying cannot fix. The code shown is the one
- * to quote when reporting it; the full record is in the logs.
+ * - `invalid_grant`: the code itself was refused (typically it expired while the
+ *   page was open). A new attempt from the client gets a new code: 400.
+ * - A 5xx from the authorization server: its failure, possibly transient. A
+ *   later attempt may succeed: 502.
+ * - Anything else — the client rejected, a request or response that breaks the
+ *   contract: a configuration fault between this server and the authorization
+ *   server. Retrying cannot change it: 502.
  *
- * `invalid_grant` is the one outcome a fresh attempt can clear (a code that
- * expired while the page was open). Everything else — a rejected client, a
- * malformed response, the server down — is on this side, hence a 502.
+ * The state is spent before the exchange, so a code reaches the token endpoint
+ * once; none of these is a reused link. The code shown is the one to quote in a
+ * report; the full record is in the logs.
  */
 function tokenFailureResponse(c: Context<{ Bindings: Env }>, error: TokenEndpointError): Response {
   const reason = error.oauthError ?? `http_${error.status}`;
   if (error.oauthError === 'invalid_grant') {
     return c.text(
-      `BeeL rejected this sign-in (${reason}). Start the connection again from your ` +
-        'MCP client. If it fails again, report this code to BeeL support.',
+      `BeeL did not accept this sign-in (${reason}). Start the connection again ` +
+        'from your MCP client.',
       400,
     );
   }
+  if (error.status >= 500) {
+    return c.text(
+      `BeeL sign-in is not available right now (${reason}). Try again in a few ` +
+        'minutes; if it keeps failing, contact BeeL support with this code.',
+      502,
+    );
+  }
   return c.text(
-    `BeeL could not complete this sign-in (${reason}). The problem is on the BeeL MCP ` +
-      'server, so retrying will not fix it. Report this code to BeeL support.',
+    `This connection cannot complete sign-in with BeeL (${reason}). Retrying will ` +
+      'not help; contact BeeL support with this code.',
     502,
   );
 }

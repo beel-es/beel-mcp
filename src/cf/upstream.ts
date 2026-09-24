@@ -202,10 +202,10 @@ export type TokenPhase = 'authorization_code' | 'refresh_token';
  * error tracker.
  *
  * Every rejection is reported, `invalid_grant` included. At the callback the
- * state is single-use, so a code reaching the token endpoint has never been
- * spent by us: a rejection there is a mismatch between this bridge and the
- * authorization server, not a user clicking twice. On refresh it ends a session
- * the user believed was alive. Neither leaves any other trace.
+ * state is single-use, so the code has not been spent before: a rejection there
+ * is a disagreement between this server and the authorization server. On
+ * refresh it ends a session the user believed was alive. Neither leaves any
+ * other trace.
  */
 export function reportTokenFailure(phase: TokenPhase, error: TokenEndpointError): void {
   const record = {
