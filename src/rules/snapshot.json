@@ -1025,7 +1025,7 @@
       "severity": "MUST",
       "impact": "medium",
       "kind": "law",
-      "enforced_by": "api",
+      "enforced_by": "issuer",
       "statement": "A corrective states the number and the issue date of the invoice it rectifies. In the API a corrective is always created against its original, the {invoice_id} of the request, and each corrective rectifies one invoice.",
       "why": "Without an unambiguous reference to the original, neither the customer nor AEAT can tell what is being corrected.",
       "applies_to": {
@@ -1749,7 +1749,7 @@
       "severity": "MUST_NOT",
       "impact": "critical",
       "kind": "aeat",
-      "enforced_by": "api",
+      "enforced_by": "issuer",
       "statement": "Treat every issued number as consumed for good. A voided invoice, or a test issued in production, keeps its number in the series; the invoice that replaces it gets a new one.",
       "why": "The number identifies the invoice in AEAT's records. A second invoice with the same number would be a duplicate that AEAT does not accept.",
       "applies_to": {
@@ -1807,7 +1807,7 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "api",
+      "enforced_by": "issuer",
       "statement": "Within a series, invoice numbers follow one another without gaps or jumps. BeeL. takes the next number of the series at issue, so numbers are only correlative if every invoice of that series is issued through it.",
       "why": "A gap or a jump in a series is what an inspection reads as a missing invoice.",
       "applies_to": {
@@ -1904,7 +1904,7 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "api",
+      "enforced_by": "issuer",
       "statement": "A business that issues both full and simplified invoices in the same calendar year numbers them in separate series. A typed BeeL. series accepts only its own document type, so keep one series for each type.",
       "why": "Full and simplified invoices sharing a series would leave neither sequence correlative.",
       "applies_to": {
@@ -1965,7 +1965,7 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "api",
+      "enforced_by": "issuer",
       "statement": "Corrective invoices go in a series specific to correctives, never in the series of ordinary invoices. Without a series_id, BeeL. numbers a corrective in the default corrective series; a typed series of another type is rejected.",
       "why": "The law requires correctives to be told apart from ordinary invoices by their series.",
       "applies_to": {
@@ -4844,8 +4844,8 @@
       },
       "error_codes": [
         {
-          "code": "INVALID_VAT",
-          "url": "https://docs.beel.es/errors/INVALID_VAT"
+          "code": "INVALID_PERCENTAGE",
+          "url": "https://docs.beel.es/errors/INVALID_PERCENTAGE"
         }
       ],
       "legal_basis": [
@@ -4860,7 +4860,7 @@
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A line at 16 %: the API answers INVALID_VAT."
+          "text": "A line at 16 %: the API answers INVALID_PERCENTAGE."
         },
         "correct": {
           "text": "A line at 21 %.",
