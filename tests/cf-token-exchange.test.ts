@@ -84,6 +84,28 @@ describe('tokenExchangeCallback', () => {
     });
   });
 
+  it('records why the upstream refused the refresh', async () => {
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation(
+      (...a: unknown[]) => void logged.push(String(a[0])),
+    );
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ error: 'invalid_client' }), { status: 401 }),
+    );
+
+    await createTokenExchangeCallback(env)(options()).catch(() => undefined);
+
+    const record = logged.find((l) => l.includes('OAUTH_TOKEN_REJECTED'));
+    expect(JSON.parse(record!)).toMatchObject({
+      phase: 'refresh_token',
+      status: 401,
+      oauth_error: 'invalid_client',
+      used_client_secret: true,
+    });
+    vi.restoreAllMocks();
+  });
+
   it('asks the client to re-consent when the grant holds no refresh token', async () => {
     await expect(
       createTokenExchangeCallback(env)(options({ props: { ...props, refreshToken: undefined } })),

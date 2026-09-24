@@ -8,6 +8,7 @@ import {
   exchangeCode,
   pkcePair,
   randomToken,
+  reportTokenFailure,
   upstreamConfig,
   type UpstreamConfig,
   type UpstreamTokens,
@@ -409,11 +410,8 @@ async function completeCallback(
     tokens = await exchangeCode(upstream, code, callbackUrl(upstream), pending.codeVerifier);
   } catch (error) {
     if (error instanceof TokenEndpointError) {
-      return c.text(
-        'This sign-in link has already been used or has expired. ' +
-          'Start the connection again from your MCP client.',
-        400,
-      );
+      reportTokenFailure('authorization_code', error);
+      return tokenFailureResponse(c, error);
     }
     throw error;
   }
@@ -439,6 +437,34 @@ async function completeCallback(
     },
   });
   return finalRedirect(redirectTo);
+}
+
+/**
+ * What the person connecting sees when BeeL refuses to exchange the code.
+ *
+ * Never "this link was already used": the state is spent before the exchange, so
+ * a code only ever reaches the token endpoint once, and that sentence would send
+ * someone to retry a failure that retrying cannot fix. The code shown is the one
+ * to quote when reporting it; the full record is in the logs.
+ *
+ * `invalid_grant` is the one outcome a fresh attempt can clear (a code that
+ * expired while the page was open). Everything else — a rejected client, a
+ * malformed response, the server down — is on this side, hence a 502.
+ */
+function tokenFailureResponse(c: Context<{ Bindings: Env }>, error: TokenEndpointError): Response {
+  const reason = error.oauthError ?? `http_${error.status}`;
+  if (error.oauthError === 'invalid_grant') {
+    return c.text(
+      `BeeL rejected this sign-in (${reason}). Start the connection again from your ` +
+        'MCP client. If it fails again, report this code to BeeL support.',
+      400,
+    );
+  }
+  return c.text(
+    `BeeL could not complete this sign-in (${reason}). The problem is on the BeeL MCP ` +
+      'server, so retrying will not fix it. Report this code to BeeL support.',
+    502,
+  );
 }
 
 /** Spanish is the product language of the consent flow this page sits inside. */

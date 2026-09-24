@@ -17,6 +17,7 @@ import type {
 import {
   TokenEndpointError,
   refreshUpstream,
+  reportTokenFailure,
   upstreamConfig,
   workerAccessTokenTTL,
 } from './upstream.js';
@@ -60,6 +61,7 @@ export function createTokenExchangeCallback(
       };
     } catch (error) {
       if (error instanceof TokenEndpointError) {
+        reportTokenFailure('refresh_token', error);
         deadGrant(`the upstream refresh failed (${error.oauthError ?? error.status})`);
       }
       throw error;

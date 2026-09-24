@@ -256,18 +256,57 @@ describe('/callback rejects what it cannot trust', () => {
     expect(kv.store.size).toBe(0);
   });
 
-  it('explains a rejected code instead of surfacing the upstream failure', async () => {
-    const { env, kv } = fakeEnv();
-    vi.stubGlobal(
-      'fetch',
-      async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }),
+  async function rejectedExchange(status: number, body: unknown) {
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation(
+      (...a: unknown[]) => void logged.push(String(a[0])),
     );
-
+    const { env, kv } = fakeEnv();
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify(body), { status }));
     await call(env, WORKER_PATH.authorize);
     const response = await call(env, WORKER_PATH.callback, `?state=${storedState(kv)}&code=abc`);
+    const record = logged.find((l) => l.includes('OAUTH_TOKEN_REJECTED'));
+    return { response, text: await response.text(), record: record && JSON.parse(record) };
+  }
+
+  it('never claims a link was reused: the state already guarantees it was not', async () => {
+    const { response, text } = await rejectedExchange(400, { error: 'invalid_grant' });
 
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/already been used|expired/i);
+    expect(text).not.toMatch(/already been used/i);
+    expect(text).toContain('invalid_grant');
+  });
+
+  it('records why BeeL refused the code, description included', async () => {
+    const { record } = await rejectedExchange(400, {
+      error: 'invalid_grant',
+      error_description: 'OAuth 2.0 Parameter: redirect_uri',
+    });
+
+    expect(record).toMatchObject({
+      phase: 'authorization_code',
+      status: 400,
+      oauth_error: 'invalid_grant',
+      error_description: 'OAuth 2.0 Parameter: redirect_uri',
+      used_client_secret: false,
+    });
+  });
+
+  it('calls a rejected client what it is: a server fault no retry fixes', async () => {
+    const { response, text, record } = await rejectedExchange(401, { error: 'invalid_client' });
+
+    expect(response.status).toBe(502);
+    expect(text).toContain('invalid_client');
+    expect(text).toMatch(/retrying will not fix it/);
+    expect(record?.oauth_error).toBe('invalid_client');
+  });
+
+  it('names the HTTP status when the upstream gives no OAuth error', async () => {
+    const { response, text, record } = await rejectedExchange(503, 'down');
+
+    expect(response.status).toBe(502);
+    expect(text).toContain('http_503');
+    expect(record?.oauth_error).toBeNull();
   });
 
   it('fails the connection when the token carries no identity', async () => {
