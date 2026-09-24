@@ -8,6 +8,7 @@ import {
   exchangeCode,
   pkcePair,
   randomToken,
+  reportTokenFailure,
   upstreamConfig,
   type UpstreamConfig,
   type UpstreamTokens,
@@ -409,11 +410,8 @@ async function completeCallback(
     tokens = await exchangeCode(upstream, code, callbackUrl(upstream), pending.codeVerifier);
   } catch (error) {
     if (error instanceof TokenEndpointError) {
-      return c.text(
-        'This sign-in link has already been used or has expired. ' +
-          'Start the connection again from your MCP client.',
-        400,
-      );
+      reportTokenFailure('authorization_code', error);
+      return tokenFailureResponse(c, error);
     }
     throw error;
   }
@@ -439,6 +437,45 @@ async function completeCallback(
     },
   });
   return finalRedirect(redirectTo);
+}
+
+/**
+ * What the person connecting sees when the authorization server does not
+ * exchange the code, by who can act on it.
+ *
+ * - `invalid_grant`: the code itself was refused (typically it expired while the
+ *   page was open). A new attempt from the client gets a new code: 400.
+ * - A 5xx from the authorization server: its failure, possibly transient. A
+ *   later attempt may succeed: 502.
+ * - Anything else — the client rejected, a request or response that breaks the
+ *   contract: a configuration fault between this server and the authorization
+ *   server. Retrying cannot change it: 502.
+ *
+ * The state is spent before the exchange, so a code reaches the token endpoint
+ * once; none of these is a reused link. The code shown is the one to quote in a
+ * report; the full record is in the logs.
+ */
+function tokenFailureResponse(c: Context<{ Bindings: Env }>, error: TokenEndpointError): Response {
+  const reason = error.oauthError ?? `http_${error.status}`;
+  if (error.oauthError === 'invalid_grant') {
+    return c.text(
+      `BeeL did not accept this sign-in (${reason}). Start the connection again ` +
+        'from your MCP client.',
+      400,
+    );
+  }
+  if (error.status >= 500) {
+    return c.text(
+      `BeeL sign-in is not available right now (${reason}). Try again in a few ` +
+        'minutes; if it keeps failing, contact BeeL support with this code.',
+      502,
+    );
+  }
+  return c.text(
+    `This connection cannot complete sign-in with BeeL (${reason}). Retrying will ` +
+      'not help; contact BeeL support with this code.',
+    502,
+  );
 }
 
 /** Spanish is the product language of the consent flow this page sits inside. */

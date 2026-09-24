@@ -83,6 +83,7 @@ export async function pkcePair(): Promise<{ verifier: string; challenge: string 
 export const OAUTH_MARKER = {
   missingSecret: 'OAUTH_CLIENT_SECRET_MISSING',
   rejectedSecret: 'OAUTH_CLIENT_SECRET_REJECTED',
+  tokenRejected: 'OAUTH_TOKEN_REJECTED',
 } as const;
 
 /**
@@ -153,20 +154,74 @@ export class TokenEndpointError extends Error {
     readonly oauthError: string | undefined,
     readonly usedClientSecret: boolean,
     detail: string,
+    /** `error_description` from the body, sanitized; see `oauthErrorBody`. */
+    readonly oauthErrorDescription?: string,
   ) {
     super(detail);
     this.name = 'TokenEndpointError';
   }
 }
 
-/** The OAuth error code from the body, when the body is the JSON the RFC mandates. */
-function oauthErrorCode(body: string): string | undefined {
+/** Longest `error_description` kept: enough for a sentence, not for a payload. */
+const MAX_DESCRIPTION_LENGTH = 200;
+
+/**
+ * Anything shaped like a credential: a long unbroken run of token characters.
+ * An authorization server may quote the code or refresh token it rejected.
+ */
+const TOKEN_LIKE = /[A-Za-z0-9._~+/=-]{20,}/g;
+
+/**
+ * The RFC 6749 §5.2 error body: `error`, and `error_description` made safe to log.
+ *
+ * The description is what tells `invalid_grant` apart — an expired code, a
+ * redirect_uri mismatch and a failed PKCE check share that one code — so it is
+ * kept, but trimmed and with anything token-like masked before it goes anywhere.
+ */
+function oauthErrorBody(body: string): { error?: string; description?: string } {
   try {
-    const parsed = JSON.parse(body) as { error?: unknown };
-    return typeof parsed.error === 'string' ? parsed.error : undefined;
+    const parsed = JSON.parse(body) as { error?: unknown; error_description?: unknown };
+    const error = typeof parsed.error === 'string' ? parsed.error : undefined;
+    const raw = typeof parsed.error_description === 'string' ? parsed.error_description : '';
+    const description = raw
+      .replace(TOKEN_LIKE, '[redacted]')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, MAX_DESCRIPTION_LENGTH);
+    return { error, description: description || undefined };
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+/** Which leg of the upstream exchange failed. */
+export type TokenPhase = 'authorization_code' | 'refresh_token';
+
+/**
+ * One structured record of a rejected token request, to the logs and to the
+ * error tracker.
+ *
+ * Every rejection is reported, `invalid_grant` included. At the callback the
+ * state is single-use, so the code has not been spent before: a rejection there
+ * is a disagreement between this server and the authorization server. On
+ * refresh it ends a session the user believed was alive. Neither leaves any
+ * other trace.
+ */
+export function reportTokenFailure(phase: TokenPhase, error: TokenEndpointError): void {
+  const record = {
+    evt: OAUTH_MARKER.tokenRejected,
+    phase,
+    status: error.status,
+    oauth_error: error.oauthError ?? null,
+    error_description: error.oauthErrorDescription ?? null,
+    used_client_secret: error.usedClientSecret,
+  };
+  console.error(JSON.stringify(record));
+  Sentry.captureMessage(
+    `${OAUTH_MARKER.tokenRejected}: ${phase} → ${error.status}` +
+      (error.oauthError ? ` ${error.oauthError}` : ''),
+    { level: 'error', extra: record },
+  );
 }
 
 /**
@@ -237,7 +292,7 @@ async function tokenRequest(
   });
   const text = await response.text();
   if (!response.ok) {
-    const oauthError = oauthErrorCode(text);
+    const { error: oauthError, description } = oauthErrorBody(text);
     // `invalid_client` with a secret configured is always a misconfiguration on
     // this side. Retrying as a public client hides it and silently gives up the
     // refresh token, so it happens only when a deployment asks for it.
@@ -250,6 +305,7 @@ async function tokenRequest(
       oauthError,
       usedClientSecret,
       `BeeL token endpoint returned ${response.status}${oauthError ? ` (${oauthError})` : ''}`,
+      description,
     );
   }
   return parseTokens(text, usedClientSecret);
