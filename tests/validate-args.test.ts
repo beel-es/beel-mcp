@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 import {
   assertValidArguments,
@@ -17,7 +18,7 @@ describe('argument validation against the derived inputSchema', () => {
     // A schema the validator cannot take is a defect in the projection. It must
     // fail here rather than at a user's call, where it now propagates instead of
     // degrading to no validation at all.
-    const all = [...tools.map((t) => t.tool), ...docsTools, ...workflowTools];
+    const all = [...tools.map((t) => t.tool), ...docsTools, ...rulesTools, ...workflowTools];
     const rejected = all.filter((tool) => {
       try {
         findArgumentIssues(tool, {});

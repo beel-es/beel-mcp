@@ -7,3 +7,6 @@ src/mcpapp/generated
 # Prose is formatted by hand: Prettier reflows Markdown in ways that make the
 # diff of a one-line edit unreadable.
 *.md
+
+# Written by `npm run sync:rules` and checked byte-for-byte by a test; never formatted.
+src/rules/snapshot.json

@@ -3,6 +3,7 @@ import { pathParams, snakeCase, toolName, words } from '../src/spec/derive.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { MAX_TOOL_NAME_LENGTH } from '../src/spec/derive.js';
 import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 
 describe('derive', () => {
@@ -48,6 +49,7 @@ describe('the derived tool surface stays valid as the contract grows', () => {
   const allTools = [
     ...buildApiTools().tools.map((t) => t.tool.name),
     ...docsTools.map((t) => t.name),
+    ...rulesTools.map((t) => t.name),
     ...workflowTools.map((t) => t.name),
   ];
 

@@ -43,7 +43,10 @@ export interface CatalogEntry {
    * already says it well enough for an agent to follow.
    */
   remedy?: string;
-  /** Guardrail whose prose explains the rule behind the code. */
+  /**
+   * The `beel://guardrails/<id>` resource that explains the background: an API usage
+   * guide id, or a fiscal-rule domain slug of the published rules catalogue.
+   */
   guardrail?: string;
 }
 
@@ -144,7 +147,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   INVOICE_ALREADY_VOIDED: {
     actor: 'benign',
     remedy: 'Voiding is not repeatable — treat this as a retry that already landed.',
-    guardrail: 'cancel-vs-rectify',
+    guardrail: 'void',
   },
   INVOICE_STATUS_NOT_SCHEDULABLE: { actor: 'request', guardrail: 'invoice-state-machine' },
   INVOICE_DUPLICATE_EXTERNAL_REFERENCE: {
@@ -173,10 +176,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
       'default, which may be non-zero.',
-    guardrail: 'invoice-types',
+    guardrail: 'simplified',
   },
-  SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'regime-keys' },
-  REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'regime-keys' },
+  SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'surcharge' },
+  REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'surcharge' },
 
   // ── Identity ──────────────────────────────────────────────────────────────
   NIF_INVALID: {

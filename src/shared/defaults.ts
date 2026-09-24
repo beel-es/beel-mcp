@@ -116,5 +116,21 @@ export const HTTP_DEFAULTS = {
 /** In-memory cache lifetimes, in milliseconds. */
 export const CACHE_TTL_MS = {
   docs: 15 * 60 * 1000,
+  rules: 15 * 60 * 1000,
   scopeDiscovery: 15 * 60 * 1000,
+} as const;
+
+/**
+ * The fiscal rules catalogue the docs site publishes, read relative to the docs
+ * base URL (so `BEEL_DOCS_URL` moves it too). Its timeout is shorter than an API
+ * call's because it also runs on the error path: a slow docs host must not hold
+ * up the explanation of a failure the agent is waiting for.
+ */
+export const RULES_SOURCE = {
+  path: '/api/rules.json',
+  timeoutMs: 5_000,
+  /** The catalogue is a few hundred kilobytes; anything far past that is not it. */
+  maxBytes: 4 * 1024 * 1024,
+  /** After a failed fetch, serve the fallback this long before trying again. */
+  retryAfterFailureMs: 60 * 1000,
 } as const;
