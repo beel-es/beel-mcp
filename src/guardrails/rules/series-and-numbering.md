@@ -50,3 +50,20 @@ a corrective needs a corrective series, or you get `SERIES_INCOMPATIBLE_DOC_TYPE
 A company's numbering can only be seeded in the call that activates it: a `numbering` block
 with `activate: false` is rejected with `NUMBERING_REQUIRES_ACTIVATION`, because the later
 activation step does not accept numbering and would discard it forever.
+
+## Creating a series
+
+`document_type` is required, and `UNASSIGNED` is rejected with
+`SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`: corrective invoices need a series of their own. A
+series whose code and format could print a number another series of the company can also
+print is rejected with `SERIES_FORMAT_OVERLAPS` (a clash, not a duplicate of work already
+done), naming that series.
+
+A generated number must fit the AEAT invoice number: at most 60 characters, printable ASCII
+without `"`, `'`, `<`, `>` or `=`. A code or format that cannot is rejected when the series
+is saved (`SERIES_FORMAT_NUMBER_TOO_LONG`, `SERIES_FORMAT_INVALID_CHARACTERS`), and a number
+that still does not fit is rejected at issue time (`INVOICE_NUMBER_TOO_LONG`,
+`INVOICE_NUMBER_INVALID_CHARACTERS`) without issuing or using the number.
+
+`initial_number` only applies in the first period in which the series issues an invoice;
+later periods start at 1. With `counter_reset: NEVER` there is a single period.

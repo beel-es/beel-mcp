@@ -138,6 +138,35 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'numbering is never rewritten.',
     guardrail: 'series-and-numbering',
   },
+  // A 409 here is a clash, not a retry that already landed.
+  SERIES_FORMAT_OVERLAPS: {
+    actor: 'request',
+    remedy:
+      'Nothing was saved. Change the code or format so it cannot print the numbers of the ' +
+      'series named in the error; beel_list_series shows the existing formats.',
+    guardrail: 'series-and-numbering',
+  },
+  SERIES_NUMBER_COLLISION: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was consumed, but retrying gives the same result: ' +
+      'the series needs review by BeeL support.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_TOO_LONG: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or shorten ' +
+      'the series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_INVALID_CHARACTERS: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or fix the ' +
+      'series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
   NUMBERING_REQUIRES_ACTIVATION: { actor: 'request', guardrail: 'series-and-numbering' },
 
   // ── Invoice lifecycle ─────────────────────────────────────────────────────
@@ -228,6 +257,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy: 'Confirm the company id with beel_list_companies.',
   },
   LIVE_CREDENTIAL_REQUIRED: { actor: 'access' },
+  WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED: {
+    actor: 'access',
+    remedy:
+      'Ten subscriptions are already active. Turn one you no longer need off (active: false) ' +
+      'with beel_patch_webhook_subscription, or delete it with beel_delete_webhook_subscription.',
+  },
   RATE_LIMIT_EXCEEDED: {
     actor: 'benign',
     remedy:

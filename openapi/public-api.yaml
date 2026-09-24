@@ -16,7 +16,7 @@ info:
     the public contract at present. There is no dynamic client registration and no way for a third
     party to obtain a `client_id`, so the API key is the credential to integrate with.
 
-    POST endpoints accept an `Idempotency-Key` header (any unique client-generated string) to safely retry requests without creating duplicates.
+    POST endpoints, and the PUT/PATCH/DELETE operations that list it, accept an `Idempotency-Key` header (any unique client-generated string) to retry a request safely without repeating it. A retry with the same key within 24 hours replays the first response when it was a success (2xx) or a server error (5xx), with the header `Idempotency-Replay: true`; a 4xx is not stored, so the corrected request can reuse the key. See the header parameter for the details.
 
     **This specification is served live by the API itself**, at
     `https://app.beel.es/api/v1/openapi.yaml` (and `.json`) — the same document this reference is
@@ -235,7 +235,7 @@ tags:
   - name: ConfigurationTax
     description: Tax configuration and tax type catalogs
   - name: TaxTypes
-    description: The tax regimes, percentages, withholdings and exemption reasons Spanish law allows. The same for every credential, and readable before the first NIF exists.
+    description: The tax regimes, percentages, withholdings and exemption reasons BeeL accepts. The same for every credential, and readable before the first NIF exists.
   - name: InvoiceSeries
     description: Invoice series management
   - name: ConfigurationVeriFactu
@@ -298,7 +298,9 @@ tags:
       (e.g. VeriFactu submission accepted/rejected by AEAT).
 
       All deliveries are signed with HMAC-SHA256 (`BeeL-Signature` header).
-      Failed deliveries are retried up to 5 times with exponential backoff.
+      Failed deliveries are retried on a fixed schedule: 7 attempts over about 3 days
+      (3 attempts over about 11 minutes in sandbox); a `4xx` other than `408` and `429` is not
+      retried.
   - name: AccountRequestLogs
     description: Canonical form of the request logs, addressed by `/v1/accounts/{account_id}/request-logs`. The account in the path authorizes the call; the logs returned are always the requests made by you, with any of your API keys in the environment you authenticate from — never the whole account's traffic, and never another user's. It replaces the operations that `RequestLogs` still exposes under `/v1/developers/request-logs`.
   - name: RequestLogs
@@ -792,7 +794,7 @@ paths:
                 conflict:
                   $ref: '#/components/examples/conflict-409'
         '422':
-          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`.'
+          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`. At issue time the generated number must also fit the AEAT invoice number: more than 60 characters answers `INVOICE_NUMBER_TOO_LONG`, a character outside printable ASCII or one of `"`, `''`, `<`, `>`, `=` answers `INVOICE_NUMBER_INVALID_CHARACTERS`. In both cases the invoice is not issued and the number is not used; issue it with another series, or fix the series code or format while the series has no issued invoices, and retry.'
           content:
             application/json:
               schema:
@@ -874,7 +876,7 @@ paths:
         - Invoices
       summary: Update an invoice
       description: |
-        Updates a draft invoice. Only invoices in `DRAFT` status can be modified.
+        Updates an invoice in `DRAFT` or `SCHEDULED` status, or a proforma in `ACTIVE`.
 
         - **Deprecated:** use `PATCH /v1/companies/{company_id}/invoices/{invoice_id}`, the single
           update verb of the canonical form.
@@ -1921,7 +1923,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: 'Original invoice cannot be rectified (invalid status) — `error.code` is `INVOICE_NOT_CORRECTIBLE_IN_CURRENT_STATUS`. This is also what a **second TOTAL corrective** gets: the first one left the original `VOIDED`, and a `VOIDED` invoice is not rectifiable. There is no dedicated `409` for it; to retry the same call safely, send an `Idempotency-Key`. Or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in production, where the operation reaches the real tax authority); when a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`.'
+          description: 'Original invoice cannot be rectified (invalid status) — `error.code` is `INVOICE_NOT_CORRECTIBLE_IN_CURRENT_STATUS`. This is also what a **second TOTAL corrective** gets: the first one left the original `VOIDED`, and a `VOIDED` invoice is not rectifiable. There is no dedicated `409` for it; to retry the same call safely, send an `Idempotency-Key`. Or the company/NIF is not ready to issue in this environment — `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED` — the last one only in production, where the operation reaches the real tax authority); when a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Or the explicit `series_id` is a series of the wrong type — `error.code` is `SERIES_INCOMPATIBLE_DOC_TYPE` and `error.details.expected_document_type` says which type was required; or — when `series_id` is omitted — the company has no default series compatible with corrective invoices (`error.code` is `SERIES_DEFAULT_NOT_FOUND`, with `error.details.expected_document_type` and the endpoint that diagnoses it). That last one is an account configuration problem, not a request problem: create the corrective series, or send an explicit `series_id`. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`. At issue time the generated number must also fit the AEAT invoice number: more than 60 characters answers `INVOICE_NUMBER_TOO_LONG`, a character outside printable ASCII or one of `"`, `''`, `<`, `>`, `=` answers `INVOICE_NUMBER_INVALID_CHARACTERS`. In both cases the invoice is not issued and the number is not used; issue it with another series, or fix the series code or format while the series has no issued invoices, and retry.'
           content:
             application/json:
               schema:
@@ -2023,7 +2025,7 @@ paths:
         '409':
           $ref: '#/components/responses/StateConflict'
         '422':
-          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority.'
+          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Sandbox applies the same gate as production, except `NIF_REPRESENTATION_REQUIRED`: the signed representation is only required when the operation reaches the real tax authority. At issue time the generated number must also fit the AEAT invoice number: more than 60 characters answers `INVOICE_NUMBER_TOO_LONG`, a character outside printable ASCII or one of `"`, `''`, `<`, `>`, `=` answers `INVOICE_NUMBER_INVALID_CHARACTERS`. In both cases the invoice is not issued and the number is not used; issue it with another series, or fix the series code or format while the series has no issued invoices, and retry.'
           content:
             application/json:
               schema:
@@ -2956,6 +2958,10 @@ paths:
           Submission to the AEAT is asynchronous, so `verifactu.submission_status` comes back as
           `PENDING`: a 2xx means the invoice was accepted for submission, not that the AEAT has
           registered it.
+          If the number the series would assign is already used by another invoice of the same
+          company, in this series or in another one, it fails with `400 SERIES_NUMBER_COLLISION`
+          without issuing anything or consuming a number: the series needs review, so contact
+          support.
         - **Document type:** `type` chooses the document. A `PROFORMA` is non-fiscal — it is born
           `ACTIVE`, numbered `PRO-...` from its own non-fiscal series, and ignores
           `issue_directly`.
@@ -3072,7 +3078,7 @@ paths:
                 conflict:
                   $ref: '#/components/examples/conflict-409'
         '422':
-          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`.'
+          description: 'Validation error, or (when creating and issuing directly) the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. Separately: on a line priced by declared total (`total_excluding_tax` or `total_including_tax`) the unit price is not sent — it is derived as total ÷ quantity — so a quotient that does not fit the field storing it is rejected with `error.code` `LINE_UNIT_PRICE_OUT_OF_RANGE` and an `error.details` that follows `LineUnitPriceOutOfRangeDetails`: `field` names the offending line (`lines[0]`), not a `unit_price` you never sent, while `max` and `derived_unit_price` carry the limit and the quotient as JSON numbers, so they can be compared without parsing `error.message`. At issue time the generated number must also fit the AEAT invoice number: more than 60 characters answers `INVOICE_NUMBER_TOO_LONG`, a character outside printable ASCII or one of `"`, `''`, `<`, `>`, `=` answers `INVOICE_NUMBER_INVALID_CHARACTERS`. In both cases the invoice is not issued and the number is not used; issue it with another series, or fix the series code or format while the series has no issued invoices, and retry.'
           content:
             application/json:
               schema:
@@ -3519,6 +3525,9 @@ paths:
           `400 EXPORT_SELECTION_REQUIRED`.
         - **Format:** `SUMMARY` writes one row per invoice with aggregated totals, `ITEMS` one
           row per invoice line.
+        - **Values:** the status, payment method, tax type and line type columns carry the same
+          values the API returns (`ISSUED`, `BANK_TRANSFER`, `IVA`, `SUPLIDO`…). A proforma past
+          its validity is exported as `ACTIVE`, not `EXPIRED`.
         - **Limit:** up to 50000 invoices per export. Going over it is rejected with
           `422 EXPORT_LIMIT_EXCEEDED` — narrow the date range or split the selection. The
           export is never silently truncated.
@@ -3670,8 +3679,9 @@ paths:
         Updates only the fields present in the body, leaving every other field of the invoice as
         it is.
 
-        - **Status:** only a draft invoice can be modified. An issued one is amended with a
-          corrective invoice (`POST …/{invoice_id}/corrective`) or voided.
+        - **Status:** only an invoice in `DRAFT` or `SCHEDULED`, or a proforma in `ACTIVE`, can be
+          modified; any other status answers `422` with `STATUS_NOT_MODIFIABLE`. An issued one is
+          amended with a corrective invoice (`POST …/{invoice_id}/corrective`) or voided.
         - **Series:** changing `series_id` never moves the invoice to another NIF — a series of
           another company is not visible from here.
       x-required-scopes:
@@ -4168,7 +4178,13 @@ paths:
                 invoice_issued_success:
                   $ref: '#/components/examples/issue-success'
         '400':
-          description: Cannot issue invoice (invalid status or incomplete data)
+          description: |
+            Cannot issue invoice (invalid status or incomplete data).
+
+            `SERIES_NUMBER_COLLISION`: the number the series would assign is already used by another
+            invoice of the same company, in this series or in another one. Nothing is issued and no
+            number is consumed, but retrying gives the same result: the series needs review, so
+            contact support.
           content:
             application/json:
               schema:
@@ -4194,7 +4210,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company's fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use.
+          description: 'Invoice cannot be issued (validation failed), or the company/NIF is not ready to issue in this environment. In the latter case `error.code` is `EMISSION_NOT_READY` and `error.details.blockers[]` lists the reasons (`PROFILE_INCOMPLETE`, `COMPANY_NOT_ACTIVATED`, `ENV_MISMATCH`, `NIF_NOT_REGISTERED`, `NIF_REPRESENTATION_REQUIRED`). When a blocker is `PROFILE_INCOMPLETE`, `error.details.missing_fields[]` names which fields of the company''s fiscal identity are still missing (`entity_type`, `legal_name`, `address`) — the same tokens the profile endpoints use. At issue time the generated number must also fit the AEAT invoice number: more than 60 characters answers `INVOICE_NUMBER_TOO_LONG`, a character outside printable ASCII or one of `"`, `''`, `<`, `>`, `=` answers `INVOICE_NUMBER_INVALID_CHARACTERS`. In both cases the invoice is not issued and the number is not used; issue it with another series, or fix the series code or format while the series has no issued invoices, and retry.'
           content:
             application/json:
               schema:
@@ -4233,6 +4249,8 @@ paths:
           errors, issue a corrective invoice instead
           (`POST …/{invoice_id}/corrective`).
         - **`reason`:** required, at least 10 characters — it is fiscal data.
+        - **`void_date`:** deprecated. A date earlier than the invoice's issue date is rejected
+          with `422 VOID_DATE_BEFORE_ISSUE_DATE`.
         - **VeriFactu:** when it is enabled for the invoice, a cancellation record is submitted
           to the AEAT.
         - **Proformas:** voiding an `ACTIVE` proforma is a plain status change with no fiscal
@@ -4350,7 +4368,11 @@ paths:
           corrective series, never in the series of the original. That default is never created
           for you: if the company has none the request fails with
           `422 SERIES_DEFAULT_NOT_FOUND`, and
-          `GET /v1/configuration/series/defaults-status` reports which default is missing.
+          `GET /v1/companies/{company_id}/series/defaults` reports which default is missing.
+        - **Numbering conflict:** if the number the series would assign is already used by another
+          invoice of the same company, in this series or in another one, the request fails with
+          `400 SERIES_NUMBER_COLLISION` without issuing anything or consuming a number. The series
+          needs review, so contact support.
       x-required-scopes:
         - invoices:write
       security:
@@ -4460,7 +4482,10 @@ paths:
         - **The proforma:** preserved as the record of what the customer accepted — it keeps its
           `PRO-...` number and PDF and moves to the terminal status `CONVERTED`.
         - **`issue`:** with `true` the new invoice is numbered and issued in the same atomic
-          call. If issuing fails nothing is created and the proforma stays `ACTIVE`.
+          call. If issuing fails nothing is created and the proforma stays `ACTIVE`. That
+          includes `400 SERIES_NUMBER_COLLISION`: the number the series would assign is already
+          used by another invoice of the same company, and the series needs review, so contact
+          support.
         - **Errors:** `422 CONVERSION_REQUIRES_PROFORMA` when the document is not a proforma,
           `422 PROFORMA_NOT_CONVERTIBLE` when it is not `ACTIVE`, and
           `409 PROFORMA_ALREADY_CONVERTED` when it has already been converted — a second call
@@ -4477,6 +4502,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ConvertProformaToInvoiceRequest'
+            examples:
+              convert_proforma_to_draft:
+                $ref: '#/components/examples/convert-proforma-draft'
+              convert_proforma_and_issue:
+                $ref: '#/components/examples/convert-proforma-issue'
       responses:
         '201':
           headers:
@@ -4688,6 +4718,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SetInvoiceScheduleRequest'
+            examples:
+              set_invoice_schedule_draft:
+                $ref: '#/components/examples/schedule-draft'
+              set_invoice_schedule_issue_and_send:
+                $ref: '#/components/examples/schedule-issue-and-send'
       responses:
         '200':
           description: Scheduling applied successfully
@@ -4999,6 +5034,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5052,6 +5088,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5126,6 +5163,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5202,6 +5240,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5240,6 +5279,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5293,6 +5333,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5353,6 +5394,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5424,6 +5466,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5539,6 +5582,7 @@ paths:
         - name: recurring_invoice_id
           in: path
           required: true
+          description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
           schema:
             type: string
             format: uuid
@@ -5653,11 +5697,13 @@ paths:
         - name: status
           in: query
           required: false
+          description: Keeps only the schedules in this lifecycle state. Omitted, every state is listed.
           schema:
             $ref: '#/components/schemas/RecurringInvoiceStatus'
         - name: customer_id
           in: query
           required: false
+          description: Keeps only the schedules that invoice this customer of the company.
           schema:
             type: string
             format: uuid
@@ -5769,6 +5815,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateRecurringInvoiceRequest'
+            examples:
+              create_monthly_recurring_invoice:
+                $ref: '#/components/examples/create-monthly'
       responses:
         '201':
           headers:
@@ -5903,6 +5952,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -5980,6 +6030,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchRecurringInvoiceRequest'
+            examples:
+              patch_recurring_invoice_schedule:
+                $ref: '#/components/examples/patch-schedule'
+              patch_recurring_invoice_lines:
+                $ref: '#/components/examples/patch-lines'
       responses:
         '200':
           description: Recurring invoice updated successfully
@@ -6077,6 +6132,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -6087,7 +6143,7 @@ paths:
       summary: Set the status of a recurring invoice
       description: |
         Sets the lifecycle status of a recurring invoice template. This is how generation is
-        paused and resumed.
+        paused, resumed and ended.
 
         - **`PAUSED`:** stops automatic generation, keeping the schedule configuration intact.
         - **`ACTIVE`:** resumes generation. It keeps the scheduled next generation date whenever
@@ -6097,8 +6153,9 @@ paths:
           was paused are not backfilled. If nothing is left to generate — the next generation date
           falls beyond `end_date`, or `max_invoices` has already been reached — the template
           becomes `COMPLETED`; for `end_date` that holds whether the date was kept or rescheduled.
-        - **`COMPLETED`:** reached on its own when the schedule runs out. It cannot be set here;
-          the body only accepts `ACTIVE` and `PAUSED`.
+        - **`COMPLETED`:** ends the schedule for good, from `ACTIVE` or `PAUSED`; it is also
+          reached on its own when the schedule runs out. It is terminal: `ACTIVE` and `PAUSED`
+          are then rejected with `RECURRING_STATE_TRANSITION_INVALID`.
         - **Rejected transitions:** resuming a template that is already active, or one whose
           `pause.blocker` is still in effect.
       x-required-scopes:
@@ -6113,6 +6170,13 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SetRecurringInvoiceStatusRequest'
+            examples:
+              set_recurring_invoice_paused:
+                $ref: '#/components/examples/status-paused'
+              set_recurring_invoice_active:
+                $ref: '#/components/examples/status-active'
+              set_recurring_invoice_completed:
+                $ref: '#/components/examples/status-completed'
       responses:
         '200':
           description: Status applied successfully
@@ -6159,6 +6223,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -6218,6 +6283,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -6286,6 +6352,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -6399,6 +6466,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateRecurringInvoiceDerivationRequest'
+            examples:
+              create_recurring_invoice_derivation:
+                $ref: '#/components/examples/derivation-from-invoice'
       responses:
         '201':
           headers:
@@ -6468,6 +6538,7 @@ paths:
       - name: recurring_invoice_id
         in: path
         required: true
+        description: Unique identifier (UUID) of the recurring invoice template, as returned when it is created or listed. A template of another company answers `404` with `RECURRING_NOT_FOUND`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -6991,6 +7062,9 @@ paths:
 
         - **Customers with invoices:** they cannot be deleted and the request answers `409`
           `CLIENT_HAS_INVOICES`, leaving the customer untouched — neither deleted nor deactivated.
+        - **Customers used by a recurring invoice:** while an active or paused recurring invoice
+          has the customer as its recipient, the request answers `400`
+          `REFERENCED_BY_RECURRING_INVOICE`.
         - **Deactivating instead:** to stop using a customer, whether or not it has invoices, update
           it with `active` set to `false`: that releases no identifier and keeps the customer
           retrievable through `GET /v1/customers?active=false`.
@@ -7031,6 +7105,15 @@ paths:
                           message:
                             type: string
                             example: Customer deleted successfully
+        '400':
+          description: |
+            An active or paused recurring invoice uses this customer as its recipient
+            (`REFERENCED_BY_RECURRING_INVOICE`). The customer is left untouched. End that recurring
+            invoice or change its customer first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7264,7 +7347,9 @@ paths:
           where the origin of the file travels in the body as `source` and a boolean no longer
           decides between looking and writing.
         - **File:** must use the headers of the template served by
-          `GET /v1/templates/customer-import`, and is limited to 5 MB and 1,000 rows.
+          `GET /v1/templates/customer-import`, and is limited to 5 MB and 1,000 rows. A file over
+          either limit is rejected as a whole with `400` (`CSV_FILE_TOO_LARGE` or
+          `TOO_MANY_RECORDS`) and nothing is imported.
         - **Validation:** each row is checked against the same rules as single-customer creation,
           plus duplicate detection within the file and against existing customers, and a NIF
           lookup in the AEAT register.
@@ -7319,8 +7404,8 @@ paths:
             - Format is not valid CSV
             - Encoding is not UTF-8
             - Required headers missing
-            - Size exceeds 5MB
-            - More than 1,000 records
+            - Size exceeds 5MB (`CSV_FILE_TOO_LARGE`)
+            - More than 1,000 records (`TOO_MANY_RECORDS`)
 
             Which one it was travels in `error.message`. `error.details` may carry the same details
             as the canonical route; do not rely on it here — migrate.
@@ -7333,7 +7418,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '413':
-          description: File too large (>5MB)
+          description: The uploaded file is over 12 MB (`FILE_TOO_LARGE`) and is rejected before it is read. A CSV over its own 5 MB limit answers `400` (`CSV_FILE_TOO_LARGE`).
           content:
             application/json:
               schema:
@@ -7369,7 +7454,8 @@ paths:
           `Idempotency-Key` header.
         - **Mapping:** the contact name becomes `legal_name`, the Holded ID becomes the tax
           identifier, and mobile takes precedence over landline for the phone.
-        - **File:** limited to 10 MB and 5,000 contacts.
+        - **File:** limited to 10 MB and 5,000 contacts. A file over either limit is rejected as a
+          whole with `400` (`CSV_FILE_TOO_LARGE` or `TOO_MANY_RECORDS`) and nothing is imported.
         - **`preview`:** at its default `true` nothing is persisted; `false` also imports the
           mapped customers.
 
@@ -7426,7 +7512,9 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '413':
-          description: File too large (>10MB)
+          description: |
+            The uploaded file is over 12 MB (`FILE_TOO_LARGE`) and is rejected before it is read; a
+            file over its own 10 MB limit answers `400` instead.
           content:
             application/json:
               schema:
@@ -7862,8 +7950,10 @@ paths:
 
         - **`source`:** the origin travels in the body. `csv` is a file following the import
           template, limited to 5 MB and 1,000 records; `holded` is an Excel (`.xlsx`) exported from
-          Holded contacts, limited to 10 MB and 5,000 records. A file over the limit of its `source`
-          answers `413`.
+          Holded contacts, limited to 10 MB and 5,000 records. A file over either limit of its
+          `source` is rejected as a whole with `400` (`CSV_FILE_TOO_LARGE` or `TOO_MANY_RECORDS`)
+          and nothing is imported. A file over 12 MB answers `413`
+          (`FILE_TOO_LARGE`) before it is read.
         - **This operation writes:** the customers it accepts are created, and a record whose tax
           identifier already exists in this company is reported as a duplicate rather than created
           again, so re-importing the same file duplicates nothing.
@@ -7921,7 +8011,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '413':
-          description: File too large for its `source`
+          description: |
+            The uploaded file is over 12 MB (`FILE_TOO_LARGE`) and is rejected before it is read; a
+            file over the limit of its `source` answers `400` instead.
           content:
             application/json:
               schema:
@@ -8001,7 +8093,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '413':
-          description: File too large for its `source`
+          description: |
+            The uploaded file is over 12 MB (`FILE_TOO_LARGE`) and is rejected before it is read; a
+            file over the limit of its `source` answers `400` instead.
           content:
             application/json:
               schema:
@@ -8183,6 +8277,9 @@ paths:
         - **Customers with invoices:** they cannot be deleted and the request answers `409`
           `CLIENT_HAS_INVOICES`. To stop using a customer, update it with `active` set to `false`
           instead of deleting it.
+        - **Customers used by a recurring invoice:** while an active or paused recurring invoice
+          has the customer as its recipient, the request answers `400`
+          `REFERENCED_BY_RECURRING_INVOICE`.
       x-required-scopes:
         - customers:write
       security:
@@ -8190,6 +8287,15 @@ paths:
       responses:
         '204':
           description: Customer deleted. No body — there is nothing to report that the request itself does not already imply.
+        '400':
+          description: |
+            An active or paused recurring invoice uses this customer as its recipient
+            (`REFERENCED_BY_RECURRING_INVOICE`). The customer is left untouched. End that recurring
+            invoice or change its customer first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -8284,8 +8390,8 @@ paths:
         - Templates
       summary: Download the customer import template
       description: |
-        Downloads the sample CSV that `POST /v1/customers/import-csv-preview` expects: the required
-        headers plus example rows, separated by semicolons and written with a UTF-8 byte order mark
+        Downloads the sample CSV that `POST /v1/companies/{company_id}/customers/imports` expects
+        with `source: csv`: the required headers plus example rows, separated by semicolons and written with a UTF-8 byte order mark
         so that Excel opens it with the accents intact.
 
         - **Example rows:** every one is importable as it stands — commas, quotes and accents
@@ -8879,7 +8985,7 @@ paths:
         Creates up to 100 products in one call.
 
         - **Partial operation:** each product is processed and reported independently, so a row the
-          domain rejects — a rate the law does not allow, a duplicate code — comes back inside the
+          domain rejects — a rate BeeL does not accept, a duplicate code — comes back inside the
           report while the rest are created.
         - **Status code:** always `201` when the batch was processed, even if not a single product
           could be created. A malformed request — a missing field, an empty array, more than 100
@@ -8947,7 +9053,7 @@ paths:
             The **request** is wrong, so nothing was processed: a required field missing, a value of
             the wrong type, an empty array, more than `maxItems`. `error.details` names the offending
             field **with its index** (`products[1].main_tax.percentage`). A row that only the domain
-            can reject — a rate the law does not allow, a duplicate code — is NOT this: it comes back
+            can reject — a rate BeeL does not accept, a duplicate code — is NOT this: it comes back
             inside the report of the `201`.
           content:
             application/json:
@@ -9184,7 +9290,18 @@ paths:
       tags:
         - CompanyProducts
       summary: Create a product for a company
-      description: Creates a new product or service in the catalog of this company.
+      description: |
+        Creates a product or service in the catalog of the company in the path and returns it with
+        its `id`. A product holds reusable defaults for invoice lines: name, price, unit and taxes.
+
+        - **Required:** only `name`. Omitted, `category` is `SERVICE`, and the product is created
+          active.
+        - **`code`:** optional, and unique within the company. A code another product of the
+          company already uses answers `409` with `PRODUCT_DUPLICATE`.
+        - **Taxes:** `equivalence_surcharge_rate` has to be coherent with `main_tax.regime_key`;
+          an incoherent pair answers `422` (see the field).
+        - **Several at once:** `POST /v1/companies/{company_id}/products/bulk` creates up to 100
+          in one call.
       x-required-scopes:
         - products:write
       security:
@@ -9265,7 +9382,7 @@ paths:
         Creates up to 100 products in the catalog of this company.
 
         - **Partial operation:** each product is processed and reported independently, so a row the
-          domain rejects — a rate the law does not allow, a duplicate code — comes back inside the
+          domain rejects — a rate BeeL does not accept, a duplicate code — comes back inside the
           report while the rest are created.
         - **Status code:** always `201` when the batch was processed, even if not a single product
           could be created. A malformed request — a missing field, an empty array, more than 100
@@ -9291,6 +9408,9 @@ paths:
                     $ref: '#/components/schemas/CreateProductRequest'
                   minItems: 1
                   maxItems: 100
+            examples:
+              create_products_bulk:
+                $ref: '#/components/examples/create-multiple-2'
       responses:
         '201':
           description: |
@@ -9329,7 +9449,7 @@ paths:
             The **request** is wrong, so nothing was processed: a required field missing, a value of
             the wrong type, an empty array, more than `maxItems`. `error.details` names the offending
             field **with its index** (`products[1].main_tax.percentage`). A row that only the domain
-            can reject — a rate the law does not allow, a duplicate code — is NOT this: it comes back
+            can reject — a rate BeeL does not accept, a duplicate code — is NOT this: it comes back
             inside the report of the `201`.
           content:
             application/json:
@@ -9448,7 +9568,7 @@ paths:
       tags:
         - CompanyProducts
       summary: Get a product of a company
-      description: Retrieves the details of a product of this company.
+      description: Retrieves one product of the catalog of this company. A product of another company answers `404` with `PRODUCT_NOT_FOUND`, exactly like one that does not exist or was deleted.
       x-required-scopes:
         - products:read
       security:
@@ -9576,7 +9696,7 @@ paths:
       tags:
         - CompanyProducts
       summary: Delete a product of a company
-      description: Deletes a product from the catalog of this company.
+      description: 'Deletes a product from the catalog of this company. It no longer appears in the list and reading it answers `404`. Invoices already created keep their lines unchanged: a line copies its data and does not point to the product.'
       x-required-scopes:
         - products:write
       security:
@@ -9656,7 +9776,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenMemberManagement'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -9694,7 +9814,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenMemberManagement'
         '404':
           $ref: '#/components/responses/MemberNotFound'
         '429':
@@ -9725,6 +9845,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ChangeMemberRoleRequest'
+            examples:
+              change_member_role_admin:
+                $ref: '#/components/examples/member-role-admin'
       responses:
         '200':
           description: Member role updated successfully
@@ -9742,7 +9865,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenOwnerReserved'
         '404':
           $ref: '#/components/responses/MemberNotFound'
         '422':
@@ -9775,7 +9898,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenOwnerReserved'
         '404':
           $ref: '#/components/responses/MemberNotFound'
         '429':
@@ -9831,7 +9954,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenMemberManagement'
         '404':
           $ref: '#/components/responses/MemberNotFound'
         '429':
@@ -9875,6 +9998,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PutMemberGrantRequest'
+            examples:
+              put_member_grant_operate:
+                $ref: '#/components/examples/member-grant-operate'
       responses:
         '200':
           description: Grant created or updated successfully
@@ -9892,7 +10018,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenMemberManagementLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/MemberGrantNotFound'
         '422':
@@ -9923,7 +10049,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenMemberManagementLiveCredentialRequired'
         '404':
           $ref: '#/components/responses/MemberGrantNotFound'
         '429':
@@ -9962,6 +10088,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SetAccountOwnerRequest'
+            examples:
+              set_account_owner:
+                $ref: '#/components/examples/set-owner'
       responses:
         '204':
           description: Ownership set successfully
@@ -10030,7 +10159,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenMemberManagement'
         '422':
           $ref: '#/components/responses/UnprocessableQueryParameter'
         '429':
@@ -10049,8 +10178,8 @@ paths:
 
         - **`token`:** the acceptance secret, returned once and never readable again, so deliver
           it to the invitee. `invitation_url` is the ready-to-use link built from that same token.
-        - **`grants`:** required. Send the companies a `MEMBER` starts with, or `[]` to invite
-          them with no company access yet. Grants are only valid for `MEMBER`, since `OWNER` and
+        - **`grants`:** the companies a `MEMBER` starts with. Omit it, or send `[]`, to invite
+          them with no company access yet; an explicit `null` is rejected with `422`. Grants are only valid for `MEMBER`, since `OWNER` and
           `ADMIN` reach every company implicitly.
         - **`account_role`:** `OWNER` cannot be invited. An account has exactly one owner, handed
           over only through `PUT /v1/accounts/{account_id}/owner`.
@@ -10070,6 +10199,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateInvitationRequest'
+            examples:
+              create_invitation_member:
+                $ref: '#/components/examples/invitation-member'
+              create_invitation_admin:
+                $ref: '#/components/examples/invitation-admin'
       responses:
         '201':
           headers:
@@ -10090,7 +10224,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenMemberManagementLiveCredentialRequired'
         '409':
           description: '`MEMBER_ALREADY_IN_ACCOUNT` — the invited person already belongs to this account, so there is nothing to invite. Change their role with `PATCH /v1/accounts/{account_id}/members/{member_id}` instead.'
           content:
@@ -10129,6 +10263,7 @@ paths:
       - name: invitation_id
         in: path
         required: true
+        description: Identifier (UUID) of an invitation of the account in the path, as returned when it is created or listed. An invitation of another account answers `404`, exactly like one that does not exist.
         schema:
           type: string
           format: uuid
@@ -10159,7 +10294,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ForbiddenMemberManagement'
         '404':
           $ref: '#/components/responses/InvitationNotFound'
         '429':
@@ -10189,7 +10324,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          $ref: '#/components/responses/ForbiddenMemberManagementLiveCredentialRequired'
         '404':
           description: '`PENDING_INVITATION_NOT_FOUND` — no revocable invitation with that id exists in the account. Returned both when the invitation does not exist and when it exists but is not in PENDING state (state is not disclosed). It is a different code from the `INVITATION_NOT_FOUND` of `GET /v1/accounts/{account_id}/invitations/{invitation_id}`, which reads invitations in any state.'
           content:
@@ -10238,6 +10373,7 @@ paths:
         - name: status
           in: query
           required: false
+          description: Keeps only the accounts at this lifecycle stage. Omitted, every stage is listed.
           schema:
             $ref: '#/components/schemas/ProvisioningStatus'
         - name: external_ref
@@ -10310,8 +10446,9 @@ paths:
           created with no person at all, no `person_id` and no `claim_token`; a holder can be
           added later with `POST /v1/accounts/{account_id}/claim-tokens`.
         - **`tax_profile`:** send it and the account comes back ready to invoice, with its NIF,
-          default invoice series and VeriFactu configuration set up and its `company_id` in the
-          response. Omit it and the account stays empty until its holder registers a NIF.
+          default invoice series and VeriFactu configuration set up. Omit it and the account's
+          company is created without a NIF until its holder registers one. Either way its
+          `company_id` is in the response.
         - **`access_level`:** the access you retain over the account. Defaults to `NONE`;
           `OPERATE` requires a `tax_profile`.
         - **`external_ref`:** the idempotency key. Resending the same one returns the existing
@@ -10340,6 +10477,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ProvisionAccountRequest'
+            examples:
+              provision_account_with_company:
+                $ref: '#/components/examples/provision-with-company'
+              provision_account_minimal:
+                $ref: '#/components/examples/provision-minimal'
       responses:
         '201':
           headers:
@@ -10377,6 +10519,30 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: |
+            `EXTERNAL_SERVICE_ERROR` — the AEAT census could not be reached to validate the NIF
+            (or the NIF could not be registered with the VeriFactu provider). Only happens when the request carries a `tax_profile`; the account was not created. Nothing was
+            stored. It is transient; repeat
+            the same request later (with the same `Idempotency-Key` if you sent one). No
+            `Retry-After` header is sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: EXTERNAL_SERVICE_ERROR
+                  message: A technical error occurred. Please try again later.
+                  details: {}
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                type: https://docs.beel.es/errors/EXTERNAL_SERVICE_ERROR
+                title: EXTERNAL_SERVICE_ERROR
+                detail: A technical error occurred. Please try again later.
+                instance: /api/v1/accounts
         default:
           $ref: '#/components/responses/UnexpectedError'
   /v1/accounts/{account_id}:
@@ -10384,7 +10550,7 @@ paths:
       tags:
         - Provisioning
       summary: Retrieve a provisioned account
-      description: 'Returns one account you provisioned, with the same shape the list returns: its lifecycle `status`, the `access_level` you hold, the state of its claim link and its `company_id` when the account holds exactly one NIF.'
+      description: 'Returns one account you provisioned, with the same shape the list returns: its lifecycle `status`, the `access_level` you hold, the state of its claim link and its `company_id` when the account holds exactly one company.'
       operationId: getAccount
       x-required-scopes:
         - accounts:read
@@ -10394,6 +10560,7 @@ paths:
         - name: account_id
           in: path
           required: true
+          description: Identifier (UUID) of an account you provisioned. An account you did not provision answers exactly like one that does not exist, so its existence is never disclosed.
           schema:
             type: string
             format: uuid
@@ -10414,7 +10581,19 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: 'Every cause listed under the plain `403`, plus `PROVISIONING_ACCOUNT_NOT_ACCESSIBLE`: the account was not provisioned by you, its management ended, or it does not exist. The three are answered identically, so existence is never disclosed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: PROVISIONING_ACCOUNT_NOT_ACCESSIBLE
+                  message: That account is not managed by your organisation.
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -10445,6 +10624,7 @@ paths:
         - name: account_id
           in: path
           required: true
+          description: Identifier (UUID) of an account you manage. An account you do not manage answers exactly like one that does not exist, so its existence is never disclosed.
           schema:
             type: string
             format: uuid
@@ -10454,6 +10634,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ChangeAccessLevelRequest'
+            examples:
+              change_access_level_view:
+                $ref: '#/components/examples/access-level-view'
       responses:
         '204':
           description: Access updated.
@@ -10462,7 +10645,19 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenLiveCredentialRequired'
+          description: 'Every cause listed under the plain `403`, plus `LIVE_CREDENTIAL_REQUIRED` when the call is made with a test API key (`beel_sk_test_…`), and `MANAGED_SCOPE_ELEVATION_REQUIRES_OWNER` when the request raises your access over an account its holder has already claimed: from then on only they can raise it.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: MANAGED_SCOPE_ELEVATION_REQUIRES_OWNER
+                  message: Only the account holder can raise management access over their account once it has been claimed
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -10494,6 +10689,7 @@ paths:
         - name: account_id
           in: path
           required: true
+          description: Identifier (UUID) of an account you manage. An account you do not manage answers exactly like one that does not exist, so its existence is never disclosed.
           schema:
             type: string
             format: uuid
@@ -10538,6 +10734,7 @@ paths:
         - name: account_id
           in: path
           required: true
+          description: Identifier (UUID) of an account you provisioned. An account you did not provision answers exactly like one that does not exist, so its existence is never disclosed.
           schema:
             type: string
             format: uuid
@@ -10548,6 +10745,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateClaimTokenRequest'
+            examples:
+              create_claim_token_new_holder:
+                $ref: '#/components/examples/claim-token-new-holder'
       responses:
         '201':
           headers:
@@ -10573,7 +10773,19 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: '`PROVISIONING_ACCOUNT_NOT_ACCESSIBLE` — the account was not provisioned by you, or it does not exist. Unlike `GET /v1/accounts/{account_id}`, which answers this case with `403`, this operation answers `404`; both carry the same `error.code`, so branch on it rather than on the status.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: PROVISIONING_ACCOUNT_NOT_ACCESSIBLE
+                  message: That account is not managed by your organisation.
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '409':
           description: Conflict. `PROVISIONING_ACCOUNT_CLAIMED` — the holder already took ownership, so there is nothing left to claim. `PROVISIONING_EMAIL_ALREADY_REGISTERED` — the `email` you sent belongs to another BeeL. account. `CLAIM_TOKEN_HOLDER_MISMATCH` — the account already has a holder and the `email` you sent is a different one; omit it to re-issue for the holder it already has.
           content:
@@ -10632,7 +10844,19 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: '`PROVISIONING_ACCOUNT_NOT_ACCESSIBLE` — the `account_id` is not your own account. Unlike `GET /v1/accounts/{account_id}`, which answers this case with `403`, this operation answers `404`; both carry the same `error.code`, so branch on it rather than on the status.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: PROVISIONING_ACCOUNT_NOT_ACCESSIBLE
+                  message: That account is not managed by your organisation.
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -11003,17 +11227,17 @@ paths:
           configuration (`status`, `signed`, `activated`, `nif_status`) is resolved server-side.
         - **Full replacement:** `enabled` is required — this PUT replaces the whole state, it is
           not a partial merge, so omitting it is a client error and not a silent `false`.
-        - **Turning it on registers the NIF with the provider in the same call**, atomically: if
-          the provider rejects it nothing is persisted and the response carries the reason. In Live
-          it requires a signed and validated AEAT representation first, or `422`
-          `VERIFACTU_REPRESENTATION_REQUIRED`.
+        - **Turning it on registers the NIF for VeriFactu submission in the same call**,
+          atomically: if the registration is refused nothing is persisted and the response carries
+          the reason. In Live it requires a signed and validated AEAT representation first, or
+          `422 VERIFACTU_REPRESENTATION_REQUIRED`.
         - **Sandbox is always on:** `enabled: false` there answers `422`
           `VERIFACTU_ALWAYS_ON_IN_SANDBOX`.
 
         ## Turning it off
 
-        Setting `enabled` to false stops sending invoices to the AEAT and starts the
-        deregistration of the NIF with the VeriFactu provider. It does **not** deactivate the
+        Setting `enabled` to false stops sending invoices to the AEAT and starts deregistering
+        the NIF from VeriFactu submission. It does **not** deactivate the
         NIF: the activation is a fact of its own for the (company, environment) pair, so issuing
         carries on and `issuing-readiness` stays `ready`. Releasing the NIF is always
         `DELETE /v1/companies/{company_id}/activations`, with its own guarantees.
@@ -11404,13 +11628,16 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Duplicate series (same code)
+          description: |
+            The series clashes with another series of the company: `SERIES_CODE_DUPLICATED` (the
+            code is taken) or `SERIES_FORMAT_OVERLAPS` (it could print numbers the other series
+            prints).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SeriesValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -11605,7 +11832,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SeriesValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -11688,7 +11915,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SeriesValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -11919,7 +12146,7 @@ paths:
         - TaxTypes
       summary: List the tax types allowed in Spain
       description: |
-        Returns the tax regimes and percentages that Spanish law allows on an invoice. Use it to
+        Returns the tax regimes and percentages that BeeL accepts on an invoice. Use it to
         validate a rate before sending it, or to build your own picker instead of hard-coding the
         percentages.
 
@@ -11937,7 +12164,7 @@ paths:
           line is only valid together with an `exemption_reason`, which this same response
           publishes under `exemption_reasons`.
         - **IGIC does list 0:** there it is the real "Tipo Cero" and needs no reason.
-        - **The 5 % VAT rate (RD-ley 11/2022):** kept even though it no longer applies to new
+        - **The temporary 5 % VAT rate:** kept even though it no longer applies to new
           operations, because correctives and late filings for those periods still need it.
       operationId: listTaxTypes
       x-required-scopes:
@@ -12206,6 +12433,9 @@ paths:
           rejected with `402`; no checkout is opened in either case.
         - **Duplicates:** a NIF that already exists in the account is rejected with `409`, and
           the response carries the existing `error.details.company_id`.
+        - **Addresses:** a Spanish postal code (`country_code` omitted or `ES`) must have 5 digits,
+          in `address` and in `legal_representative.address`; otherwise `422 POSTAL_CODE_INVALID_ES`
+          and nothing is created. Other countries' postal codes are free-form.
       tags:
         - AccountCompanies
       parameters:
@@ -12216,6 +12446,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateCompanyRequest'
+            examples:
+              create_company_individual:
+                $ref: '#/components/examples/create-individual'
+              create_company_legal_entity:
+                $ref: '#/components/examples/create-legal-entity'
       responses:
         '201':
           headers:
@@ -12292,7 +12527,7 @@ paths:
                   request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '409':
           description: |
-            The NIF cannot be created. Two distinct reasons, so branch on `error.code`:
+            The NIF cannot be created. Branch on `error.code`:
 
             * `NIF_ALREADY_REGISTERED` — the NIF **already exists in your account**. Creating is
               done; switching an environment on for it is a different act and has its own endpoint:
@@ -12300,6 +12535,8 @@ paths:
               company's id travels in `error.details.company_id`, so no lookup is needed to call it.
             * `NIF_PROD_ALREADY_ACTIVE_IN_ANOTHER_ACCOUNT` — the NIF is live in **another
               account**. A NIF can only issue in production from one account (tax rule).
+            * `SERIES_FORMAT_OVERLAPS` — the `numbering` block gives two series formats that could
+              print the same invoice number.
           content:
             application/json:
               schema:
@@ -12320,6 +12557,30 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: |
+            `EXTERNAL_SERVICE_ERROR` — the AEAT census could not be reached to validate the NIF
+            (or the NIF could not be registered with the VeriFactu provider). The company was not created. Nothing was
+            stored. It is transient; repeat
+            the same request later (with the same `Idempotency-Key` if you sent one). No
+            `Retry-After` header is sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: EXTERNAL_SERVICE_ERROR
+                  message: A technical error occurred. Please try again later.
+                  details: {}
+                meta:
+                  timestamp: '2025-01-15T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                type: https://docs.beel.es/errors/EXTERNAL_SERVICE_ERROR
+                title: EXTERNAL_SERVICE_ERROR
+                detail: A technical error occurred. Please try again later.
+                instance: /api/v1/accounts/3fa85f64-5717-4562-b3fc-2c963f66afa6/companies
         default:
           $ref: '#/components/responses/UnexpectedError'
     get:
@@ -12517,9 +12778,21 @@ paths:
         Updates the editable fields of a company; the set is the one
         `UpdateCompanyRequest` declares.
 
-        - **Immutable fields:** `nif`, `entity_type` and `legal_form`, once set.
-        - **`legal_name`:** changing it requires the NIF to pass an AEAT census re-validation —
-          which for a company checks the CIF only, so it cannot fail because of the name sent.
+        - **Immutable fields:** `nif`, `entity_type` and `legal_form`, once set. Sending one of
+          them with a different value answers `422` with a code that names the field; sending the
+          value it already has is not a change.
+        - **`legal_name`:** changing it requires the NIF to pass an AEAT census re-validation. For a
+          legal entity (`LEGAL_ENTITY`) the census identifies the company by its NIF alone: the name
+          is not verified, so the name sent cannot make it fail. For an `INDIVIDUAL` the name must
+          match the one the census holds for that NIF.
+        - **Census not answering:** if the AEAT census cannot be reached, the change is not
+          rejected. The response is `200` with the new `legal_name` stored, and BeeL repeats the
+          census check in the background. The outcome of that check is not part of this resource:
+          no field of `CompanyData` carries it. To know what the census says about a NIF and a name,
+          ask `POST /v1/nif/validate`.
+        - **Addresses:** a Spanish postal code (`country_code` omitted or `ES`) must have 5 digits,
+          in `address` and in `legal_representative.address`; otherwise `422 POSTAL_CODE_INVALID_ES`.
+          Other countries' postal codes are free-form.
 
         ## Test credentials on a Live company
 
@@ -12550,6 +12823,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateCompanyRequest'
+            examples:
+              patch_company_contact_and_bank:
+                $ref: '#/components/examples/patch-contact-and-bank'
       responses:
         '200':
           description: |
@@ -12571,13 +12847,23 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: |
-            Validation or business rule error. Two codes are specific to this operation:
+            Validation or business rule error. These codes are specific to this operation:
 
             - `FISCAL_IDENTITY_LIVE_ONLY` — the call came from Test on a company that is
               activated in Live and touched a field outside the six a test credential may
               write (`logo_url`, `invoice_accent_color`, `invoice_template_type`,
               `invoice_language`, `email_language`, `additional_info`). Repeat it with a live
               key; nothing was written.
+            - `IMMUTABLE_NIF`, `IMMUTABLE_ENTITY_TYPE`, `IMMUTABLE_LEGAL_FORM` — the request
+              changes `nif`, `entity_type` or `legal_form`, which cannot change once set. Nothing
+              was written; drop the field from the request.
+            - `NIF_CENSUS_MISMATCH`, `NIF_DE_BAJA`, `NIF_REVOCADO` — the request changes
+              `legal_name` and the AEAT census re-validation rejects it: the census does not
+              recognise the NIF (for an `INDIVIDUAL`, with that name; for a legal entity the name is
+              not verified, only the NIF), or the NIF is deregistered or revoked. Nothing was
+              written.
+            - `POSTAL_CODE_INVALID_ES` — a Spanish postal code in `address` or in
+              `legal_representative.address` does not have 5 digits. Nothing was written.
             - `UNPROCESSABLE_ENTITY` — the generic validation failure, with the offending
               field in `error.details`.
           content:
@@ -13341,7 +13627,13 @@ paths:
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          description: |
+            The image was rejected: `FILE_TOO_LARGE` when it is over 1 MB, or a type or content
+            error such as `INVALID_FILE_TYPE`. A file over 12 MB answers `413` before it is read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -13457,6 +13749,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateInvoiceCustomizationRequest'
+            examples:
+              update_invoice_customization:
+                $ref: '#/components/examples/invoice-customization'
       responses:
         '200':
           description: Invoice customization updated
@@ -13554,17 +13849,17 @@ paths:
 
         - **Writable fields:** only `enabled`, and it is required — this is a full replacement, not
           a partial merge. The rest of the returned configuration is resolved server-side.
-        - **Turning it on registers the NIF with the provider in the same call**, atomically: if the
-          provider rejects it nothing is persisted and the response carries the reason. In Live it
-          requires a signed and validated AEAT representation first, or
+        - **Turning it on registers the NIF for VeriFactu submission in the same call**,
+          atomically: if the registration is refused nothing is persisted and the response carries
+          the reason. In Live it requires a signed and validated AEAT representation first, or
           `422 VERIFACTU_REPRESENTATION_REQUIRED`.
         - **Sandbox is always on:** `enabled: false` there answers
           `422 VERIFACTU_ALWAYS_ON_IN_SANDBOX`.
 
         ## Turning it off
 
-        Setting `enabled` to false stops sending this company's invoices to AEAT and starts the
-        deregistration of the NIF with the VeriFactu provider. It does not deactivate the
+        Setting `enabled` to false stops sending this company's invoices to AEAT and starts
+        deregistering the NIF from VeriFactu submission. It does not deactivate the
         company: the activation is a fact of its own for the (company, environment) pair, so the
         company keeps issuing in that environment and stays `ready`. Releasing the NIF — and in
         Live freeing it for another account — is always
@@ -13579,6 +13874,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateVeriFactuConfigurationRequest'
+            examples:
+              enable_veri_factu:
+                $ref: '#/components/examples/verifactu-enable'
+              disable_veri_factu:
+                $ref: '#/components/examples/verifactu-disable'
       responses:
         '200':
           description: Configuration updated successfully
@@ -13695,6 +13995,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateTaxConfigurationRequest'
+            examples:
+              update_tax_configuration_professional:
+                $ref: '#/components/examples/tax-professional'
+              update_tax_configuration_retailer:
+                $ref: '#/components/examples/tax-retailer'
       responses:
         '200':
           description: Configuration updated successfully
@@ -13837,7 +14142,13 @@ paths:
       description: |
         Creates an invoice series under a company.
 
+        - **Document type:** `document_type` is required. `UNASSIGNED` is rejected with
+          `422 SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`: corrective invoices need a series of their own.
         - **Code:** must be unique within the company; a code already taken answers `409`.
+        - **Unique numbers per issuer:** a series whose `code` and `format` could print a number
+          that another series of the company (in the same environment, active or not) can also
+          print is rejected with `409 SERIES_FORMAT_OVERLAPS`, naming that series. Proforma series
+          are not compared.
         - **Numbering:** `format` must contain `{NUM}` or `{NUM:X}` and only accepts uppercase
           tokens. `counter_reset` defaults to `ANNUAL`, so a format with no year token has to be
           sent with `counter_reset: NEVER`.
@@ -13891,13 +14202,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Duplicate series (same code)
+          description: |
+            The series clashes with another series of the company: `SERIES_CODE_DUPLICATED` (the
+            code is taken) or `SERIES_FORMAT_OVERLAPS` (it could print numbers the other series
+            prints).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SeriesValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -14114,6 +14428,9 @@ paths:
           supports.
         - **Numbering fields:** `code`, `format`, `counter_reset` and `initial_number` are rejected
           once the series has issued invoices (`numbering_locked` is `true`).
+        - **Unique numbers per issuer:** changing `code`, `format` or `document_type` so that the
+          series could print a number another series of the company can also print is rejected
+          with `409 SERIES_FORMAT_OVERLAPS`.
         - **`default_series`:** it cannot be used to clear the default. Sending `false` for the
           series that currently is the default answers `DEFAULT_CANNOT_BE_UNMARKED`, because it
           would leave the document type with active series and no default, and issuing without an
@@ -14186,8 +14503,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `SERIES_FORMAT_OVERLAPS` — with the change, the series could print numbers another series
+            of the company prints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SeriesValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -14596,6 +14921,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/InitiatePaymentConnectionRequest'
+            examples:
+              initiate_stripe_connection:
+                $ref: '#/components/examples/initiate-stripe'
       responses:
         '200':
           description: Authorization URL generated
@@ -14622,7 +14950,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/UnprocessableEntity'
+          description: |
+            Validation or business rule error. One code is specific to this operation:
+
+            - `PROVIDER_NOT_SUPPORTED` — `provider` is not one BeeL connects to (today, only
+              `stripe`). Nothing is opened.
+            - `VALIDATION_ERROR` — the generic validation failure, with the offending field in
+              `error.details`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -14670,6 +15008,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateCompanyPaymentConnectionRequest'
+            examples:
+              update_payment_connection_settings:
+                $ref: '#/components/examples/update-settings'
       responses:
         '200':
           description: Connection updated
@@ -15113,8 +15454,9 @@ paths:
         '422':
           description: |
             Invoicing rules rejected the draft (`EVENT_DRAFT_NOT_POSSIBLE`, with the pipeline
-            reason as message argument), for example an amount above the legal limit for
-            a simplified invoice when the payment carries no tax id.
+            reason as message argument), for example a payment in a currency other than EUR. A
+            payment over 3,000 € without the customer's tax data does produce a draft: a
+            `STANDARD` invoice whose recipient you complete before issuing it.
           content:
             application/json:
               schema:
@@ -15319,7 +15661,7 @@ paths:
         - **`account_relationship`:** which accounts the subscription receives events from —
           `own` (the default), `managed`, or `all`.
         - **Limits:** an account holds at most **10 active subscriptions**; creating an
-          eleventh is rejected. Registering the same URL twice creates two subscriptions, and
+          eleventh is rejected with `WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED`. Registering the same URL twice creates two subscriptions, and
           the endpoint then receives each event twice.
 
         **Retires on 9 December 2026.** See the [migration guide](https://docs.beel.es/changelog/resources-under-the-nif) for what moved where and what changes when you switch.
@@ -15353,7 +15695,8 @@ paths:
               description: |
                 BeeL. sends HTTP POST to your URL when a subscribed event occurs.
                 Your endpoint must respond with HTTP 2xx within 10 seconds.
-                Failed deliveries are retried up to 5 times with exponential backoff.
+                Failed deliveries are retried on a fixed schedule: 7 attempts over about 3 days
+                (3 attempts over about 11 minutes in sandbox).
               requestBody:
                 required: true
                 content:
@@ -15380,7 +15723,7 @@ paths:
                             verifactu_registration_id: 660e8400-e29b-41d4-a716-446655440001
                             previous_status: PENDING
                             new_status: ACCEPTED
-                            qr_url: https://sede.agenciatributaria.gob.es/Sede/verifactu?id=ABC123XYZ
+                            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=2025-001&fecha=07-03-2026&importe=121.00
                             qr_base64: iVBORw0KGgoAAAANSUhEUgAAAMg...
                             invoice_hash: B11F3A015173AD99075E2720F61E2DE1FF08CBFEDD85C6F73C77AD835301B2A3
                             error_code: null
@@ -15404,18 +15747,18 @@ paths:
                             verifactu_registration_id: 660e8400-e29b-41d4-a716-446655440001
                             previous_status: PENDING
                             new_status: REJECTED
-                            qr_url: null
-                            qr_base64: null
-                            invoice_hash: null
+                            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=2025-001&fecha=07-03-2026&importe=121.00
+                            qr_base64: iVBORw0KGgoAAAANSUhEUgAAAMg...
+                            invoice_hash: 7E4C2B19A0D35F8E6B1C9D2A4F7E0B3C5D8A1F6E9B2C4D7A0E3F5B8C1D4A6E9F
                             error_code: '1105'
                             error_message: NIF del emisor no registrado en VeriFactu
               responses:
                 2XX:
                   description: Your endpoint acknowledged the event successfully.
                 4XX:
-                  description: Client error — delivery will NOT be retried.
+                  description: Client error — delivery will NOT be retried, except `408` and `429`, which follow the retry schedule.
                 5XX:
-                  description: Server error — delivery will be retried with exponential backoff.
+                  description: Server error — delivery will be retried on the retry schedule.
               parameters:
                 - name: BeeL-Signature
                   in: header
@@ -15471,7 +15814,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/WebhookSubscriptionValidationError'
         default:
           $ref: '#/components/responses/UnexpectedError'
     get:
@@ -15585,7 +15928,9 @@ paths:
           of it stops being delivered.
         - **`active`:** setting it to `false` stops deliveries without discarding the delivery
           history. A subscription we turned off ourselves (`deactivated_by: beel`) needs a
-          successful test delivery before it can be turned back on.
+          successful test delivery before it can be turned back on. Turning a subscription
+          back on counts towards the limit of 10 active subscriptions, and is rejected with
+          `WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED` when ten are already active.
         - **Signing secret:** not touched here. Rotate it with
           `POST /v1/accounts/{account_id}/webhooks/{webhook_id}/secret`.
 
@@ -15634,7 +15979,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/WebhookSubscriptionValidationError'
         default:
           $ref: '#/components/responses/UnexpectedError'
     delete:
@@ -15768,8 +16113,8 @@ paths:
         - **Payload:** the one captured when the event happened, not a fresh snapshot, so
           changes made to the entity since then are not reflected.
         - **History:** the outcome is recorded as a new entry and the original entry is kept
-          as it was. `attempt_number` continues the same sequence, so it can exceed the 5
-          automatic attempts.
+          as it was. `attempt_number` continues the same sequence, so it can exceed the number
+          of automatic attempts.
 
         **Retires on 9 December 2026.** See the [migration guide](https://docs.beel.es/changelog/resources-under-the-nif) for what moved where and what changes when you switch.
       operationId: retryWebhookDelivery
@@ -15881,15 +16226,15 @@ paths:
                       duration_ms: 142
                       error: null
                 failure:
-                  summary: Endpoint unreachable or returned an error
+                  summary: Endpoint returned an error
                   value:
                     success: true
                     data:
                       delivery_success: false
                       http_status: 503
-                      duration_ms: 10238
-                      error: Connection timeout
-                      failure_cause: timeout
+                      duration_ms: 318
+                      error: HTTP 503
+                      failure_cause: http_server_error
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -15980,7 +16325,7 @@ paths:
         - **`account_relationship`:** which accounts the subscription receives events from —
           `own` (the default), `managed`, or `all`.
         - **Limits:** an account holds at most **10 active subscriptions**; creating an
-          eleventh is rejected. Registering the same URL twice creates two subscriptions, and
+          eleventh is rejected with `WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED`. Registering the same URL twice creates two subscriptions, and
           the endpoint then receives each event twice.
       operationId: createAccountWebhookSubscription
       x-required-scopes:
@@ -16007,7 +16352,8 @@ paths:
               description: |
                 BeeL. sends HTTP POST to your URL when a subscribed event occurs.
                 Your endpoint must respond with HTTP 2xx within 10 seconds.
-                Failed deliveries are retried up to 5 times with exponential backoff.
+                Failed deliveries are retried on a fixed schedule: 7 attempts over about 3 days
+                (3 attempts over about 11 minutes in sandbox).
               requestBody:
                 required: true
                 content:
@@ -16034,7 +16380,7 @@ paths:
                             verifactu_registration_id: 660e8400-e29b-41d4-a716-446655440001
                             previous_status: PENDING
                             new_status: ACCEPTED
-                            qr_url: https://sede.agenciatributaria.gob.es/Sede/verifactu?id=ABC123XYZ
+                            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=2025-001&fecha=07-03-2026&importe=121.00
                             qr_base64: iVBORw0KGgoAAAANSUhEUgAAAMg...
                             invoice_hash: B11F3A015173AD99075E2720F61E2DE1FF08CBFEDD85C6F73C77AD835301B2A3
                             error_code: null
@@ -16058,18 +16404,18 @@ paths:
                             verifactu_registration_id: 660e8400-e29b-41d4-a716-446655440001
                             previous_status: PENDING
                             new_status: REJECTED
-                            qr_url: null
-                            qr_base64: null
-                            invoice_hash: null
+                            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=2025-001&fecha=07-03-2026&importe=121.00
+                            qr_base64: iVBORw0KGgoAAAANSUhEUgAAAMg...
+                            invoice_hash: 7E4C2B19A0D35F8E6B1C9D2A4F7E0B3C5D8A1F6E9B2C4D7A0E3F5B8C1D4A6E9F
                             error_code: '1105'
                             error_message: NIF del emisor no registrado en VeriFactu
               responses:
                 2XX:
                   description: Your endpoint acknowledged the event successfully.
                 4XX:
-                  description: Client error — delivery will NOT be retried.
+                  description: Client error — delivery will NOT be retried, except `408` and `429`, which follow the retry schedule.
                 5XX:
-                  description: Server error — delivery will be retried with exponential backoff.
+                  description: Server error — delivery will be retried on the retry schedule.
               parameters:
                 - name: BeeL-Signature
                   in: header
@@ -16128,7 +16474,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/WebhookSubscriptionValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -16243,7 +16589,9 @@ paths:
           of it stops being delivered.
         - **`active`:** setting it to `false` stops deliveries without discarding the delivery
           history. A subscription we turned off ourselves (`deactivated_by: beel`) needs a
-          successful test delivery before it can be turned back on.
+          successful test delivery before it can be turned back on. Turning a subscription
+          back on counts towards the limit of 10 active subscriptions, and is rejected with
+          `WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED` when ten are already active.
         - **Signing secret:** not touched here. Rotate it with
           `POST /v1/accounts/{account_id}/webhooks/{webhook_id}/secret`.
       operationId: patchAccountWebhookSubscription
@@ -16257,6 +16605,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateWebhookSubscriptionRequest'
+            examples:
+              patch_webhook_events:
+                $ref: '#/components/examples/patch-events'
+              patch_webhook_disable:
+                $ref: '#/components/examples/patch-disable'
       responses:
         '200':
           description: Webhook subscription updated
@@ -16278,7 +16631,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/WebhookSubscriptionValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -16426,8 +16779,8 @@ paths:
         - **Payload:** the one captured when the event happened, not a fresh snapshot, so
           changes made to the entity since then are not reflected.
         - **History:** the outcome is recorded as a new entry and the original entry is kept
-          as it was. `attempt_number` continues the same sequence, so it can exceed the 5
-          automatic attempts.
+          as it was. `attempt_number` continues the same sequence, so it can exceed the number
+          of automatic attempts.
       operationId: retryAccountWebhookDelivery
       x-required-scopes:
         - webhooks:write
@@ -16524,15 +16877,15 @@ paths:
                       duration_ms: 142
                       error: null
                 failure:
-                  summary: Endpoint unreachable or returned an error
+                  summary: Endpoint returned an error
                   value:
                     success: true
                     data:
                       delivery_success: false
                       http_status: 503
-                      duration_ms: 10238
-                      error: Connection timeout
-                      failure_cause: timeout
+                      duration_ms: 318
+                      error: HTTP 503
+                      failure_cause: http_server_error
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -16696,6 +17049,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of log entries in the page, from 1 to 100. Defaults to 25.
           schema:
             type: integer
             minimum: 1
@@ -17472,8 +17826,11 @@ components:
 
         - Any unique client-generated string (e.g. an order id). A UUID also works but is not required
         - Allowed characters: letters, digits, `_` and `-` (max 255 chars)
-        - If the same key is sent twice, the result of the first operation is returned
-        - Keys expire 24 hours after processing
+        - Retrying with the same key replays the first response when it was a success (2xx) or a
+          server error (5xx): same status and body, plus the header `Idempotency-Replay: true`.
+          After a 5xx, check whether the operation took effect before retrying with a **new** key
+        - A 4xx is not stored: the key is released, so the corrected request can reuse it
+        - Stored responses expire 24 hours after processing
 
         The key is scoped per user and environment, and bound to the request body, so retrying after
         a network timeout replays the stored response instead of repeating the operation.
@@ -17481,7 +17838,7 @@ components:
         | Status | Code | When |
         |---|---|---|
         | `400` | `INVALID_IDEMPOTENCY_KEY` | The key breaks the format rules above. |
-        | `409` | `IDEMPOTENCY_KEY_PROCESSING` | The first request is still in flight. Wait and retry with the same key. |
+        | `409` | `IDEMPOTENCY_KEY_PROCESSING` | The first request is still in flight. Wait for the `Retry-After` seconds (2) and retry with the same key. |
         | `409` | `IDEMPOTENCY_KEY_MISMATCH` | The key was already used with a **different** body. Use a new key. |
       required: false
       schema:
@@ -17676,8 +18033,9 @@ components:
           type: string
           description: |
             Specific message for this occurrence, localized according to
-            `Accept-Language`. Matches the legacy `error.message`.
-          example: La factura debe tener al menos una línea
+            `Accept-Language` (`es`, `en`, `ca`); defaults to English. Matches the legacy
+            `error.message`.
+          example: The invoice must have at least one line
         instance:
           type: string
           format: uri-reference
@@ -17899,9 +18257,14 @@ components:
           maxLength: 100
           pattern: ^[a-zA-Z0-9À-ÿ\u0100-\u017F\u00B7\u2018\u2019\u0060\u00B4\s\.,\-\/'ºª°:;"()&#]+$
           description: |
-            Country - Latin characters only.
-            Omitted, it is derived from `country_code` (its Spanish name); with neither field
-            present, `España` is the last resort.
+            Country of the address, as its ISO 3166-1 alpha-2 code (`GB`) or its official name
+            in Spanish, English or Catalan (`Reino Unido`, `United Kingdom`, `Regne Unit`;
+            case and accents are ignored). Anything else, such as `UK`, is rejected with
+            `422 COUNTRY_CODE_REQUIRED`: send `country_code` instead. If it names a different
+            country than `country_code`, `422 COUNTRY_CODE_MISMATCH` (`España` alone yields to
+            a foreign `country_code`: it was the old default). What is stored and
+            returned is always the Spanish name derived from the resulting code, never the
+            text sent. With neither field present, the address is Spanish (`España`).
           example: España
         country_code:
           type: string
@@ -17909,8 +18272,10 @@ components:
           minLength: 2
           maxLength: 2
           description: |
-            ISO 3166-1 alpha-2 country code.
-            Omitted, the address is stored as `ES`.
+            ISO 3166-1 alpha-2 country code: the canonical field that decides the country of
+            the address. It must be a real country code (`GB`, not `UK`); otherwise
+            `422 COUNTRY_CODE_REQUIRED`. When it is omitted, the code comes from `country`
+            (see there). With neither field present, the address is stored as `ES`.
           example: ES
     AddressResponse:
       type: object
@@ -17964,7 +18329,9 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          description: Country
+          description: |
+            Country name: the Spanish name derived from `country_code`. Addresses stored before
+            the country was validated may hold the name as it was sent.
           example: España
         country_code:
           type: string
@@ -17976,8 +18343,17 @@ components:
     PaymentMethod:
       type: string
       description: |
-        Payment method for invoices and recurring invoices.
-        NONE means no payment information will be shown.
+        Payment method shown on invoices and recurring invoices.
+
+        - `NONE`: no payment information is shown.
+        - `BANK_TRANSFER`: bank transfer to the IBAN of the payment details; the only method
+          that requires an IBAN.
+        - `CARD`: card payment.
+        - `CASH`: cash payment.
+        - `CHECK`: payment by cheque.
+        - `DIRECT_DEBIT`: direct debit from the customer's bank account.
+        - `BIZUM`: payment through Bizum.
+        - `OTHER`: any other method.
       enum:
         - NONE
         - BANK_TRANSFER
@@ -18000,7 +18376,8 @@ components:
       example: INDIVIDUAL
     Language:
       type: string
-      description: Supported languages
+      description: |
+        Supported languages: `es` Spanish, `en` English, `ca` Catalan.
       enum:
         - es
         - en
@@ -18008,7 +18385,13 @@ components:
       example: es
     VatCategory:
       type: string
-      description: VAT type
+      description: |
+        VAT rate category.
+
+        - `GENERAL`: general rate, 21%.
+        - `REDUCED`: reduced rate, 10%.
+        - `SUPER_REDUCED`: super-reduced rate, 4%.
+        - `EXEMPT`: 0%, exempt operations.
       enum:
         - GENERAL
         - REDUCED
@@ -18017,7 +18400,18 @@ components:
       example: GENERAL
     IrpfCategory:
       type: string
-      description: Personal income tax/withholding type
+      description: |
+        Personal income tax (IRPF) withholding type, by activity and rate.
+
+        - `PROFESSIONAL_15`: 15%, the general rate for professional activities.
+        - `PROFESSIONAL_7`: 7%, the reduced rate for professionals in their first years of
+          activity.
+        - `AGRICULTURAL_2`: 2%, agricultural activities.
+        - `LIVESTOCK_2`: 2%, livestock activities.
+        - `FORESTRY_2`: 2%, forestry activities.
+        - `BUSINESS_ACTIVITIES_1`: 1%, business activities under the objective assessment
+          method (módulos).
+        - `EXEMPT`: 0%, no withholding.
       enum:
         - PROFESSIONAL_15
         - PROFESSIONAL_7
@@ -18051,7 +18445,7 @@ components:
         - 5.2
       description: |
         Equivalence surcharge percentage in decimal format.
-        Pairs allowed (rate ↔ recargo): 4↔0.5, 5↔0.625 (RD-ley 11/2022), 10↔1.4, 21↔5.2.
+        Pairs allowed (rate ↔ recargo): 4↔0.5, 5↔0.625, 10↔1.4, 21↔5.2.
         The backend automatically normalizes equivalent formats (5.20 → 5.2).
       example: 5.2
     NifValidationStatus:
@@ -18173,7 +18567,12 @@ components:
       description: |
         - STANDARD: Standard invoice
         - CORRECTIVE: Corrects or cancels a previous invoice
-        - SIMPLIFIED: Simplified invoice without all recipient requirements (up to 3,000€ VAT included)
+        - SIMPLIFIED: Simplified invoice (ticket). The recipient's `nif` or `alternative_id`
+          is optional. The only amount BeeL enforces is a cap of 3,000€ VAT included
+          (`SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT`), with or without an identified
+          recipient. The general limit of RD 1619/2012 is 400€ (art. 4.1.a); up to 3,000€
+          applies only to the activities listed in art. 4.2. BeeL does not check which
+          activity the issuer carries out.
         - PROFORMA: Commercial document (formal quote) with no fiscal validity.
           Never enters VeriFactu (no QR, no AEAT submission): `verifactu.enabled` is
           always `false`, whatever the company's regime. Requires full recipient data,
@@ -18199,7 +18598,9 @@ components:
         - ISSUED: Finalized invoice with definitive number but not sent
         - SENT: Invoice sent to customer
         - PAID: Invoice paid
-        - OVERDUE: Overdue invoice (not paid after due date)
+        - OVERDUE: Reserved. No operation sets this status and it is not computed from `due_date`;
+          an unpaid invoice past its due date keeps its status (`ISSUED` or `SENT`). Compare
+          `due_date` with today to find overdue invoices.
         - RECTIFIED: Partially corrected invoice (one or more PARTIAL corrective invoices)
         - VOIDED: Cancelled invoice. Reached either through a direct void request or
           through a TOTAL corrective invoice; `void_cause` tells the two apart.
@@ -18234,7 +18635,7 @@ components:
         - R2: Article 80 Three LIVA (Bankruptcy proceedings)
         - R3: Article 80 Four LIVA (Uncollectable debts)
         - R4: Other causes
-        - R5: Simplified invoices (Art. 80 One and Two LIVA) - ONLY for simplified invoices
+        - R5: Corrective of a simplified invoice - ONLY for simplified invoices
     GenerationAction:
       type: string
       enum:
@@ -18434,7 +18835,9 @@ components:
             - TOTAL_INCLUDING_TAX
           default: UNIT_PRICE
           description: |
-            How the line amount was entered. `TOTAL_EXCLUDING_TAX` = total-declared
+            How the line amount was entered. `UNIT_PRICE` = classic mode: the amount is
+            derived from `unit_price` (`quantity × unit_price × (1 − discount / 100)`).
+            `TOTAL_EXCLUDING_TAX` = total-declared
             mode: `total_excluding_tax` is the exact taxable base and `unit_price`
             is derived and informational (`total / quantity`, 4 decimals).
             `TOTAL_INCLUDING_TAX` = tax-inclusive total-declared mode:
@@ -18635,22 +19038,30 @@ components:
             the regime of the issuing tax ID at the moment of issuance.
         invoice_hash:
           type: string
-          description: Invoice SHA-256 hash according to VeriFactu regulations
+          description: |
+            SHA-256 hash of the registration record, as VeriFactu defines it. Present from the
+            moment the registration is submitted, while `submission_status` is still `PENDING`,
+            and kept whatever the AEAT answers.
           example: 3A5B7C9D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B
         registration_number:
           type: string
-          description: Registration number in the VeriFactu system
-          example: VERIFACTU2025000001
+          description: |
+            Identifier (UUID) of this record in the VeriFactu submission, assigned when it is
+            submitted. It is not an AEAT code: quote it when you ask BeeL about the record.
+          example: 4f8c2a1e-9b3d-4e7a-8c5f-1d2e3f4a5b6c
         qr_url:
           type: string
-          description: QR code URL for verification
-          example: https://verifactu.agenciatributaria.gob.es/v?id=ABC123XYZ
+          description: |
+            AEAT verification URL encoded in the invoice QR code. Present from the moment the
+            registration is submitted, while `submission_status` is still `PENDING`.
+          example: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2025%2F0042&fecha=20-01-2025&importe=1590.00
         qr_base64:
           type: string
           nullable: true
           description: |
-            QR code as base64-encoded PNG for embedding in custom PDFs.
-            Only present when submission_status is ACCEPTED.
+            QR code as base64-encoded PNG for embedding in custom PDFs. Present from the moment
+            the registration is submitted, while `submission_status` is still `PENDING`; it does
+            not wait for the AEAT to accept the record.
           example: iVBORw0KGgoAAAANSUhEUgAAAMgAAADI...
         registered_at:
           type: string
@@ -18674,7 +19085,11 @@ components:
         error_message:
           type: string
           nullable: true
-          description: Human-readable error description returned by AEAT. Present when the AEAT reported a remark or an error on the record.
+          description: |
+            Human-readable reason for the outcome. When the AEAT reported a remark or an error on the
+            record, it is the AEAT's own description. When BeeL. decided the outcome (the submission
+            was rejected before reaching the AEAT, or BeeL. stopped waiting for a final answer), it
+            is a message written by BeeL., in the language of the request.
           example: Factura ya existe en el sistema
     VeriFactuSubmissionStatus:
       type: string
@@ -18686,7 +19101,9 @@ components:
         filter of `GET /v1/invoices`, so a value read from an invoice can be fed straight
         back into the filter.
 
-        * `PENDING` — queued, AEAT has not answered yet.
+        * `PENDING` — queued, AEAT has not answered yet. A temporary AEAT server error also
+          stays `PENDING`: BeeL. retries it automatically, and it only becomes `REJECTED` if the
+          retries run out.
         * `ACCEPTED` — accepted by AEAT (with or without non-blocking warnings).
         * `VOIDED` — a cancellation record was accepted by AEAT.
         * `REJECTED` — rejected by AEAT, or the submission was rejected by the provider
@@ -18790,9 +19207,9 @@ components:
 
             If omitted, the operation date is assumed to be the same as the issue date (today).
 
-            The `issue_date` is always set automatically to today per Spanish anti-fraud law
-            (Ley Antifraude / VeriFactu). To issue an invoice on a future date, create a
-            draft and use `POST /v1/invoices/{invoice_id}/schedule`.
+            The `issue_date` is not an input: BeeL sets it to the day the invoice is issued.
+            To issue an invoice on a future date, create a draft and use
+            `POST /v1/invoices/{invoice_id}/schedule`.
           example: '2025-01-10'
         due_date:
           type: string
@@ -18894,7 +19311,7 @@ components:
                   with `422 LINE_MAIN_TAX_REQUIRED`, and is never filled in from the company's
                   `default_main_tax` — that setting is a UI prefill, not an API default, because
                   which tax a line bears is a fiscal decision that drives the VeriFactu breakdown
-                  and therefore the legal validity of the document.
+                  and the tax printed on the invoice.
 
                   **Forbidden on `SUPLIDO` lines**, which are payments made on behalf of the
                   client and sit outside VAT (art. 78.Tres.3 LIVA): sending one is rejected with
@@ -19016,7 +19433,6 @@ components:
       example:
         type: STANDARD
         series_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-        issue_date: '2025-01-15'
         due_date: '2025-02-14'
         recipient:
           customer_id: 4f244735-980b-8d9c-80e8-6331fa0b1958
@@ -19099,7 +19515,8 @@ components:
             - $ref: '#/components/schemas/EmailConfiguration'
           description: |
             Only applies when `send_automatically` is `true`.
-            Overrides default email settings. If not provided, uses the recipient's email.
+            Overrides default email settings. If it names no recipients, the email goes to the
+            customer's `billing_emails`, or to the customer's `email` when there are none.
       example:
         issue_directly: true
         wait_for_pdf: false
@@ -19333,7 +19750,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Email'
-          description: If not specified, uses the customer's email
+          description: |
+            Recipients of the email. When omitted, the invoice's `email_config` recipients apply,
+            then the customer's `billing_emails`, then the customer's `email`.
         cc:
           type: array
           items:
@@ -19363,7 +19782,7 @@ components:
         language:
           allOf:
             - $ref: '#/components/schemas/Language'
-          description: 'Email language. If not provided, uses the user''s language (same fallback as the bulk send). Sin `default:` a propósito: quien resuelve el idioma es el servicio, no el DTO.'
+          description: Language of the email. When omitted, the issuing company's `email_language` applies, and Spanish (`es`) when the company has none set.
     CreateCorrectiveInvoiceRequest:
       type: object
       required:
@@ -19617,7 +20036,9 @@ components:
           minLength: 5
           maxLength: 255
           nullable: true
-          description: Email address (minimum valid email is 5 chars, e.g. a@b.co)
+          description: |
+            Main contact address (minimum valid email is 5 chars, e.g. a@b.co). Invoice emails go
+            here only when the customer has no `billing_emails`.
         website:
           type: string
           maxLength: 255
@@ -19628,7 +20049,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Email'
-          description: Additional emails for invoice delivery
+          description: |
+            Addresses that receive the customer's invoice emails. When the send request names no
+            `recipients` and the invoice has no `email_config` recipients, invoices go to these
+            addresses, and not to `email`; `email` is used only when `billing_emails` is empty.
         contact_person:
           type: string
           example: María García
@@ -19662,9 +20086,13 @@ components:
       description: |
         Alternative identifier for customers without Spanish Tax ID.
 
-        ### VeriFactu rules (enforced server-side, returns `422 ALTERNATIVE_ID_INVALID` on violation)
-        - If `country_code = ES`, then `type` **must** be `PASSPORT` (03) or `NOT_REGISTERED` (07).
-        - If `type = NOT_REGISTERED` (07), then `country_code` **must** be `ES`.
+        ### VeriFactu rules (enforced server-side, `422` on violation)
+        - If `country_code = ES`, then `type` **must** be `PASSPORT` (03) or `NOT_REGISTERED` (07);
+          any other type is rejected with `ALTERNATIVE_ID_SPAIN_INVALID_TYPE`.
+        - If `type = NOT_REGISTERED` (07), then `country_code` **must** be `ES`; any other country is
+          rejected with `ALTERNATIVE_ID_REQUIRES_SPAIN`.
+
+        A `number` that is blank once trimmed is rejected with `ALTERNATIVE_ID_INVALID`.
 
         ### Matrix of allowed combinations
         | `type`                 | `country_code = ES` | `country_code ≠ ES` |
@@ -19759,7 +20187,9 @@ components:
           minLength: 5
           maxLength: 255
           nullable: true
-          description: Email address (minimum valid email is 5 chars, e.g. a@b.co)
+          description: |
+            Main contact address (minimum valid email is 5 chars, e.g. a@b.co). Invoice emails go
+            here only when the customer has no `billing_emails`.
         website:
           type: string
           maxLength: 255
@@ -19771,7 +20201,10 @@ components:
           nullable: true
           items:
             $ref: '#/components/schemas/Email'
-          description: Additional emails for invoice delivery (optional)
+          description: |
+            Addresses that receive the customer's invoice emails. When the send request names no
+            `recipients` and the invoice has no `email_config` recipients, invoices go to these
+            addresses, and not to `email`; `email` is used only when `billing_emails` is empty.
         contact_person:
           type: string
           maxLength: 200
@@ -19845,7 +20278,9 @@ components:
           minLength: 5
           maxLength: 255
           nullable: true
-          description: Email address (minimum valid email is 5 chars, e.g. a@b.co)
+          description: |
+            Main contact address (minimum valid email is 5 chars, e.g. a@b.co). Invoice emails go
+            here only when the customer has no `billing_emails`.
         website:
           type: string
           maxLength: 255
@@ -19857,7 +20292,10 @@ components:
           nullable: true
           items:
             $ref: '#/components/schemas/Email'
-          description: Additional emails for invoice delivery (optional)
+          description: |
+            Addresses that receive the customer's invoice emails. When the send request names no
+            `recipients` and the invoice has no `email_config` recipients, invoices go to these
+            addresses, and not to `email`; `email` is used only when `billing_emails` is empty.
         contact_person:
           type: string
           maxLength: 200
@@ -20431,6 +20869,12 @@ components:
         - "{CODIGO}-{YYYY}-{NUM:4}" → "FAC-2025-0001"
         - "{CODIGO}/{NUM:6}" → "FAC/000001"
         - "{YYYY}{MM}-{NUM:3}" → "202501-001"
+
+        The generated number is the invoice number sent to the AEAT, which accepts at most 60
+        printable ASCII characters and none of `"`, `'`, `<`, `>`, `=`. A format whose longest
+        possible number breaks that rule is rejected with `422 SERIES_FORMAT_NUMBER_TOO_LONG` or
+        `SERIES_FORMAT_INVALID_CHARACTERS`. The counter counts as at least 9 digits, with or without
+        padding: `{NUM:X}` is a minimum width, not a maximum.
     CounterReset:
       type: string
       enum:
@@ -20548,8 +20992,9 @@ components:
             invoice of this tax ID is registered with the AEAT; while it is off, none is. There
             is no per-invoice choice.
 
-            Turning it on **registers the tax ID with the provider in the same call**, atomically:
-            if the provider rejects it, nothing is persisted and the response carries the reason.
+            Turning it on **registers the tax ID for VeriFactu submission in the same call**,
+            atomically: if the registration is refused, nothing is persisted and the response
+            carries the reason.
             In Live it requires a signed and validated AEAT representation first
             (`VERIFACTU_REPRESENTATION_REQUIRED`).
 
@@ -20707,8 +21152,10 @@ components:
           default: 1
           example: 1
           description: |
-            Initial number configured for this series counter.
-            Defines from which number invoice numbering will start.
+            Initial number configured for this series counter: the number the series starts from.
+            It applies only to the first period in which the series issues an invoice: with
+            `counter_reset: ANNUAL` or `MONTHLY`, every later year or month starts at 1. With
+            `NEVER` there is a single period, so numbering simply continues from it.
         active:
           type: boolean
           default: true
@@ -20752,7 +21199,13 @@ components:
       properties:
         code:
           type: string
-          description: Tax regime code
+          description: |
+            Tax regime code.
+
+            - `IVA`: Value Added Tax (Iberian Peninsula and Balearic Islands).
+            - `IGIC`: Canary Islands General Indirect Tax.
+            - `IPSI`: Production, Services and Import Tax (Ceuta and Melilla).
+            - `OTHER`: special regimes outside the three above.
           enum:
             - IVA
             - IGIC
@@ -20889,7 +21342,12 @@ components:
           default: true
     CreateSeriesRequest:
       type: object
+      description: |
+        Request to create an invoice series. `document_type` is required: a new series always has
+        a type, and `UNASSIGNED` is rejected with `422 SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`.
+        Corrective invoices need a series of their own (`CORRECTIVE`).
       required:
+        - document_type
         - name
         - code
         - format
@@ -20931,6 +21389,9 @@ components:
             Useful when migrating from another system and wanting to continue existing numbering.
             For example, if the last invoices were 2024-0150, you can set initial_number=151.
             Default value is 1.
+            It applies only to the first period in which the series issues an invoice: with
+            `counter_reset: ANNUAL` or `MONTHLY`, every later year or month starts at 1. With
+            `NEVER` there is a single period, so numbering simply continues from it.
         active:
           type: boolean
           default: true
@@ -20959,6 +21420,10 @@ components:
         `initial_number`) can only be modified while the series **has NO associated
         invoices**; the rest (`name`, `description`, `active`, `default_series`,
         `document_type`) can always be changed.
+
+        Moving a series to `document_type: UNASSIGNED` is rejected with
+        `422 SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`; a series that already is `UNASSIGNED` can be
+        edited without changing its type.
 
         The one thing this route cannot do is *clear* a field: an explicit
         `description: null` is ignored here. To clear the description, use
@@ -20992,8 +21457,11 @@ components:
           example: 54
           description: |
             Initial number for this series counter.
-            Useful for adjusting numbering or resetting the counter.
+            Useful for adjusting numbering before the series issues its first invoice.
             For example, if you want the next invoice to be 2025-0054, set initial_number=54.
+            It applies only to the first period in which the series issues an invoice: with
+            `counter_reset: ANNUAL` or `MONTHLY`, every later year or month starts at 1. With
+            `NEVER` there is a single period, so numbering simply continues from it.
         active:
           type: boolean
           description: |
@@ -21330,7 +21798,7 @@ components:
         publishes. IGIC is different — its 0 % is a real legal rate (basic necessities) and
         needs no reason.
 
-        **IVA 5 %** (RD-ley 11/2022 and its extensions, on electricity, gas and basic
+        **IVA 5 %** (the temporary rate applied from 2022 to electricity, gas and certain
         foodstuffs) is no longer in force for new operations, but it stays valid: corrective
         invoices and late-filed invoices for the periods when it applied must be able to carry
         it. Its equivalence surcharge pair is 0.625.
@@ -21655,7 +22123,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Billing cadence of the template: every 1, 3 or 12 months. The day it falls on is
+            Billing cadence of the template: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. The day it falls on is
             `day_of_month`, the same anchor for all three. Set it when you create the template;
             a template created without it is `MONTHLY`.
 
@@ -21970,7 +22438,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Generation cadence: every 1, 3 or 12 months. Omitted, the current one is kept — it is
+            Generation cadence: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. Omitted, the current one is kept — it is
             never reset to `MONTHLY`.
 
             **Changing it reschedules the template.** The next generation is recalculated on the new
@@ -22132,7 +22600,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Generation cadence: every 1, 3 or 12 months. Omitted, `MONTHLY` applies.
+            Generation cadence: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. Omitted, `MONTHLY` applies.
 
             It governs the step from the first invoice onwards, not where that first one lands: the
             first occurrence is the first `day_of_month` on or after `start_date`, found one month at
@@ -22262,7 +22730,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Generation cadence: every 1, 3 or 12 months. Omitted, `MONTHLY` applies.
+            Generation cadence: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. Omitted, `MONTHLY` applies.
 
             It governs the step from the first invoice onwards, not where that first one lands: the
             first occurrence is the first `day_of_month` on or after `start_date`, found one month at
@@ -22807,9 +23275,13 @@ components:
             - ACTIVE
             - ERROR
           description: |
-            AEAT/VeriFactu registration state of this NIF. `NOT_CONFIGURED` means the
-            VeriFactu representation is not set up, so invoices are issued without being
-            submitted to AEAT. Part of the AEAT-emission axis — independent of `environment`.
+            State of the AEAT representation of this NIF, which Live submission to VeriFactu
+            requires. Part of the AEAT-emission axis — independent of `environment`.
+
+            - `NOT_CONFIGURED`: no representation document, or the last one was cancelled.
+            - `PENDING`: the document is generated and waits to be signed and submitted.
+            - `ACTIVE`: the signed representation is in force.
+            - `ERROR`: reserved; not currently returned.
         environment:
           allOf:
             - $ref: '#/components/schemas/Environment'
@@ -23166,6 +23638,18 @@ components:
                 - ACTIVE
                 - ERROR
                 - CANCELLED
+              description: |
+                Stage of the AEAT representation of the company.
+
+                - `NOT_STARTED`: no representation document has been generated yet.
+                - `PDF_GENERATED`: the document is generated and waits for a digital signature.
+                - `SUBMITTED`: returned only by the submit operation, as its acknowledgement; this
+                  read never returns it.
+                - `ACTIVE`: the signed document was accepted and the representation is in force,
+                  so invoices of this NIF can be submitted to the AEAT in Live.
+                - `ERROR`: reserved; not currently returned.
+                - `CANCELLED`: the representation was cancelled. Invoices of this NIF are not
+                  submitted to the AEAT in Live until a new signed document is accepted.
             message:
               type: string
             updated_at:
@@ -23390,6 +23874,12 @@ components:
             Filter axes that currently hold a value, so you can tell a connection that filters
             nothing from one that does without reading every field. An empty list means every
             charge reaches auto-invoicing.
+
+            - `amount`: `min_amount` or `max_amount` is set.
+            - `customer`: `only_mapped_customers` is on or `allowed_customer_ids` has entries.
+            - `description`: `excluded_description_patterns` or `required_description_patterns`
+              has entries.
+            - `category`: `disabled_categories` has entries.
           items:
             type: string
             enum:
@@ -24420,10 +24910,33 @@ components:
         - REGIMEN_ART_163_DECIES
         - OTRO
       description: |
-        Tax exemption reason code per Spanish VAT Law (Ley 37/1992 LIVA).
-        VeriFactu mapping: EXENTA_ART_20→E1, EXENTA_ART_21→E2, EXENTA_ART_22→E3,
-        EXENTA_ART_24→E4, EXENTA_ART_25→E5, rest→E6. ISP→S2, NO_SUJETA→N1/N2.
-        When OTRO, a custom text must be provided in exemption_reason_text.
+        Tax exemption reason code per the Spanish VAT Law (Ley 37/1992, LIVA), with the
+        VeriFactu code each one is reported as.
+
+        - `EXENTA_ART_20`: exempt, art. 20 (domestic operations such as medical, educational,
+          cultural and financial services, or housing rentals). E1.
+        - `EXENTA_ART_21`: exempt, art. 21 (exports of goods). E2.
+        - `EXENTA_ART_22`: exempt, art. 22 (operations treated as exports). E3.
+        - `EXENTA_ART_24`: exempt, art. 24 (free zones, warehouses and customs regimes). E4.
+        - `EXENTA_ART_25`: exempt, art. 25 (intra-community supplies of goods). E5.
+        - `EXENTA_ART_26`: exempt, art. 26 (intra-community acquisitions of goods). E6.
+        - `NO_SUJETA_ART_7_9`: not subject under art. 7 (such as the transfer of a business as
+          a going concern, art. 7.1º). N1.
+        - `NO_SUJETA_LOCALIZACION`: not subject by the place-of-supply rules (intra-community
+          or non-EU services, arts. 69 and 70). N2.
+        - `ISP_ART_84_2_A`, `ISP_ART_84_2_E`, `ISP_ART_84_2_F`: reverse charge, art. 84.Uno.2
+          letters a) (supplier not established in Spain), e) (certain real estate supplies:
+          in insolvency proceedings, with the exemption waived, or enforcing a security) and
+          f) (construction or renovation works). S2.
+        - `EXENTA_ART_140` (investment gold, art. 140 bis), `REGIMEN_ART_129` (agriculture,
+          livestock and fishing, arts. 124 to 134 bis), `REGIMEN_ART_135` (second-hand goods,
+          art and antiques), `REGIMEN_ART_141` (travel agencies), `REGIMEN_ART_154` (equivalence
+          surcharge) and `REGIMEN_ART_163_DECIES` (cash basis, arts. 163 decies to 163
+          sexiesdecies): operations of special regimes, which VeriFactu identifies by the regime
+          key rather than by an exemption code. An
+          invoice line that carries one is rejected with `EXEMPTION_REGIME_NOT_SUPPORTED_IN_VERIFACTU`;
+          declare the regime with `regime_key` instead.
+        - `OTRO`: any other provision. Requires the text in `exemption_reason_text`. E6.
       example: EXENTA_ART_20
     InvoiceLineType:
       type: string
@@ -24530,7 +25043,10 @@ components:
         error:
           type: string
           nullable: true
-          description: Failure detail, present only when `status` is FAILED.
+          description: |
+            Why the email did not go out, present only when `status` is `FAILED` or `REJECTED`.
+            A short explanation in the language of the request, meant to be shown to a person;
+            do not parse it; branch on `status` instead.
     InvoiceEmailDeliveryOutcome:
       type: object
       description: |
@@ -24790,7 +25306,8 @@ components:
           nullable: true
           description: |
             Email configuration used when `send_automatically` is true.
-            If null, the recipient's default email is used.
+            If it names no recipients, the email goes to the customer's `billing_emails`, or to
+            the customer's `email` when there are none.
         pdf_download_url:
           type: string
           nullable: true
@@ -24957,9 +25474,10 @@ components:
           format: date
           deprecated: true
           description: |
-            **Deprecated and ignored.** The void is recorded with the instant it actually takes
-            place, returned as `voided_at` on the invoice. A void cannot be dated by the caller,
-            so any value sent here has no effect and will be removed in a future version.
+            **Deprecated.** The void is recorded with the instant it actually takes place,
+            returned as `voided_at` on the invoice: a void cannot be dated by the caller, and this
+            value never changes `voided_at`. It will be removed in a future version. A date earlier
+            than the invoice's issue date is rejected with `422 VOID_DATE_BEFORE_ISSUE_DATE`.
           example: '2025-01-20'
     ConvertProformaToInvoiceRequest:
       type: object
@@ -25262,7 +25780,14 @@ components:
           $ref: '#/components/schemas/GenerationAction'
     RecurringInvoiceStatus:
       type: string
-      description: Lifecycle state of a recurring invoice schedule.
+      description: |
+        Lifecycle state of a recurring invoice schedule.
+
+        - `ACTIVE`: invoices are generated on schedule.
+        - `PAUSED`: automatic generation is stopped and the schedule is kept; `pause` says who
+          stopped it. It can be resumed.
+        - `COMPLETED`: the schedule has ended for good and generates nothing more; `completion`
+          says why. Terminal: it cannot be resumed or paused.
       enum:
         - ACTIVE
         - PAUSED
@@ -25276,7 +25801,8 @@ components:
         - status
         - created_at
       description: |
-        Field to sort by.
+        Field to sort by: `name` the template name, `next_generation` the next scheduled
+        generation date, `status` the lifecycle state, `created_at` the creation instant.
 
         `next_generation` orders by the schedule stored on the template, which is not always the
         date the response publishes: a template that carries `null` — `COMPLETED`, or `PAUSED` with
@@ -25404,7 +25930,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Generation cadence: every 1, 3 or 12 months. Omitted, the current one is kept — it is
+            Generation cadence: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. Omitted, the current one is kept — it is
             never reset to `MONTHLY`.
 
             **Changing it reschedules the template.** The next generation is recalculated on the new
@@ -25684,7 +26210,7 @@ components:
             - QUARTERLY
             - YEARLY
           description: |
-            Generation cadence: every 1, 3 or 12 months. Omitted, `MONTHLY` applies.
+            Generation cadence: `MONTHLY` every month, `QUARTERLY` every 3 months, `YEARLY` every 12 months. Omitted, `MONTHLY` applies.
 
             It governs the step from the first invoice onwards, not where that first one lands: the
             first occurrence is the first `day_of_month` on or after `start_date`, found one month at
@@ -25731,7 +26257,18 @@ components:
           $ref: '#/components/schemas/RecurringEmailConfigRequest'
     CustomerSortBy:
       type: string
-      description: Customer field the list is ordered by.
+      description: |
+        Customer field the list is ordered by. Ties are broken by customer id, so pages are
+        stable.
+
+        - `legal_name`: legal name.
+        - `nif`: tax identifier.
+        - `email`: email address.
+        - `phone`: phone number.
+        - `city`: city of the address.
+        - `province`: province of the address.
+        - `active`: whether the customer is active.
+        - `created_at`: creation instant.
       enum:
         - legal_name
         - nif
@@ -25800,7 +26337,9 @@ components:
           minLength: 5
           maxLength: 255
           nullable: true
-          description: Email address. Send `null` to clear it.
+          description: |
+            Main contact address. Invoice emails go here only when the customer has no
+            `billing_emails`. Send `null` to clear it.
         website:
           type: string
           maxLength: 255
@@ -25813,8 +26352,10 @@ components:
           items:
             $ref: '#/components/schemas/Email'
           description: |
-            Additional emails for invoice delivery. Replaced as a whole;
-            send `null` or `[]` to remove them all.
+            Addresses that receive the customer's invoice emails. When the send request names no
+            `recipients` and the invoice has no `email_config` recipients, invoices go to these
+            addresses, and not to `email`; `email` is used only when `billing_emails` is empty.
+            Replaced as a whole; send `null` or `[]` to remove them all.
         contact_person:
           type: string
           maxLength: 200
@@ -25871,7 +26412,9 @@ components:
           minLength: 5
           maxLength: 255
           nullable: true
-          description: Email address (minimum valid email is 5 chars, e.g. a@b.co)
+          description: |
+            Main contact address (minimum valid email is 5 chars, e.g. a@b.co). Invoice emails go
+            here only when the customer has no `billing_emails`.
         website:
           type: string
           maxLength: 255
@@ -25882,7 +26425,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Email'
-          description: Additional emails for invoice delivery
+          description: |
+            Addresses that receive the customer's invoice emails. When the send request names no
+            `recipients` and the invoice has no `email_config` recipients, invoices go to these
+            addresses, and not to `email`; `email` is used only when `billing_emails` is empty.
         contact_person:
           type: string
           example: María García
@@ -25932,10 +26478,13 @@ components:
           type: string
           description: |
             Stable, uppercase, never translated — this is what an integration compares.
+            `NOT_FOUND` means the id does not resolve to a customer of the company, and
+            `INTERNAL_ERROR` that the row failed for an unexpected reason and was not deleted.
             `CLIENT_HAS_INVOICES` is deliberately the same code the single `DELETE` answers with
             `409`, so the single and the bulk route never disagree about the same customer.
-            `CLIENT_HAS_RECURRING_INVOICE` is likewise the same code the single `DELETE` answers
-            with `400` when an active or paused recurring invoice template uses the customer.
+            `CLIENT_HAS_RECURRING_INVOICE`: an active or paused recurring invoice uses the
+            customer as its recipient. The single `DELETE` rejects the same case with `400`
+            `REFERENCED_BY_RECURRING_INVOICE`.
           enum:
             - NOT_FOUND
             - CLIENT_HAS_INVOICES
@@ -26179,7 +26728,14 @@ components:
             - email
     ProductSortBy:
       type: string
-      description: Product field the list is ordered by.
+      description: |
+        Product field the list is ordered by.
+
+        - `name`: product name.
+        - `code`: product code.
+        - `category`: product category.
+        - `default_price`: default unit price.
+        - `created_at`: creation instant.
       enum:
         - name
         - code
@@ -26349,8 +26905,8 @@ components:
             Outcome of this row:
             - `CREATED`: created; `product_id` carries its identifier
             - `DUPLICATE`: a product with that code already exists
-            - `INVALID`: some field does not pass the domain's validation — a rate the law does not
-              allow (VAT at 13%), an empty name, a negative price, an incoherent surcharge/regime
+            - `INVALID`: some field does not pass the domain's validation — a rate BeeL does not
+              accept (VAT at 13%), an empty name, a negative price, an incoherent surcharge/regime
 
             There is no "unknown failure" value: anything the domain does not know how to report is
             not turned into a row, it fails the request with a `500`.
@@ -26504,7 +27060,7 @@ components:
         company_name:
           type: string
           nullable: true
-          description: 'Display name of the company: its trade name when it has one, its legal name otherwise. `null` when the company holds neither, which is possible before onboarding completes. Treat it as optional: a client must not require it to be present. Never falls back to the identifier: `company_id` already carries it.'
+          description: 'Legal name of the company; the trade name is never used here. `null` when the company has no legal name yet (possible before onboarding completes) or no longer exists. Treat it as optional: a client must not require it to be present. Never falls back to the identifier: `company_id` already carries it.'
     MemberPermissions:
       type: object
       description: 'Which management actions you may take on THIS member, resolved by the server for the authenticated caller. Use it to decide what to offer instead of discovering the answer through a `403`. It is advisory: every action is enforced server-side regardless, so you never need to reimplement the role policy.'
@@ -26653,7 +27209,6 @@ components:
       required:
         - invited_email
         - account_role
-        - grants
       properties:
         invited_email:
           type: string
@@ -26669,7 +27224,8 @@ components:
         grants:
           type: array
           default: []
-          description: 'Initial grants (only when `account_role` is `MEMBER`). Required: send `[]` to invite with no company access yet (granted later). An explicit `null` is rejected with 400.'
+          x-field-extra-annotation: '@jakarta.validation.constraints.NotNull'
+          description: Initial grants (only when `account_role` is `MEMBER`). Omit it, or send `[]`, to invite with no company access yet (granted later). An explicit `null` is rejected with `422` `VALIDATION_ERROR`.
           items:
             $ref: '#/components/schemas/GrantAssignment'
     Invitation:
@@ -26778,7 +27334,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: 'The account''s **single** company id (a UUID) — the value for the `BeeL-Active-Company` header when operating on this account. It is a **scalar, not a list**: it is present only when the account holds exactly one NIF, and is `null` both when the account has no NIF yet and when it holds two or more. For a multi-NIF account, list them with `GET /v1/accounts/{account_id}/companies`. Same meaning as `company_id` in the response to `POST /v1/accounts`.'
+          description: 'The account''s **single** company id (a UUID) — the value for the `BeeL-Active-Company` header when operating on this account. It is a **scalar, not a list**: it is present when the account holds exactly one company, and `null` otherwise (two or more, or none left). An account provisioned without `tax_profile` already holds one company, still without a NIF, so its id is returned; a company without a NIF does not make a claimed account `ACTIVE`. For a multi-NIF account, list them with `GET /v1/accounts/{account_id}/companies`. Same meaning as `company_id` in the response to `POST /v1/accounts`.'
         representation_signed:
           type: boolean
           description: Whether the account holder has signed at least one fiscal representation.
@@ -26888,7 +27444,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: The account's company id (a UUID) — send it in the `BeeL-Active-Company` header to issue invoices for this account. Present when a `tax_profile` was provided (account ready to invoice); `null` for an empty account (the holder registers their NIF on claim).
+          description: 'The account''s company id (a UUID) — send it in the `BeeL-Active-Company` header to operate on this account. Every account is born with one company: with a `tax_profile` it is ready to invoice; without one it has no NIF yet (the holder registers it on claim), and its issuing readiness reports `COMPANY_HAS_NO_NIF` until then. `null` only when resending an `external_ref` whose account now holds two or more companies.'
     ChangeAccessLevelRequest:
       type: object
       description: Updates the access you hold over an account you provisioned.
@@ -26961,7 +27517,10 @@ components:
       description: |
         Document type associated with a series. Values mirror `InvoiceType`,
         so the series a document needs is named exactly like the document:
-        - UNASSIGNED: Legacy series, compatible with any invoice type
+        - UNASSIGNED: Legacy value that only series created before types existed carry. Such a
+          series numbers any invoice type in one sequence and keeps working, but no new series
+          can be created with it or moved to it (`422 SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`).
+          Corrective invoices need a series of their own.
         - STANDARD: Standard invoice
         - SIMPLIFIED: Simplified invoice
         - CORRECTIVE: Corrects or cancels a previous invoice
@@ -27157,7 +27716,7 @@ components:
         `ENTITY_TYPE_UNKNOWN`, `NIF_INVALID_FORMAT`, `EMAIL_INVALID`, `POSTAL_CODE_INVALID`,
         `IBAN_INVALID`, `IRPF_NOT_NUMERIC`, `LANGUAGE_UNSUPPORTED`.
 
-        `IRPF_NOT_ALLOWED` — the rate is a number but not one the law admits (0, 1, 2, 7, 15, 19,
+        `IRPF_NOT_ALLOWED` — the rate is a number but not one BeeL accepts (0, 1, 2, 7, 15, 19,
         24). It is an **error**, not a warning: letting it through buys a green preview and an
         account that fails on its first invoice months later, when nobody connects the two.
 
@@ -27609,6 +28168,9 @@ components:
         The same rules as `PUT` apply: the fields that drive numbering (`code`, `format`,
         `counter_reset`, `initial_number`) are rejected once the series has issued
         invoices, so renaming a series in production keeps working.
+        Moving a series to `document_type: UNASSIGNED` is rejected with
+        `422 SERIES_UNASSIGNED_TYPE_NOT_ALLOWED`; a series that already is `UNASSIGNED` can be
+        edited without changing its type.
       properties:
         document_type:
           $ref: '#/components/schemas/DocumentType'
@@ -27639,6 +28201,9 @@ components:
           description: |
             Initial number for this series counter.
             Only while the series has no issued invoices.
+            It applies only to the first period in which the series issues an invoice: with
+            `counter_reset: ANNUAL` or `MONTHLY`, every later year or month starts at 1. With
+            `NEVER` there is a single period, so numbering simply continues from it.
         active:
           type: boolean
           description: |
@@ -27715,10 +28280,34 @@ components:
         blockers:
           type: array
           description: |
-            Reasons the company cannot issue yet (empty when ready).
-            `PROFILE_INCOMPLETE` means the company's fiscal identity is not complete
-            enough to write an invoice header (entity type, legal name, fiscal address);
-            a missing NIF is reported as `COMPANY_HAS_NO_NIF` instead, not as both.
+            Reasons the company cannot issue yet (empty when ready). Each one names what is
+            missing and how to clear it:
+
+            - `COMPANY_HAS_NO_NIF`: the company has no NIF. Set `nif` with
+              `PATCH /v1/companies/{company_id}`; once set it cannot be changed.
+            - `SERIES_DEFAULT_NOT_FOUND`: at least one of `STANDARD`, `SIMPLIFIED` and
+              `CORRECTIVE` has no default invoice series in this environment.
+              `PUT /v1/companies/{company_id}/series/defaults` creates the missing ones, or mark an
+              existing series with `PUT /v1/companies/{company_id}/series/{series_id}/default`.
+            - `PROFILE_INCOMPLETE`: the fiscal identity is not complete enough to write an invoice
+              header: entity type, legal name or full fiscal address is missing. Complete
+              `entity_type`, `legal_name` and `address` with `PATCH /v1/companies/{company_id}`. A
+              missing NIF is reported as `COMPANY_HAS_NO_NIF` instead, never as both.
+            - `COMPANY_NOT_ACTIVATED`: the company is not activated in the environment of the
+              request, and it is not under the VeriFactu regime. Activate it with
+              `POST /v1/companies/{company_id}/activations` for that environment.
+            - `ENV_MISMATCH`: the same missing activation, for a company under the VeriFactu
+              regime. Activate it as above, or call with a credential of the environment where it
+              is already activated. The first stage of the VeriFactu chain.
+            - `NIF_NOT_REGISTERED`: the NIF is not registered for VeriFactu submission in this
+              environment. Turning VeriFactu on
+              (`PUT /v1/companies/{company_id}/verifactu-configuration` with `enabled: true`)
+              registers it; in Live that call needs the signed representation first. Never reported
+              in Test, where the NIF is registered with its first submission.
+            - `NIF_REPRESENTATION_REQUIRED`: the NIF is registered, but there is no signed AEAT
+              representation in force. Generate it with
+              `POST /v1/companies/{company_id}/representation`, sign it digitally and send it with
+              `POST /v1/companies/{company_id}/representation/submit`. Live only.
           items:
             type: string
             enum:
@@ -27751,9 +28340,14 @@ components:
               description: |
                 ONLY the incremental VeriFactu capability stages, in order and mutually
                 exclusive — one reason at a time, without repeating the operational
-                blockers (NIF/series/fiscal identity) listed above.
-                `NIF_REPRESENTATION_REQUIRED` only appears where a signed representation
-                is actually demanded (production).
+                blockers (NIF/series/fiscal identity) listed above. The stages, and how to
+                clear each one, are the same as in the top-level `blockers`:
+
+                - `ENV_MISMATCH`: the company is not activated in the environment of the request.
+                - `NIF_NOT_REGISTERED`: the NIF is not registered for VeriFactu submission in
+                  this environment; turning VeriFactu on registers it.
+                - `NIF_REPRESENTATION_REQUIRED`: no signed AEAT representation in force. Only
+                  appears where a signed representation is actually demanded (Live).
               items:
                 type: string
                 enum:
@@ -27777,7 +28371,9 @@ components:
           example: 40
           description: |
             Number this series' counter starts at, to continue the numbering already used
-            elsewhere. Defaults to 1 when omitted.
+            elsewhere. Defaults to 1 when omitted. It applies only to the first period in which
+            the series issues an invoice; with an `ANNUAL` or `MONTHLY` reset every later period
+            starts at 1.
         format:
           allOf:
             - $ref: '#/components/schemas/SeriesFormat'
@@ -27802,7 +28398,7 @@ components:
         Send it when the business already issued invoices with another system this year and
         wants to **continue** its numbering, or simply wants its series born with a specific
         shape — this is the only moment it can be expressed in the same call. Once a series
-        issues its first invoice its numbering is frozen by law: `PATCH
+        issues its first invoice BeeL freezes its numbering: `PATCH
         /v1/companies/{company_id}/series/{series_id}` then rejects `initial_number` with
         `SERIES_INITIAL_NUMBER_LOCKED_HAS_INVOICES`.
 
@@ -27822,7 +28418,9 @@ components:
         (`SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR`); an `ANNUAL` reset requires a year token
         (`SERIES_ANNUAL_REQUIRES_YEAR`). Mind the default reset is `ANNUAL`: a format
         without a year token (e.g. `{CODIGO}-{NUM:6}`) also needs `counter_reset: NEVER`
-        in the same series block.
+        in the same series block. Two series that could print the same number (for instance,
+        the same literal format with no `{CODIGO}`) are rejected with `409
+        SERIES_FORMAT_OVERLAPS`, because an invoice number must be unique per issuer.
 
         The list of series is **not** negotiable — a company always starts with exactly
         these three, one default per document type, because a company without a default
@@ -27850,7 +28448,9 @@ components:
           example: 151
           description: |
             Number the ordinary series counter starts at. If the last invoice issued
-            elsewhere was `2026-0150`, send `151`. Defaults to 1 when omitted.
+            elsewhere was `2026-0150`, send `151`. Defaults to 1 when omitted. It applies only
+            to the first period in which the series issues an invoice; with an `ANNUAL` or
+            `MONTHLY` reset every later period starts at 1.
         format:
           allOf:
             - $ref: '#/components/schemas/SeriesFormat'
@@ -28450,6 +29050,8 @@ components:
             type: string
         active:
           type: boolean
+          description: |
+            Whether the subscription receives events. Turning it off, or BeeL. pausing it, drops the deliveries still waiting for an automatic retry: they are not sent when it is turned back on, and stay in the delivery log for a manual retry.
         account_relationship:
           allOf:
             - $ref: '#/components/schemas/WebhookAccountRelationship'
@@ -28478,7 +29080,7 @@ components:
         consecutive_failures:
           type: integer
           description: |
-            Deliveries in a row that never got through. A delivery that exhausted its 5 attempts counts as one. Any successful delivery resets it to zero, so a healthy endpoint with occasional blips stays near zero.
+            Deliveries in a row that never got through. A delivery that exhausted its attempts counts as one. Any successful delivery resets it to zero, so a healthy endpoint with occasional blips stays near zero.
           example: 0
         last_used_at:
           type: string
@@ -28501,7 +29103,7 @@ components:
           permanent generation failure); the invoice it was going to issue will not arrive
         - `invoice.schedule_failed` — A scheduled invoice could not be issued on its date and BeeL.
           gave up retrying; it stays in drafts and can be issued by hand once the cause is fixed
-        - `verifactu.status.updated` — VeriFactu status changed (see `VeriFactuSubmissionStatus`)
+        - `verifactu.status.updated` — VeriFactu public status changed (see `VeriFactuSubmissionStatus`)
         - `account.claimed` — A provisioned account was claimed by its holder
         - `company.created` — A company was created inside a provisioned account
         - `representation.signed` — Fiscal representation signed for a NIF (production invoicing enabled)
@@ -28758,7 +29360,6 @@ components:
       required:
         - invoice_id
         - verifactu_registration_id
-        - previous_status
         - new_status
       properties:
         invoice_id:
@@ -28772,20 +29373,35 @@ components:
           type: string
           format: uuid
         previous_status:
-          $ref: '#/components/schemas/VeriFactuSubmissionStatus'
+          allOf:
+            - $ref: '#/components/schemas/VeriFactuSubmissionStatus'
+          nullable: true
+          description: |
+            Status of this registration before the change. Omitted on the first notification of a
+            registration, because there is no earlier status: the submission was just accepted for
+            processing (`new_status` is `PENDING`) or it was rejected before reaching the AEAT
+            (`new_status` is `REJECTED`).
         new_status:
           $ref: '#/components/schemas/VeriFactuSubmissionStatus'
         qr_url:
           type: string
           nullable: true
-          example: https://sede.agenciatributaria.gob.es/Sede/verifactu?id=ABC123
+          description: |
+            AEAT verification URL encoded in the invoice QR code. Set when the registration is
+            submitted, so it is carried by every later status change, `REJECTED` included.
+          example: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=2025-001&fecha=07-03-2026&importe=121.00
         qr_base64:
           type: string
           nullable: true
-          description: QR code as base64-encoded PNG for embedding in PDFs.
+          description: |
+            QR code as base64-encoded PNG for embedding in PDFs. Set when the registration is
+            submitted, so it does not wait for `ACCEPTED`.
         invoice_hash:
           type: string
           nullable: true
+          description: |
+            SHA-256 hash of the registration record, as VeriFactu defines it. Set when the
+            registration is submitted.
           example: B11F3A015173AD99075E2720F61E2DE1FF08CBFEDD85C6F73C77AD835301B2A3
         error_code:
           type: string
@@ -28793,6 +29409,11 @@ components:
         error_message:
           type: string
           nullable: true
+          description: |
+            Human-readable reason for the outcome. When the AEAT reported a remark or an error, it is
+            the AEAT's own description. When BeeL. decided the outcome (the submission was rejected
+            before reaching the AEAT, or BeeL. stopped waiting for a final answer), it is a message
+            written by BeeL., in English.
     WebhookEventDataAccountClaimed:
       type: object
       description: |
@@ -28994,7 +29615,7 @@ components:
           example: verifactu.status.updated
         attempt_number:
           type: integer
-          description: Sequential number of this POST within its delivery. Manual retries continue the same sequence, so this can exceed the 5 automatic attempts.
+          description: Sequential number of this POST within its delivery. Manual retries continue the same sequence, so this can exceed the number of automatic attempts.
         http_status:
           type: integer
           nullable: true
@@ -29178,7 +29799,9 @@ components:
           $ref: '#/components/schemas/ResponseMeta'
     EmailDeliverySortBy:
       type: string
-      description: Email delivery field the list is ordered by.
+      description: |
+        Email delivery field the list is ordered by: `sent_at` the instant of the attempt,
+        `status` the delivery status, `email_type` the kind of email.
       enum:
         - sent_at
         - status
@@ -29240,8 +29863,8 @@ components:
     Unauthorized:
       description: |
         Missing or invalid authentication. Like every other error, `message`/`detail` is
-        localized according to `Accept-Language` (`es`, `en`, `ca`); the example below shows
-        the English wording.
+        localized according to `Accept-Language` (`es`, `en`, `ca`); defaults to English when the
+        header is missing or asks for none of those.
       content:
         application/json:
           schema:
@@ -29320,8 +29943,10 @@ components:
         them exhaustively.
 
         - `INSUFFICIENT_SCOPE` — the credential lacks a scope the operation requires;
-          `error.details.missing_scopes` lists them. Retrying will not help: mint a key that
-          holds them.
+          `error.details.missing_scopes` names them as a single comma-separated string (for
+          example `"invoices:write,customers:read"`), not as an array; `required_scopes` has the
+          same shape and lists every scope the operation needs. Retrying will not help: mint a key
+          that holds them.
         - `COMPANY_READ_ONLY` — the scope is there, but your access level over that NIF only
           lets you read it.
         - `ACCOUNT_MANAGEMENT_FORBIDDEN` — the scope is there, but your role over the account,
@@ -29586,6 +30211,20 @@ components:
             meta:
               timestamp: '2026-03-05T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ForbiddenMemberManagement:
+      description: 'Every cause listed under the plain `403` above, plus the one that governs the people of an account: `MEMBER_MANAGEMENT_FORBIDDEN`, returned when you reach the account but your role in it does not manage its members, invitations or grants. Only an `OWNER` or an `ADMIN` does; a `MEMBER` gets this code, and so does an API key minted by one.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: MEMBER_MANAGEMENT_FORBIDDEN
+              message: Only the owner or an admin can manage account members.
+            meta:
+              timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
     MemberNotFound:
       description: '`MEMBER_NOT_FOUND` — no member with that id belongs to the account. Membership ids are not shared between accounts, so a member of another account answers the same way.'
       content:
@@ -29600,8 +30239,22 @@ components:
             meta:
               timestamp: '2025-01-15T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
-    ForbiddenLiveCredentialRequired:
-      description: 'Every cause listed under the plain `403` above, plus one specific to writes on the account''s control plane: `LIVE_CREDENTIAL_REQUIRED`, returned when the call is made with a test API key (`beel_sk_test_…`). Members, invitations and grants are shared between Test and Live, so changing them is always a real change to the real account — there is no sandbox rehearsal of it. The same applies to changing a managed account''s access level and to ending its management: both act on an account that may already be invoicing. Use your live API key or the dashboard; reading these resources keeps working with either key, and so does the whole account provisioning flow (provisioning and claim tokens), which creates an inert account and is what you are meant to rehearse in Test — with your test key, but still only if your subscription carries the `manage_accounts` entitlement: that gate applies in Test exactly as it does in Live, and without it the rehearsal answers `403 FEATURE_NOT_AVAILABLE` rather than this code. Accounts that have no live mode manage their people from the dashboard.'
+    ForbiddenOwnerReserved:
+      description: 'Every cause listed under the plain `403` above, plus the three that govern a change to a member: `MEMBER_MANAGEMENT_FORBIDDEN`, when your role in the account does not manage its members (only an `OWNER` or an `ADMIN` does); `OWNER_ROLE_RESERVED`, when the member you act on is an `OWNER` and you are not one, since an `ADMIN` manages members but not owners; and `LIVE_CREDENTIAL_REQUIRED`, when the call is made with a test API key (`beel_sk_test_…`).'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: OWNER_ROLE_RESERVED
+              message: Only an owner can assign or transfer the owner role.
+            meta:
+              timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ForbiddenMemberManagementLiveCredentialRequired:
+      description: 'Every cause listed under the plain `403` above, plus the two that govern a change to the people of an account: `MEMBER_MANAGEMENT_FORBIDDEN`, when your role in the account does not manage its members, invitations or grants (only an `OWNER` or an `ADMIN` does), and `LIVE_CREDENTIAL_REQUIRED`, when the call is made with a test API key (`beel_sk_test_…`): members, invitations and grants are shared between Test and Live, so changing them is always a real change. Use your live API key or the dashboard.'
       content:
         application/json:
           schema:
@@ -29629,7 +30282,7 @@ components:
               timestamp: '2025-01-15T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
     ForbiddenSessionOnly:
-      description: 'Every cause listed under the plain `403` above, plus the one that governs this operation: `OPERATION_REQUIRES_SESSION` — "This operation is only available from the web session; it cannot be performed with an API key or OAuth." It is returned to **every** machine credential, live key included, whatever scopes it holds, and before any other check, so it is not a permission you can be granted and retrying with a different key never helps. The operation is reserved to a signed-in human in the dashboard because a leaked key must not be able to take an account over.'
+      description: 'Every cause listed under the plain `403` above, plus the one that governs this operation: `OPERATION_REQUIRES_SESSION` — "This operation is only available from the web session; it cannot be performed with an API key or OAuth." It is returned to **every** machine credential, live key included, whatever scopes it holds, and before any other check, so it is not a permission you can be granted and retrying with a different key never helps. The operation is reserved to a signed-in human in the dashboard because a leaked key must not be able to take an account over. From the session, two more: `OWNER_ROLE_RESERVED`, when the session belongs to an `ADMIN`, since only an `OWNER` hands ownership over, and `MEMBER_MANAGEMENT_FORBIDDEN`, when the session''s role does not manage members.'
       content:
         application/json:
           schema:
@@ -29653,6 +30306,20 @@ components:
             error:
               code: INVITATION_NOT_FOUND
               message: No invitation with that id in this account.
+            meta:
+              timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ForbiddenLiveCredentialRequired:
+      description: 'Every cause listed under the plain `403` above, plus one specific to writes on the account''s control plane: `LIVE_CREDENTIAL_REQUIRED`, returned when the call is made with a test API key (`beel_sk_test_…`). Members, invitations and grants are shared between Test and Live, so changing them is always a real change to the real account — there is no sandbox rehearsal of it. The same applies to changing a managed account''s access level and to ending its management: both act on an account that may already be invoicing. Use your live API key or the dashboard; reading these resources keeps working with either key, and so does the whole account provisioning flow (provisioning and claim tokens), which creates an inert account and is what you are meant to rehearse in Test — with your test key, but still only if your subscription carries the `manage_accounts` entitlement: that gate applies in Test exactly as it does in Live, and without it the rehearsal answers `403 FEATURE_NOT_AVAILABLE` rather than this code. Accounts that have no live mode manage their people from the dashboard.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: LIVE_CREDENTIAL_REQUIRED
+              message: This operation changes the real account; it requires a live API key or a dashboard session.
             meta:
               timestamp: '2025-01-15T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
@@ -29687,6 +30354,35 @@ components:
                 max_size_formatted: 5.0 MB
             meta:
               timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    SeriesValidationError:
+      description: |
+        The series is rejected. `error.code` is `VALIDATION_ERROR` when the body parses but a value
+        is not acceptable: `details` is a flat map from the offending property's name (in the
+        contract's `snake_case`) to a message describing what is wrong with it, or follows
+        `FieldDeserializationError` when the value is outside an enum's vocabulary. Otherwise it is
+        one of the series rules, among them:
+        - `SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR` / `SERIES_ANNUAL_REQUIRES_YEAR` — the format
+          cannot tell the counter reset periods apart.
+        - `SERIES_INITIAL_NUMBER_OUT_OF_RANGE` — the initial number is out of range.
+        - `SERIES_FORMAT_NUMBER_TOO_LONG` — the longest number the series can generate (the
+          format with the code, the year, the month and the counter substituted) exceeds the 60
+          characters the AEAT accepts for the invoice number. The counter counts as at least 9
+          digits, with or without padding: `{NUM:X}` is a minimum width and the number keeps
+          growing past it.
+        - `SERIES_FORMAT_INVALID_CHARACTERS` — that number would contain a character the AEAT does
+          not accept: only printable ASCII (32-126) is allowed, except `"`, `'`, `<`, `>` and `=`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: SERIES_FORMAT_NUMBER_TOO_LONG
+              message: The number this series generates can reach 64 characters and the AEAT accepts at most 60 (series and number together). Shorten the code or the fixed text of the format
+            meta:
+              timestamp: '2026-09-24T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
     PaymentConnectionNotFound:
       description: '`CONNECTION_NOT_FOUND` — no connection of this NIF carries this `{connection_id}`. It speaks of the connection, never of the NIF: a NIF you cannot reach answers `403`, while a connection of another NIF answers this same `404` so that naming it reveals nothing.'
@@ -29728,6 +30424,30 @@ components:
               message: Payment event not found
             meta:
               timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    WebhookSubscriptionValidationError:
+      description: |
+        The body parses but a value is not acceptable. Branch on `error.code`:
+
+        - `VALIDATION_ERROR` — a field fails validation; `error.details` maps each offending
+          property to what is wrong with it.
+        - `URL_MUST_BE_HTTPS` — `url` does not use `https`.
+        - `WEBHOOK_URL_INVALID` — `url` is not a valid absolute URL.
+        - `URL_TARGET_NOT_ALLOWED` — `url` points to an internal network address: a private,
+          loopback or link-local range, either as a literal IP or through a host name that
+          resolves to one. Use an endpoint reachable from the internet. A host name that does not
+          resolve yet is accepted, and deliveries to an internal address are refused anyway.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: URL_TARGET_NOT_ALLOWED
+              message: The webhook URL points to an internal network address. Use an endpoint reachable from the internet.
+            meta:
+              timestamp: '2026-03-07T16:22:10Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
     UnprocessableRequestLogQuery:
       description: The query was understood and refused. `error.code` is `REQUEST_LOG_INVALID_CURSOR` when `cursor` is not a cursor this API issued, or `VALIDATION_ERROR` when another query parameter falls outside its declared range. Send the `cursor` exactly as returned by the previous page; a hand-built or truncated value is never accepted.
@@ -30241,7 +30961,6 @@ components:
         line and publishes both numbers.
       value:
         type: STANDARD
-        issue_date: '2026-03-05'
         recipient:
           customer_id: 123e4567-e89b-12d3-a456-426614174000
         lines:
@@ -30574,7 +31293,7 @@ components:
               percentage: 0
               regime_key: '01'
             exemption_reason: NO_SUJETA_ART_7_9
-            exemption_reason_text: Entrega de muestras gratuitas (Art. 7.4º LIVA)
+            exemption_reason_text: Entrega de muestras gratuitas (Art. 7.2º LIVA)
         options:
           issue_directly: true
     isp-reverse-charge-s2:
@@ -30747,7 +31466,7 @@ components:
           request_id: b1b1b1b1-0001-4000-a000-000000000011
     get-invoice-success:
       summary: Get invoice (200)
-      description: Single invoice retrieved with full details including VeriFactu signature and PDF URL
+      description: Single invoice retrieved with full details including its VeriFactu record (hash, QR) and PDF URL
       value:
         success: true
         data:
@@ -30819,9 +31538,9 @@ components:
           notes: Payment via bank transfer
           verifactu:
             enabled: true
-            invoice_hash: a7f3c9e2b1d4f8a6c3e9b2d5f1a8c4e7b9d2f5a1c8e4b7d3f9a2c6e1b5d8f4a7
-            qr_url: https://verifactu.agenciatributaria.gob.es/v?id=a7f3c9e2b1d4f8a6
-            registration_date: '2025-01-20T10:35:00Z'
+            invoice_hash: A7F3C9E2B1D4F8A6C3E9B2D5F1A8C4E7B9D2F5A1C8E4B7D3F9A2C6E1B5D8F4A7
+            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2025%2F0042&fecha=20-01-2025&importe=1590.00
+            registered_at: '2025-01-20T10:35:00Z'
             submission_status: ACCEPTED
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
           created_at: '2025-01-20T10:30:00Z'
@@ -30905,9 +31624,9 @@ components:
             site_url: https://superpole.es
           verifactu:
             enabled: true
-            invoice_hash: a7f3c9e2b1d4f8a6c3e9b2d5f1a8c4e7b9d2f5a1c8e4b7d3f9a2c6e1b5d8f4a7
-            qr_url: https://verifactu.agenciatributaria.gob.es/v?id=a7f3c9e2b1d4f8a6
-            registration_date: '2026-06-02T10:35:00Z'
+            invoice_hash: A7F3C9E2B1D4F8A6C3E9B2D5F1A8C4E7B9D2F5A1C8E4B7D3F9A2C6E1B5D8F4A7
+            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2026%2F0204&fecha=02-06-2026&importe=99.00
+            registered_at: '2026-06-02T10:35:00Z'
             submission_status: ACCEPTED
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/9d2fd4c2-29a1-4f65-90f7-78854adf69bc/pdf
           created_at: '2026-06-02T10:30:00Z'
@@ -31034,22 +31753,22 @@ components:
           code: SERIES_INCOMPATIBLE_DOC_TYPE
           message: The selected series is not compatible with this document type. Please select a series of the correct type.
           details:
-            expected_document_type: FACTURA_RECTIFICATIVA
-            defaults_status_endpoint: GET /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/series/defaults
+            expected_document_type: CORRECTIVE
+            defaults_status_endpoint: GET /v1/companies/{company_id}/series/defaults
         meta:
           timestamp: '2025-02-01T10:20:00Z'
           request_id: b2b2b2b2-0810-4000-a000-000000000422
     no_default_corrective_series:
       summary: No default corrective series (422)
-      description: Sent without `series_id` and the company has no default series compatible with FACTURA_RECTIFICATIVA. This is an account configuration problem, not a request problem — BeeL never creates a fiscal series on your behalf.
+      description: Sent without `series_id` and the company has no default series compatible with `CORRECTIVE`. This is an account configuration problem, not a request problem — BeeL never creates a fiscal series on your behalf.
       value:
         success: false
         error:
           code: SERIES_DEFAULT_NOT_FOUND
           message: You have no default invoice series. Create a series in settings before issuing invoices.
           details:
-            expected_document_type: FACTURA_RECTIFICATIVA
-            defaults_status_endpoint: GET /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/series/defaults
+            expected_document_type: CORRECTIVE
+            defaults_status_endpoint: GET /v1/companies/{company_id}/series/defaults
         meta:
           timestamp: '2025-02-01T10:15:00Z'
           request_id: b2b2b2b2-0810-4000-a000-0000000004a2
@@ -31107,32 +31826,24 @@ components:
           timestamp: '2025-01-26T11:30:00Z'
           request_id: req_error_validation001
     exceeds_no_nif:
-      summary: Simplified invoice over the limit, with no tax id (422)
+      summary: Simplified invoice over 3,000€, with no tax id
       value:
         success: false
         error:
-          code: VALIDATION_ERROR
-          message: Simplified invoice without NIF cannot exceed 400€ (including VAT)
-          details:
-            invoice_total: 605
-            limit_without_nif: 400
-            exceeded_by: 205
-            suggestion: Add customer NIF to allow up to 3000€, or use STANDARD type for higher amounts
+          code: SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT
+          message: 'Simplified invoices cannot exceed 3,000€ (VAT included). Current total: 4,235€. Reduce the amount or issue an ordinary invoice.'
+          details: {}
         meta:
           timestamp: '2025-02-03T12:00:00Z'
           request_id: req_error_simpl001
     exceeds_with_nif:
-      summary: Simplified invoice over the limit, tax id present (422)
+      summary: Simplified invoice over 3,000€, tax id present
       value:
         success: false
         error:
-          code: VALIDATION_ERROR
-          message: Simplified invoice cannot exceed 3000€ (including VAT), even with NIF
-          details:
-            invoice_total: 4235
-            limit_with_nif: 3000
-            exceeded_by: 1235
-            suggestion: Use STANDARD type for invoices above 3000€
+          code: SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT
+          message: 'Simplified invoices cannot exceed 3,000€ (VAT included). Current total: 4,235€. Reduce the amount or issue an ordinary invoice.'
+          details: {}
         meta:
           timestamp: '2025-02-03T12:05:00Z'
           request_id: req_error_simpl002
@@ -31161,7 +31872,7 @@ components:
         message: Invoice for services rendered during January 2025.
     issue-success:
       summary: Invoice issued (200)
-      description: State changed to ISSUED. Final number assigned, VeriFactu signed, PDF generated
+      description: State changed to ISSUED. Final number assigned, VeriFactu record generated with its hash, PDF generated
       value:
         success: true
         data:
@@ -31217,9 +31928,9 @@ components:
             payment_term_days: 30
           verifactu:
             enabled: true
-            invoice_hash: a7f3c9e2b1d4f8a6c3e9b2d5f1a8c4e7b9d2f5a1c8e4b7d3f9a2c6e1b5d8f4a7
-            qr_url: https://verifactu.agenciatributaria.gob.es/v?id=a7f3c9e2b1d4f8a6
-            registration_date: '2025-01-20T10:35:00Z'
+            invoice_hash: A7F3C9E2B1D4F8A6C3E9B2D5F1A8C4E7B9D2F5A1C8E4B7D3F9A2C6E1B5D8F4A7
+            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2025%2F0042&fecha=20-01-2025&importe=1815.00
+            registered_at: '2025-01-20T10:35:00Z'
             submission_status: ACCEPTED
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
           created_at: '2025-01-20T10:30:00Z'
@@ -31284,9 +31995,9 @@ components:
             invoice_total: -1815
           verifactu:
             enabled: true
-            invoice_hash: b8a4d0f3c2e549b7d4f0c3f2b9e6d1f5a8c2e7b0d4f8c3a6b1e9d2f7a5c8e3b0
-            qr_url: https://verifactu.agenciatributaria.gob.es/v?id=b8a4d0f3c2e549b7
-            registration_date: '2025-01-25T11:00:00Z'
+            invoice_hash: B8A4D0F3C2E549B7D4F0C3F2B9E6D1F5A8C2E7B0D4F8C3A6B1E9D2F7A5C8E3B0
+            qr_url: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2025%2F0043-R&fecha=25-01-2025&importe=-1815.00
+            registered_at: '2025-01-25T11:00:00Z'
             submission_status: ACCEPTED
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/b8a4d0f3-c2e5-49b7-d4f0-c3f2b9e6d1f5/pdf
           created_at: '2025-01-25T11:00:00Z'
@@ -31316,6 +32027,16 @@ components:
         meta:
           timestamp: '2025-02-01T10:30:00Z'
           request_id: b2b2b2b2-1435-4000-a000-000000001436
+    convert-proforma-draft:
+      summary: Convert into a draft invoice
+      description: The new invoice stays as a draft
+      value:
+        issue: false
+    convert-proforma-issue:
+      summary: Convert and issue
+      description: The new invoice is issued in the same call
+      value:
+        issue: true
     mark-paid:
       summary: Mark invoice as paid
       description: Transition to PAID state. Records payment date and method
@@ -31390,6 +32111,93 @@ components:
         meta:
           timestamp: '2025-02-05T14:30:00Z'
           request_id: d2e3f4a5-b6c7-4d8e-9f0a-1b2c3d4e5f6a
+    schedule-draft:
+      summary: Leave a draft ready on a date
+      description: On the scheduled date the invoice is prepared as a draft for review
+      value:
+        scheduled_for: '2026-10-15'
+        generation_mode: DRAFT
+    schedule-issue-and-send:
+      summary: Issue and send on a date
+      description: On the scheduled date the invoice is issued and emailed
+      value:
+        scheduled_for: '2026-10-31'
+        generation_mode: ISSUE_AND_SEND
+    create-monthly:
+      summary: Monthly maintenance fee
+      description: Invoices a fixed fee on the 1st of every month, emailed to the customer when it is issued
+      value:
+        name: Mantenimiento web mensual
+        frequency: MONTHLY
+        day_of_month: 1
+        start_date: '2026-10-01'
+        end_date: '2027-09-30'
+        series_id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        invoice_type: STANDARD
+        customer_id: 123e4567-e89b-12d3-a456-426614174000
+        lines:
+          - description: Mantenimiento mensual de la web corporativa
+            quantity: 1
+            unit: mes
+            unit_price: 450
+            tax_type: IVA
+            vat_rate: 21
+            regime_key: '01'
+            irpf_rate: 15
+        payment_method: BANK_TRANSFER
+        payment_iban: ES9121000418450200051332
+        payment_term_days: 15
+        send_automatically: true
+        email_configuration:
+          recipients:
+            - facturas@example.com
+          subject: Factura mensual de mantenimiento
+          message: Adjuntamos la factura de este mes.
+    patch-schedule:
+      summary: Change the cadence and end date
+      description: Moves the template to a quarterly cadence on the 5th and sets an end date; every other field is kept
+      value:
+        frequency: QUARTERLY
+        day_of_month: 5
+        end_date: '2027-12-31'
+    patch-lines:
+      summary: Replace the lines
+      description: Sends the new price of the fee; the lines array replaces the previous one as a whole
+      value:
+        lines:
+          - description: Mantenimiento mensual de la web corporativa
+            quantity: 1
+            unit: mes
+            unit_price: 495
+            tax_type: IVA
+            vat_rate: 21
+            regime_key: '01'
+            irpf_rate: 15
+    status-paused:
+      summary: Pause
+      description: Stops automatic generation and keeps the schedule
+      value:
+        status: PAUSED
+    status-active:
+      summary: Resume
+      description: Resumes a paused schedule
+      value:
+        status: ACTIVE
+    status-completed:
+      summary: End for good
+      description: Ends the schedule; it cannot be resumed afterwards
+      value:
+        status: COMPLETED
+    derivation-from-invoice:
+      summary: Repeat an invoice every month
+      description: Lines, recipient, series and payment data are taken from the source invoice
+      value:
+        from_invoice_id: 9b2f6c1e-4d8a-4f3b-a1c2-5e6d7f8a9b0c
+        name: Cuota mensual de asesoría
+        frequency: MONTHLY
+        day_of_month: 1
+        start_date: '2026-11-01'
+        send_automatically: false
     list-customers-success:
       summary: List customers (200)
       description: Customer list with pagination
@@ -31806,6 +32614,31 @@ components:
         meta:
           timestamp: '2025-02-09T10:00:00Z'
           request_id: req_producto_001
+    create-multiple-2:
+      summary: Create several products
+      description: Two catalogue items in one call; each one succeeds or fails on its own
+      value:
+        products:
+          - code: SRV-002
+            name: Auditoría SEO
+            description: Informe de posicionamiento y plan de acción
+            category: CONSULTING
+            default_price: 600
+            unit: servicio
+            main_tax:
+              type: IVA
+              percentage: 21
+              regime_key: '01'
+            irpf_rate: 15
+          - code: FORM-001
+            name: Taller de marketing digital
+            category: TRAINING
+            default_price: 90
+            unit: hora
+            main_tax:
+              type: IVA
+              percentage: 21
+              regime_key: '01'
     update_price:
       summary: Update price
       value:
@@ -31822,6 +32655,180 @@ components:
       summary: Deactivate product
       value:
         active: false
+    member-role-admin:
+      summary: Promote to admin
+      value:
+        account_role: ADMIN
+    member-grant-operate:
+      summary: Let the member operate the company
+      value:
+        access_level: OPERATE
+    set-owner:
+      summary: Transfer ownership to a member
+      value:
+        member_id: 3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b
+    invitation-member:
+      summary: Invite a member with access to one company
+      description: BeeL emails the acceptance link; the member can operate one company
+      value:
+        invited_email: ana.garcia@example.com
+        account_role: MEMBER
+        send_email: true
+        grants:
+          - company_id: 550e8400-e29b-41d4-a716-446655440000
+            access_level: OPERATE
+    invitation-admin:
+      summary: Invite an admin
+      description: Admins reach every company, so no grants are sent; you deliver the token yourself
+      value:
+        invited_email: luis.martin@example.com
+        account_role: ADMIN
+        send_email: false
+        grants: []
+    provision-with-company:
+      summary: Provision an account with its first company
+      description: The account is created with its holder and fiscal profile; you keep operating it
+      value:
+        email: hola@estudio-ejemplo.example.com
+        display_name: Estudio Ejemplo
+        external_ref: cliente-4821
+        language: es
+        access_level: OPERATE
+        tax_profile:
+          nif: 12345678Z
+          legal_name: María López Fernández
+          entity_type: INDIVIDUAL
+          address:
+            street: Calle Mayor
+            number: '15'
+            floor: '2'
+            door: B
+            postal_code: '28013'
+            city: Madrid
+            province: Madrid
+            country_code: ES
+          default_main_tax:
+            type: IVA
+            percentage: 21
+            regime_key: '01'
+          default_irpf_rate: 15
+        send_email: false
+    provision-minimal:
+      summary: Provision an account without a holder yet
+      description: The holder is added later, when the claim token is issued with their email
+      value:
+        display_name: Taller Ejemplo
+        external_ref: cliente-4822
+    access-level-view:
+      summary: Downgrade to read-only access
+      value:
+        access_level: VIEW
+    claim-token-new-holder:
+      summary: Name the holder of an account that has none
+      value:
+        email: maria.lopez@example.com
+        language: es
+    create-individual:
+      summary: Self-employed person, activated in Test
+      description: Seeds the three default series with the given numbering
+      value:
+        nif: 12345678Z
+        legal_name: María López Fernández
+        entity_type: INDIVIDUAL
+        address:
+          street: Calle Mayor
+          number: '15'
+          floor: '2'
+          door: B
+          postal_code: '28013'
+          city: Madrid
+          province: Madrid
+          country_code: ES
+        default_main_tax:
+          type: IVA
+          percentage: 21
+          regime_key: '01'
+        default_irpf_rate: 15
+        aeat_environment: TEST
+        activate: true
+        numbering:
+          code: F
+          format: '{CODIGO}-{YYYY}-{NUM:4}'
+          counter_reset: ANNUAL
+          initial_number: 1
+    create-legal-entity:
+      summary: Company with a legal representative, not activated yet
+      description: Created switched off; activate it later with POST /v1/companies/{company_id}/activations
+      value:
+        nif: B12345674
+        legal_name: Ejemplo Soluciones SL
+        trade_name: Ejemplo Soluciones
+        entity_type: LEGAL_ENTITY
+        legal_form: SL
+        address:
+          street: Calle Mayor
+          number: '15'
+          postal_code: '28013'
+          city: Madrid
+          province: Madrid
+          country_code: ES
+        legal_representative:
+          full_name: Jorge Ruiz Sánchez
+          nif: 87654321X
+          address:
+            street: Calle Mayor
+            number: '15'
+            floor: '2'
+            door: B
+            postal_code: '28013'
+            city: Madrid
+            province: Madrid
+            country_code: ES
+        activate: false
+    patch-contact-and-bank:
+      summary: Update contact and bank details
+      description: Only the fields sent change
+      value:
+        phone: +34 910 123 456
+        email: facturacion@example.com
+        default_iban: ES9121000418450200051332
+        default_swift: CAIXESBBXXX
+        account_holder: María López Fernández
+        default_payment_term: 30
+    invoice-customization:
+      summary: Set template, colour and languages
+      value:
+        invoice_template_type: PROFESSIONAL_SERVICE
+        invoice_accent_color: '#1F6FEB'
+        invoice_language: es
+        email_language: es
+    verifactu-enable:
+      summary: Turn VeriFactu on
+      value:
+        enabled: true
+    verifactu-disable:
+      summary: Turn VeriFactu off
+      description: Not accepted in Test, where VeriFactu is always on
+      value:
+        enabled: false
+    tax-professional:
+      summary: Professional with 21% VAT and 15% IRPF
+      value:
+        default_main_tax:
+          type: IVA
+          percentage: 21
+          regime_key: '01'
+        apply_irpf: true
+        default_irpf_rate: 15
+        apply_equivalence_surcharge: false
+        default_payment_method: BANK_TRANSFER
+        payment_term_days: 30
+    tax-retailer:
+      summary: Retailer under the equivalence surcharge
+      value:
+        apply_equivalence_surcharge: true
+        default_equivalence_surcharge: 5.2
+        apply_irpf: false
     main_series:
       summary: Main series
       value:
@@ -31874,6 +32881,40 @@ components:
       summary: Change numbering format
       value:
         format: '{YYYY}-{CODIGO}-{NUM:4}'
+    initiate-stripe:
+      summary: Connect a Stripe account
+      value:
+        provider: stripe
+        return_url: https://app.example.com/integrations/stripe/done
+    update-settings:
+      summary: Invoice payments automatically, skipping refunds
+      description: Only the fields sent change
+      value:
+        auto_invoice_enabled: true
+        event_source: PAYMENTS
+        auto_create_customer: true
+        send_invoice_by_email: true
+        prices_include_tax: true
+        tax_inclusive_tax:
+          type: IVA
+          percentage: 21
+          regime_key: '01'
+        filter_config:
+          min_amount: 1
+          disabled_categories:
+            - REFUND
+    patch-events:
+      summary: Change the subscribed events
+      description: The events array replaces the previous list
+      value:
+        events:
+          - invoice.issued
+          - invoice.voided
+          - verifactu.status.updated
+    patch-disable:
+      summary: Pause deliveries
+      value:
+        active: false
   headers:
     CreatedResourceLocation:
       description: URI of the created resource — its canonical GET (`/v1/companies/{company_id}/...` or `/v1/accounts/{account_id}/...`).
