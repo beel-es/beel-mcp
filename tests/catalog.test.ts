@@ -51,6 +51,7 @@ describe('the error catalogue stays anchored to the contract', () => {
     // from. If it were wrong, an agent would search the docs for something that
     // does not exist, or dismiss a real code as invented.
     const PROBES: Array<[string, unknown]> = [
+      ['createCompanyInvoice', { type: 'SIMPLIFIED', recipient: { nif: '12345678Z' }, lines: [] }],
       [
         'createCompanyInvoice',
         {
@@ -92,6 +93,7 @@ describe('the error catalogue stays anchored to the contract', () => {
     const enforced = [
       'LINE_UNIT_PRICE_XOR_DECLARED_TOTAL',
       'SIMPLIFICADA_FORBIDS_IRPF',
+      'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
       'SURCHARGE_REQUIRES_REGIME',
       'SERIES_ANNUAL_REQUIRES_YEAR',
       'NUMBERING_REQUIRES_ACTIVATION',

@@ -3,9 +3,9 @@
  *
  * The API already answers well. Its `message` explains the problem in the
  * caller's language, `error.details` carries the specifics, and the RFC 7807
- * `type` URI links to a documentation page for that exact code — around 357 of
- * them, maintained alongside the API. Restating any of that here would be
- * maintenance cost that decays into a contradiction.
+ * `type` URI links to a documentation page for that exact code, one per code the
+ * API can answer with, maintained alongside it. Restating any of that here would
+ * be maintenance cost that decays into a contradiction.
  *
  * Two things are missing from all of it, and they are the only things in this
  * file:
@@ -57,6 +57,13 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Work through the blockers listed below, or call beel_get_setup_status for the same ' +
       'list with a next action per NIF.',
+    guardrail: 'verifactu-gates',
+  },
+  PROFILE_INCOMPLETE: {
+    actor: 'configuration',
+    remedy:
+      'Fill the fields named in error.details.missing_fields (entity_type, legal_name, ' +
+      'address) with beel_patch_company, then retry.',
     guardrail: 'verifactu-gates',
   },
   COMPANY_NOT_ACTIVATED: {
@@ -131,6 +138,35 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'numbering is never rewritten.',
     guardrail: 'series-and-numbering',
   },
+  // A 409 here is a clash, not a retry that already landed.
+  SERIES_FORMAT_OVERLAPS: {
+    actor: 'request',
+    remedy:
+      'Nothing was saved. Change the code or format so it cannot print the numbers of the ' +
+      'series named in the error; beel_list_series shows the existing formats.',
+    guardrail: 'series-and-numbering',
+  },
+  SERIES_NUMBER_COLLISION: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was consumed, but retrying gives the same result: ' +
+      'the series needs review by BeeL support.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_TOO_LONG: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or shorten ' +
+      'the series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_INVALID_CHARACTERS: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or fix the ' +
+      'series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
   NUMBERING_REQUIRES_ACTIVATION: { actor: 'request', guardrail: 'series-and-numbering' },
 
   // ── Invoice lifecycle ─────────────────────────────────────────────────────
@@ -173,6 +209,16 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
       'default, which may be non-zero.',
+    guardrail: 'invoice-types',
+  },
+  // Also answered when issuing a draft saved with an identified recipient, where
+  // the fix is an edit of the draft rather than of the request.
+  SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT: {
+    actor: 'request',
+    remedy:
+      'Nothing was issued. Make it a STANDARD invoice (on a draft, beel_patch_invoice with ' +
+      'type: STANDARD), or remove recipient.nif and recipient.alternative_id to keep it ' +
+      'SIMPLIFIED. BeeL applies this at any amount.',
     guardrail: 'invoice-types',
   },
   SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'regime-keys' },
@@ -221,6 +267,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy: 'Confirm the company id with beel_list_companies.',
   },
   LIVE_CREDENTIAL_REQUIRED: { actor: 'access' },
+  WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED: {
+    actor: 'access',
+    remedy:
+      'Ten subscriptions are already active. Turn one you no longer need off (active: false) ' +
+      'with beel_patch_webhook_subscription, or delete it with beel_delete_webhook_subscription.',
+  },
   RATE_LIMIT_EXCEEDED: {
     actor: 'benign',
     remedy:

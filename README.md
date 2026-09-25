@@ -108,7 +108,7 @@ than a redirect; both point at the same npm package and the same hosted server.
 
 ## What it provides
 
-- **117 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
+- **123 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
 - **4 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
   `beel_docs_get`, `beel_docs_list` over the documentation, and
@@ -156,6 +156,7 @@ bad payload never even consumes an idempotency key:
 | Exactly one pricing field per line | `LINE_UNIT_PRICE_XOR_DECLARED_TOTAL` |
 | No discount on a declared total | `LINE_DECLARED_TOTAL_FORBIDS_DISCOUNT` |
 | No IRPF withholding on a simplified (F2) invoice | `SIMPLIFICADA_FORBIDS_IRPF` |
+| No `nif` or `alternative_id` on a simplified (F2) invoice's recipient | `SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT` |
 | Equivalence surcharge only under regime `18`, and `18` only with one | `SURCHARGE_REQUIRES_REGIME` / `REGIME_REQUIRES_SURCHARGE` |
 | Series format can tell its reset periods apart | `SERIES_ANNUAL_REQUIRES_YEAR` / `SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR` |
 | Numbering is only seeded in the call that activates the company | `NUMBERING_REQUIRES_ACTIVATION` |
@@ -165,7 +166,7 @@ bad payload never even consumes an idempotency key:
 
 **3. Explained** — the BeeL API already answers well: its `message` is written for a
 human in the caller's language, `error.details` carries the specifics, and the RFC 7807
-`type` field links to a documentation page for that exact code (around 357 of them). The
+`type` field links to a documentation page for that exact code. The
 server relays all of that untouched, and adds only the two things a response cannot
 carry: **the remedy as a tool call** — the docs address someone with the dashboard open
 ("create a series in settings"), an agent needs `beel_set_default_series` — and

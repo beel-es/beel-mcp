@@ -68,7 +68,22 @@ describe('path substitution', () => {
 describe('query parameters', () => {
   const op = operation({
     queryParams: [
-      { name: 'status', in: 'query', required: false, schema: { type: 'array' } },
+      {
+        name: 'status',
+        in: 'query',
+        required: false,
+        schema: { type: 'array' },
+        style: 'form',
+        explode: false,
+      },
+      {
+        name: 'kind',
+        in: 'query',
+        required: false,
+        schema: { type: 'array' },
+        style: 'form',
+        explode: true,
+      },
       { name: 'page', in: 'query', required: false, schema: { type: 'integer' } },
     ],
   });
@@ -80,11 +95,25 @@ describe('query parameters', () => {
     });
   });
 
+  it('repeats the parameter per item, as style form / explode true requires', () => {
+    expect(collectQuery(op, { kind: ['PAYMENT', 'REFUND'] })).toEqual({
+      kind: ['PAYMENT', 'REFUND'],
+    });
+  });
+
+  it('reads the explode flag the contract declares on each array parameter', () => {
+    const events = buildApiTools().tools.find(
+      (t) => t.operation.operationId === 'listCompanyPaymentEvents',
+    );
+    const status = events?.operation.queryParams.find((p) => p.name === 'status');
+    expect(status).toMatchObject({ style: 'form', explode: true });
+  });
+
   it('omits absent parameters instead of sending an empty value', () => {
     expect(collectQuery(op, { status: undefined, page: null })).toEqual({});
   });
 
-  it('only exposes operations whose array query parameters use the supported style', () => {
+  it('only exposes operations whose array query parameters use a supported style', () => {
     const spec = parseYaml(readFileSync('openapi/public-api.yaml', 'utf8')) as {
       paths: Record<string, Record<string, { operationId?: string; parameters?: unknown[] }>>;
     };
@@ -102,7 +131,7 @@ describe('query parameters', () => {
             schema?: { type?: string };
           };
           if (p.in !== 'query' || p.schema?.type !== 'array') continue;
-          if (p.style !== 'form' || p.explode !== false) {
+          if (p.style !== 'form' || typeof p.explode !== 'boolean') {
             offenders.push(`${method} ${op.operationId}.${p.name}: ${p.style}/${p.explode}`);
           }
         }

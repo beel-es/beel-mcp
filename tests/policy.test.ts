@@ -17,6 +17,7 @@ describe('tool policy', () => {
     for (const id of [
       'createCompanyInvoice',
       'listCompanyInvoices',
+      'listCompanyInvoiceVerifactuRecords',
       'voidCompanyInvoice',
       'validateNif',
     ]) {

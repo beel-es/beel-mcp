@@ -52,6 +52,36 @@ describe('executable guardrails — F2 and IRPF', () => {
   });
 });
 
+describe('executable guardrails — F2 and an identified recipient', () => {
+  it('rejects a SIMPLIFIED invoice whose recipient carries a nif or an alternative_id', () => {
+    const id = { type: 'NIF_IVA', number: 'FR40303265045', country_code: 'FR' };
+    for (const recipient of [
+      { legal_name: 'Ana', nif: '12345678Z' },
+      { legal_name: 'Anne', alternative_id: id },
+    ]) {
+      for (const op of ['createCompanyInvoice', 'patchCompanyInvoice']) {
+        expect(codes({ type: 'SIMPLIFIED', recipient, lines: [line()] }, op)).toContain(
+          'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
+        );
+      }
+    }
+  });
+
+  it('allows a SIMPLIFIED invoice with no identifier, and a STANDARD one with it', () => {
+    expect(codes({ type: 'SIMPLIFIED', recipient: {}, lines: [line()] })).toEqual([]);
+    expect(
+      codes({ type: 'SIMPLIFIED', recipient: { legal_name: 'Ana', nif: null }, lines: [line()] }),
+    ).toEqual([]);
+    expect(
+      codes({
+        type: 'STANDARD',
+        recipient: { legal_name: 'Ana', nif: '12345678Z' },
+        lines: [line()],
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe('executable guardrails — equivalence surcharge and regime', () => {
   it('rejects a surcharge under a regime that does not admit one', () => {
     const body = {

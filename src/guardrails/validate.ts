@@ -221,6 +221,23 @@ function checkInvoice(body: Record<string, unknown>, out: GuardrailViolation[]):
     );
   }
   const invoiceType = typeof body.type === 'string' ? body.type : undefined;
+  // BeeL's own rule, not the law's: a simplified invoice is for a recipient who
+  // is not identified. Only checkable when the identifier travels in this body;
+  // anything the request does not carry is left to the API.
+  const recipient = body.recipient;
+  if (invoiceType === 'SIMPLIFIED' && isRecord(recipient)) {
+    const identifiers = ['nif', 'alternative_id'].filter((field) => recipient[field] != null);
+    if (identifiers.length > 0) {
+      out.push(
+        apiViolation(
+          'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
+          `body.recipient.${identifiers[0]}`,
+          `the recipient carries ${identifiers.join(' and ')} on a SIMPLIFIED invoice; BeeL issues a simplified invoice only to a recipient who is not identified, at any amount.`,
+          'Set type: STANDARD (F1) and keep the identifier, or drop recipient.nif and recipient.alternative_id to keep it SIMPLIFIED.',
+        ),
+      );
+    }
+  }
   if (Array.isArray(body.lines)) {
     body.lines.forEach((line, i) => {
       if (isRecord(line)) checkLine(line, `body.lines[${i}]`, invoiceType, out);
