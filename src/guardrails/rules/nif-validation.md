@@ -35,5 +35,12 @@ but can still receive an invoice; a **revoked** one cannot operate on either sid
 ## Foreign recipients
 
 A recipient without a Spanish tax id uses `alternative_id` (passport or other document)
-together with their country. For intra-EU B2B, the VAT number identifies them. Census
-matching does not apply, so the name requirement above does not either.
+together with their country. Census matching does not apply, so the name requirement
+above does not either.
+
+For intra-EU B2B the EU VAT number identifies them: `type: NIF_IVA` (02), only for an EU
+member state other than Spain (`ALTERNATIVE_ID_VAT_REQUIRES_EU_COUNTRY`), and `number`
+with that country's VAT structure, prefix included — `FR40303265045`, `EL094014201` for
+Greece (`ALTERNATIVE_ID_VAT_INVALID_FORMAT`). A customer from outside the EU uses another
+type, such as `OTHER_DOCUMENT` or `COUNTRY_ID`. Well-formed is not registered: a number
+missing from VIES is still rejected by VeriFactu after the invoice is issued.

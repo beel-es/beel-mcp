@@ -182,7 +182,7 @@ bad payload never even consumes an idempotency key:
 
 **3. Explained** — the BeeL API already answers well: its `message` is written for a
 human in the caller's language, `error.details` carries the specifics, and the RFC 7807
-`type` field links to a documentation page for that exact code (around 357 of them). The
+`type` field links to a documentation page for that exact code. The
 server relays all of that untouched, and adds only the two things a response cannot
 carry: **the remedy as a tool call** — the docs address someone with the dashboard open
 ("create a series in settings"), an agent needs `beel_set_default_series` — and
