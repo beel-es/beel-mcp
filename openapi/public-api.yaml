@@ -47,7 +47,7 @@ info:
     A `data` holding the array directly, with `pagination` as its sibling, is arguably the nicer
     shape and is what a v2 of this contract would adopt. It is **not** what v1 does, and v1 will not
     be flipped to it: live integrations read `data.<key>` today, and no ergonomic gain justifies
-    breaking them without a version to move to. See ADR 0012.
+    breaking them without a version to move to.
 
     Operations on their way out are the one exception, and they are frozen rather than fixed. An
     operation that is `deprecated` and announces a `Sunset` date keeps whatever shape it shipped
@@ -490,6 +490,20 @@ paths:
               $ref: '#/components/schemas/InvoiceStatus'
           style: form
           explode: false
+        - name: payment_method
+          in: query
+          description: |
+            Filter by payment method. Accepts a comma-separated list to match any of several
+            methods, for example `payment_method=DIRECT_DEBIT,CARD`. A single value is also valid.
+            `NONE` also matches invoices that have no payment method stored. Combine it with
+            `date_from`/`date_to` to list, for example, the direct debits of a month.
+          schema:
+            type: array
+            minItems: 1
+            items:
+              $ref: '#/components/schemas/PaymentMethod'
+          style: form
+          explode: false
         - name: type
           in: query
           description: Filter by invoice type
@@ -722,8 +736,6 @@ paths:
                 $ref: '#/components/examples/create-issue-directly'
               custom_email:
                 $ref: '#/components/examples/create-with-custom-email'
-              simplified_with_nif:
-                $ref: '#/components/examples/simplified-with-nif'
               simplified_under_3000:
                 $ref: '#/components/examples/under-3000'
               standard_spanish_b2b:
@@ -2769,6 +2781,20 @@ paths:
               $ref: '#/components/schemas/InvoiceStatus'
           style: form
           explode: false
+        - name: payment_method
+          in: query
+          description: |
+            Filter by payment method. Accepts a comma-separated list to match any of several
+            methods, for example `payment_method=DIRECT_DEBIT,CARD`. A single value is also valid.
+            `NONE` also matches invoices that have no payment method stored. Combine it with
+            `date_from`/`date_to` to list, for example, the direct debits of a month.
+          schema:
+            type: array
+            minItems: 1
+            items:
+              $ref: '#/components/schemas/PaymentMethod'
+          style: form
+          explode: false
         - name: type
           in: query
           description: Filter by invoice type
@@ -2998,8 +3024,6 @@ paths:
                 $ref: '#/components/examples/create-issue-directly'
               custom_email:
                 $ref: '#/components/examples/create-with-custom-email'
-              simplified_with_nif:
-                $ref: '#/components/examples/simplified-with-nif'
               simplified_under_3000:
                 $ref: '#/components/examples/under-3000'
               standard_spanish_b2b:
@@ -3089,13 +3113,13 @@ paths:
                 error_invoice_empty_lines:
                   $ref: '#/components/examples/response_example'
                 error_invoice_invalid_nif:
-                  $ref: '#/components/examples/response_example-2'
+                  $ref: '#/components/examples/invalid-nif_response_example'
                 error_invoice_required_fields:
-                  $ref: '#/components/examples/response_example-3'
+                  $ref: '#/components/examples/required-fields_response_example'
                 error_simplified_exceeds_limit:
-                  $ref: '#/components/examples/exceeds_no_nif'
-                error_simplified_exceeds_limit_with_nif:
-                  $ref: '#/components/examples/exceeds_with_nif'
+                  $ref: '#/components/examples/exceeds_3000'
+                error_simplified_identified_recipient:
+                  $ref: '#/components/examples/identified-recipient_response_example'
                 error_derived_unit_price_out_of_range:
                   $ref: '#/components/examples/derived_unit_price_out_of_range_response'
         '429':
@@ -3777,6 +3801,81 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A NIF that does not exist answers the same way.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/invoices/{invoice_id}/verifactu-records:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on — its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+      - name: invoice_id
+        in: path
+        required: true
+        description: Invoice ID
+        schema:
+          $ref: '#/components/schemas/UUID'
+    get:
+      operationId: listCompanyInvoiceVerifactuRecords
+      tags:
+        - CompanyInvoices
+      summary: List the VeriFactu records of an invoice
+      description: |
+        Returns the VeriFactu records of this invoice, each with its own status, ordered by
+        `registered_at` ascending: the registration first and, if the invoice was voided, its
+        cancellation after it. A record rejected before reaching the AEAT is listed too, as
+        `REJECTED`, until the invoice is submitted again: the new record then replaces it.
+
+        - **No records:** an invoice that was never submitted (a draft, or one outside VeriFactu)
+          answers `200` with an empty list.
+
+        **Closed catalogue.** This collection is fixed and bounded: it carries no `pagination`, it
+        takes no `page`/`limit`, and every response holds the whole set.
+      x-closed-catalogue: true
+      x-required-scopes:
+        - invoices:read
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: VeriFactu records retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - records
+                        properties:
+                          records:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/VeriFactuRecord'
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -10487,7 +10586,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/CreatedResourceLocation'
-          description: 'Account provisioned successfully. **Business idempotency** by `external_ref`: resending the same `external_ref` returns **201 with the same account id** (not 409); a fresh `claim_token` is re-issued while the account is still unclaimed (and the previous one is invalidated). For **exact response idempotency** (same body, same token on retries) send an `Idempotency-Key` header — the response is cached for 24h.'
+          description: 'Account provisioned successfully. **Business idempotency** by `external_ref`: resending the same `external_ref` returns **201 with the same account id** (not 409). While the account is still unclaimed, a claim link that is still valid is **never revoked**: the response comes back with `claim_token` and `claim_url` `null` and `claim_link_already_issued: true`, and no email is re-sent. Only when no valid link remains (expired, or none was ever issued) is a fresh `claim_token` issued. To replace a valid link on purpose, use `POST /v1/accounts/{account_id}/claim-tokens`. For **exact response idempotency** (same body, same token on retries) send an `Idempotency-Key` header — the response is cached for 24h.'
           content:
             application/json:
               schema:
@@ -10920,6 +11019,11 @@ paths:
         `account.claim_token` and `account.claim_url`: each newly provisioned row carries them
         in this response and nowhere else, so persist them before discarding it. A lost token is
         re-issued with `POST /v1/accounts/{account_id}/claim-tokens`.
+
+        Re-uploading the file never breaks the links you already handed out: a row whose account is
+        still unclaimed and holds a valid claim link comes back with `claim_token` and `claim_url`
+        `null` and `account.claim_link_already_issued: true`. Only an account with no valid link left
+        (expired, or never issued) gets a fresh one.
       x-required-scopes:
         - accounts:write
       security:
@@ -17973,7 +18077,7 @@ components:
           documented variant of pagination, not another envelope.
 
         Putting the array straight into `data` with `pagination` as its sibling is the shape a v2
-        would adopt; v1 is not being flipped to it. See ADR 0012.
+        would adopt; v1 is not being flipped to it.
       required:
         - success
         - data
@@ -18567,12 +18671,14 @@ components:
       description: |
         - STANDARD: Standard invoice
         - CORRECTIVE: Corrects or cancels a previous invoice
-        - SIMPLIFIED: Simplified invoice (ticket). The recipient's `nif` or `alternative_id`
-          is optional. The only amount BeeL enforces is a cap of 3,000€ VAT included
-          (`SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT`), with or without an identified
-          recipient. The general limit of RD 1619/2012 is 400€ (art. 4.1.a); up to 3,000€
-          applies only to the activities listed in art. 4.2. BeeL does not check which
-          activity the issuer carries out.
+        - SIMPLIFIED: Simplified invoice (ticket), for a recipient that is not identified. BeeL.
+          requires a STANDARD invoice when the recipient is identified, at any amount: a
+          SIMPLIFIED invoice whose recipient carries an `nif` or `alternative_id` is rejected
+          with `SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT`. The only amount BeeL
+          enforces is a cap of 3,000€ VAT included (`SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT`). The
+          general limit of RD 1619/2012 is 400€ (art. 4.1.a); up to 3,000€ applies only to the
+          activities listed in art. 4.2. BeeL does not check which activity the issuer carries
+          out.
         - PROFORMA: Commercial document (formal quote) with no fiscal validity.
           Never enters VeriFactu (no QR, no AEAT submission): `verifactu.enabled` is
           always `false`, whatever the company's regime. Requires full recipient data,
@@ -18712,9 +18818,8 @@ components:
       required:
         - legal_name
       description: |
-        Recipient data in the invoice response.
-        Note: For simplified invoices, only legal_name may be present.
-        NIF and address are optional for SIMPLIFIED type invoices.
+        Recipient data as stored on the invoice. Only `legal_name` is always present; the other
+        fields appear when the invoice stores them.
       properties:
         customer_id:
           type: string
@@ -18741,8 +18846,8 @@ components:
           maxLength: 9
           nullable: true
           description: |
-            Spanish Tax ID (9 alphanumeric characters).
-            Optional for simplified invoices (SIMPLIFIED type).
+            Spanish Tax ID (9 alphanumeric characters), when the invoice identifies its recipient
+            with one.
             Valid formats:
             - DNI: 8 digits + letter (e.g., 12345678A)
             - NIE: X/Y/Z + 7 digits + letter (e.g., X1234567A)
@@ -18751,7 +18856,9 @@ components:
         alternative_id:
           allOf:
             - $ref: '#/components/schemas/AlternativeIdentifier'
-            - description: Alternative identifier for foreign customers (mutually exclusive with nif)
+            - description: |
+                Alternative identifier for foreign customers (mutually exclusive with nif), when
+                the invoice identifies its recipient with one.
         address:
           allOf:
             - $ref: '#/components/schemas/AddressResponse'
@@ -19162,12 +19269,16 @@ components:
           description: |
             Spanish Tax ID (9 alphanumeric characters).
             Required when customer_id is not provided and alternative_id is absent.
-            Always optional for SIMPLIFIED invoices (with or without NIF: limit 3,000€ VAT included).
+            Not accepted on SIMPLIFIED invoices: BeeL. requires a STANDARD invoice when the
+            recipient is identified.
           example: B12345674
         alternative_id:
           allOf:
             - $ref: '#/components/schemas/AlternativeIdentifier'
-            - description: Alternative identifier for foreign customers (mutually exclusive with nif)
+            - description: |
+                Alternative identifier for foreign customers (mutually exclusive with nif).
+                Not accepted on SIMPLIFIED invoices, like `nif`: BeeL. requires a STANDARD
+                invoice when the recipient is identified.
         address:
           $ref: '#/components/schemas/Address'
         phone:
@@ -20086,18 +20197,32 @@ components:
       description: |
         Alternative identifier for customers without Spanish Tax ID.
 
-        ### VeriFactu rules (enforced server-side, `422` on violation)
-        - If `country_code = ES`, then `type` **must** be `PASSPORT` (03) or `NOT_REGISTERED` (07);
-          any other type is rejected with `ALTERNATIVE_ID_SPAIN_INVALID_TYPE`.
-        - If `type = NOT_REGISTERED` (07), then `country_code` **must** be `ES`; any other country is
-          rejected with `ALTERNATIVE_ID_REQUIRES_SPAIN`.
+        ### VeriFactu rules (checked when you send it, `422` on violation)
+        - If `country_code = ES`, then `type` **must** be `PASSPORT` (03) or `NOT_REGISTERED` (07)
+          (`ALTERNATIVE_ID_SPAIN_INVALID_TYPE`).
+        - If `type = NOT_REGISTERED` (07), then `country_code` **must** be `ES`
+          (`ALTERNATIVE_ID_REQUIRES_SPAIN`).
+        - If `type = NIF_IVA` (02), `country_code` **must** be an EU member state other than Spain
+          (`ALTERNATIVE_ID_VAT_REQUIRES_EU_COUNTRY`), and `number` **must** have that country's
+          EU VAT number structure as AEAT defines it: the country prefix (`EL` for Greece) followed
+          by the national number, e.g. `FR40303265045`, `DE123456789`, `EL094014201`
+          (`ALTERNATIVE_ID_VAT_INVALID_FORMAT`). Lowercase letters are accepted and stored in
+          uppercase. A customer from outside the EU is identified with another type, such as
+          `OTHER_DOCUMENT` or `COUNTRY_ID`.
 
         A `number` that is blank once trimmed is rejected with `ALTERNATIVE_ID_INVALID`.
+
+        Well-formed is not the same as registered: an EU VAT number that is not in the VIES
+        census is still rejected by VeriFactu after the invoice is issued.
+
+        An identifier returned in a response is the one stored. A customer saved before a rule
+        existed keeps its identifier and can still be read; issuing an invoice to it with an
+        identifier that breaks these rules is rejected with the same code, before a number is used.
 
         ### Matrix of allowed combinations
         | `type`                 | `country_code = ES` | `country_code ≠ ES` |
         |------------------------|:-------------------:|:-------------------:|
-        | `NIF_IVA` (02)         | ✗                   | ✓                   |
+        | `NIF_IVA` (02)         | ✗                   | EU member states only |
         | `PASSPORT` (03)        | ✓                   | ✓                   |
         | `COUNTRY_ID` (04)      | ✗                   | ✓                   |
         | `RESIDENCE_CERTIFICATE` (05) | ✗             | ✓                   |
@@ -20121,7 +20246,7 @@ components:
             - '07'
           description: |
             Identifier type. Use descriptive names:
-            - **NIF_IVA**: VAT-ID (intra-community EU) — *not allowed when `country_code = ES`*
+            - **NIF_IVA**: EU VAT number (intra-community) — *only for an EU member state other than Spain, with that country's VAT number structure*
             - **PASSPORT**: Passport — *allowed for any country*
             - **COUNTRY_ID**: Country of residence ID — *not allowed when `country_code = ES`*
             - **RESIDENCE_CERTIFICATE**: Residence certificate — *not allowed when `country_code = ES`*
@@ -20134,6 +20259,9 @@ components:
           type: string
           minLength: 1
           maxLength: 20
+          description: |
+            Identifier number. For `NIF_IVA`, the full EU VAT number with its country prefix
+            (e.g. `FR40303265045`); see the VeriFactu rules on the parent schema.
         country_code:
           type: string
           pattern: ^[A-Z]{2}$
@@ -25667,6 +25795,82 @@ components:
             $ref: '#/components/schemas/UUID'
         filters:
           $ref: '#/components/schemas/InvoiceExportFilters'
+    VeriFactuRecordOperation:
+      type: string
+      description: |
+        Operation a VeriFactu record submits to the AEAT.
+
+        * `REGISTRATION` — registration of the invoice.
+        * `VOID` — cancellation of a previously registered invoice.
+      enum:
+        - REGISTRATION
+        - VOID
+      example: REGISTRATION
+    VeriFactuRecord:
+      type: object
+      description: |
+        One VeriFactu record of an invoice: its registration or, if the invoice was voided, its
+        cancellation. The invoice's `verifactu` block summarises the
+        registration; this resource lists each record with its own status.
+      required:
+        - id
+        - operation
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: |
+            Record ID. Same value as `verifactu_registration_id` in the payload of the
+            `verifactu.status.updated` webhook event.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        operation:
+          $ref: '#/components/schemas/VeriFactuRecordOperation'
+        submission_status:
+          allOf:
+            - $ref: '#/components/schemas/VeriFactuSubmissionStatus'
+          description: |
+            Submission status of this record, in the same vocabulary as the invoice's
+            `verifactu.submission_status`. For `operation` `VOID` the final successful state is
+            `VOIDED`, not `ACCEPTED`; a rejected cancellation is `REJECTED`. On `REJECTED`,
+            `error_message` gives the reason and `error_code` carries the AEAT's code when the AEAT
+            gave one.
+        invoice_hash:
+          type: string
+          description: Invoice SHA-256 hash according to VeriFactu regulations. Only on `REGISTRATION` records.
+          example: 3A5B7C9D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B
+        registration_number:
+          type: string
+          description: |
+            Identifier (UUID) of this record in the VeriFactu submission, assigned when it is
+            submitted. It is not an AEAT code: quote it when you ask BeeL about the record.
+          example: 4f8c2a1e-9b3d-4e7a-8c5f-1d2e3f4a5b6c
+        registered_at:
+          type: string
+          format: date-time
+          description: |
+            Date and time this record was created. A record rejected before reaching the AEAT
+            also has one.
+        qr_url:
+          type: string
+          description: |
+            AEAT verification URL encoded in the invoice QR code. Only on `REGISTRATION` records.
+          example: https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=A%2F2025%2F0042&fecha=20-01-2025&importe=1590.00
+        error_code:
+          type: string
+          nullable: true
+          description: |
+            Error code returned by the AEAT. Present when the AEAT reported a remark or an error on
+            the record.
+          example: '3000'
+        error_message:
+          type: string
+          nullable: true
+          description: |
+            Human-readable reason for the outcome. When the AEAT reported a remark or an error on the
+            record, it is the AEAT's own description. When BeeL. decided the outcome (the submission
+            was rejected before reaching the AEAT, or BeeL. stopped waiting for a final answer), it
+            is a message written by BeeL., in the language of the request.
+          example: Factura ya existe en el sistema
     InvoicePreviewResponse:
       type: object
       required:
@@ -27414,10 +27618,11 @@ components:
           description: 'Optional. When `true`, BeeL emails the account holder a claim link (`/reclamar?token=...`) so they can set their password and take ownership. Defaults to `false`: by default you receive the `claim_token` in the response and deliver it yourself. Requires a deliverable `email`: sending `true` without one returns `422`.'
     ProvisionAccountResult:
       type: object
-      description: Result of a successful account provision. `claim_token` is a single-use secret to deliver to the account holder so they can set their password and take ownership. It is returned only once and invalidated on re-issue; `null` if the account was already claimed, and also `null` when the account was provisioned without `email` (there is no holder to hand it to yet). `claim_url` is the ready-to-use claim link BeeL builds for the current environment; `status` disambiguates a `null` `claim_token` (already claimed) from an error.
+      description: 'Result of a successful account provision. `claim_token` is a single-use secret to deliver to the account holder so they can set their password and take ownership. It is returned only once; `null` if the account was already claimed, `null` when the account was provisioned without `email` (there is no holder to hand it to yet), and `null` when a repeated provision found a claim link still valid (`claim_link_already_issued: true`). `claim_url` is the ready-to-use claim link BeeL builds for the current environment; `status` disambiguates a `null` `claim_token` (already claimed) from an error.'
       required:
         - account_id
         - status
+        - claim_link_already_issued
       properties:
         person_id:
           type: string
@@ -27434,12 +27639,16 @@ components:
         claim_token:
           type: string
           nullable: true
-          description: Single-use claim token (shown once); `null` if the account is already claimed.
+          description: Single-use claim token (shown once); `null` if the account is already claimed, or if a claim link issued earlier is still valid (see `claim_link_already_issued`).
         claim_url:
           type: string
           format: uri
           nullable: true
-          description: Ready-to-use claim link for the account holder, built by BeeL for the current environment (no need to assemble `/reclamar?token=` yourself). `null` when `claim_token` is `null` (the account is already claimed).
+          description: Ready-to-use claim link for the account holder, built by BeeL for the current environment (no need to assemble `/reclamar?token=` yourself). `null` when `claim_token` is `null`.
+        claim_link_already_issued:
+          type: boolean
+          description: '`true` when this call repeated the provision of an unclaimed account that already has a claim link still valid (pending and not expired). That link is **kept working**: nothing is issued or revoked, `claim_token` and `claim_url` come back `null`, and no email is re-sent even with `send_email: true` (there is no token in clear to send). The link you already handed out is the one the holder uses. To replace it on purpose, call `POST /v1/accounts/{account_id}/claim-tokens`, which revokes the previous one. `false` otherwise.'
+          example: false
         company_id:
           type: string
           format: uuid
@@ -27828,7 +28037,7 @@ components:
         account:
           allOf:
             - $ref: '#/components/schemas/ProvisionAccountResult'
-          description: 'The account this row produced — the same shape `POST /v1/accounts` returns, carrying `account_id`, `company_id` and the single-use `claim_token` / `claim_url` to hand to the holder. Absent in a preview (nothing was provisioned) and on a `BLOCKED` or `ERROR` row. On `ALREADY_EXISTS` it is the account that was already there. **The token is shown once**: store it, or re-issue it with `POST /v1/accounts/{account_id}/claim-tokens`.'
+          description: 'The account this row produced — the same shape `POST /v1/accounts` returns, carrying `account_id`, `company_id` and the single-use `claim_token` / `claim_url` to hand to the holder. Absent in a preview (nothing was provisioned) and on a `BLOCKED` or `ERROR` row. On `ALREADY_EXISTS` it is the account that was already there, and a claim link still valid is kept: `claim_token` is `null` and `claim_link_already_issued` is `true`. **The token is shown once**: store it, or re-issue it with `POST /v1/accounts/{account_id}/claim-tokens`.'
         series:
           type: array
           description: What each declared series did on this account. Empty when the import declares none.
@@ -30830,38 +31039,9 @@ components:
               please do not hesitate to contact us.
 
               Kind regards.
-    simplified-with-nif:
-      summary: Simplified with NIF ≤3000€
-      description: Simplified invoice with NIF, max 3000€ total. No full address required
-      value:
-        type: SIMPLIFIED
-        recipient:
-          legal_name: María García López
-          nif: 12345678A
-        lines:
-          - description: Security system installation
-            quantity: 1
-            unit: installation
-            unit_price: 1800
-            discount_percentage: 0
-            main_tax:
-              type: IVA
-              percentage: 21
-              regime_key: '20'
-          - description: Surveillance cameras - 4 units
-            quantity: 4
-            unit: unit
-            unit_price: 150
-            discount_percentage: 0
-            main_tax:
-              type: IVA
-              percentage: 21
-              regime_key: '20'
-        payment_info:
-          method: CARD
     under-3000:
-      summary: Simplified invoice under 3000 EUR
-      description: Ticket invoice for consumer without NIF, total under 3000 EUR limit
+      summary: Simplified invoice without NIF under 3000 EUR
+      description: Ticket invoice for consumer without NIF, total under the 3000 EUR absolute cap
       value:
         type: SIMPLIFIED
         recipient: {}
@@ -31785,7 +31965,7 @@ components:
         meta:
           timestamp: '2025-01-26T11:15:00Z'
           request_id: b1b1b1b1-0001-4000-a000-000000000010
-    response_example-2:
+    invalid-nif_response_example:
       summary: Recipient tax id is not valid (422)
       value:
         success: false
@@ -31798,7 +31978,7 @@ components:
         meta:
           timestamp: '2025-01-26T10:45:00Z'
           request_id: req_error_nif001
-    response_example-3:
+    required-fields_response_example:
       summary: Required fields missing (422)
       value:
         success: false
@@ -31825,8 +32005,8 @@ components:
         meta:
           timestamp: '2025-01-26T11:30:00Z'
           request_id: req_error_validation001
-    exceeds_no_nif:
-      summary: Simplified invoice over 3,000€, with no tax id
+    exceeds_3000:
+      summary: Simplified invoice over 3,000€ (422)
       value:
         success: false
         error:
@@ -31836,13 +32016,13 @@ components:
         meta:
           timestamp: '2025-02-03T12:00:00Z'
           request_id: req_error_simpl001
-    exceeds_with_nif:
-      summary: Simplified invoice over 3,000€, tax id present
+    identified-recipient_response_example:
+      summary: Simplified invoice with an identified recipient (422)
       value:
         success: false
         error:
-          code: SIMPLIFIED_INVOICE_EXCEEDS_LEGAL_LIMIT
-          message: 'Simplified invoices cannot exceed 3,000€ (VAT included). Current total: 4,235€. Reduce the amount or issue an ordinary invoice.'
+          code: SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT
+          message: BeeL. does not issue simplified invoices with an identified recipient (NIF or alternative identifier). Issue an ordinary invoice instead.
           details: {}
         meta:
           timestamp: '2025-02-03T12:05:00Z'

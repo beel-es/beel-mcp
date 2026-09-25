@@ -3,9 +3,9 @@
  *
  * The API already answers well. Its `message` explains the problem in the
  * caller's language, `error.details` carries the specifics, and the RFC 7807
- * `type` URI links to a documentation page for that exact code — around 357 of
- * them, maintained alongside the API. Restating any of that here would be
- * maintenance cost that decays into a contradiction.
+ * `type` URI links to a documentation page for that exact code, one per code the
+ * API can answer with, maintained alongside it. Restating any of that here would
+ * be maintenance cost that decays into a contradiction.
  *
  * Two things are missing from all of it, and they are the only things in this
  * file:
@@ -209,6 +209,16 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
       'default, which may be non-zero.',
+    guardrail: 'invoice-types',
+  },
+  // Also answered when issuing a draft saved with an identified recipient, where
+  // the fix is an edit of the draft rather than of the request.
+  SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT: {
+    actor: 'request',
+    remedy:
+      'Nothing was issued. Make it a STANDARD invoice (on a draft, beel_patch_invoice with ' +
+      'type: STANDARD), or remove recipient.nif and recipient.alternative_id to keep it ' +
+      'SIMPLIFIED. BeeL applies this at any amount.',
     guardrail: 'invoice-types',
   },
   SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'regime-keys' },

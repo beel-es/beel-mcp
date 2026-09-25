@@ -60,6 +60,11 @@ describe('buildManifest', () => {
     expect(names).toContain('limit');
   });
 
+  it('reads the payment_method filter of the invoice list as a comma-joined array', () => {
+    const param = byId('listCompanyInvoices').queryParams.find((p) => p.name === 'payment_method');
+    expect(param?.explode).toBe(false);
+  });
+
   it('extracts path parameters', () => {
     expect(byId('getInvoice').pathParams.map((p) => p.name)).toEqual(['invoice_id']);
   });

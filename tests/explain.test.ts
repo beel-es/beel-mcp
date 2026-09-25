@@ -4,7 +4,7 @@ import { explainCode, explainError } from '../src/guardrails/explain.js';
 describe('explaining API errors', () => {
   it("leads with the API's own message and links its documentation page", () => {
     // The message and the doc page are the API's job and it does it well, in the
-    // caller's language and across ~357 codes. This layer must not paraphrase them.
+    // caller's language and across every code it can answer with. This layer must not paraphrase them.
     const text = explainError({
       status: 422,
       message: 'Environments do not match',

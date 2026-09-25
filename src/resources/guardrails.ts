@@ -86,7 +86,7 @@ function errorsBody(): string {
     '# BeeL error codes',
     '',
     'Every BeeL error carries its own documentation link as the RFC 7807 `type` field, and',
-    `around 357 codes have a page under \`${BEEL_DEFAULTS.docsUrl}/errors/<CODE>\`. That is the`,
+    `every code has a page under \`${BEEL_DEFAULTS.docsUrl}/errors/<CODE>\`. That is the`,
     'canonical explanation of what a code means, in the language you asked for.',
     '',
     'Listed here are only the codes this server can add something to: the tool call that',
