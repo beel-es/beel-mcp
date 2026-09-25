@@ -2299,7 +2299,7 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "issuer",
-      "statement": "When the recipient is a business or professional acting as such, or asks for an invoice to exercise a tax right, the operation is always invoiced. When that recipient asks for it, the invoice carries its NIF and address and shows the tax separately: a full invoice, or a simplified one completed with those details.",
+      "statement": "When the recipient is a business or professional acting as such, or asks for an invoice to exercise a tax right, the operation is always invoiced. When that recipient asks for it, the invoice carries its NIF and address and shows the tax separately: a full invoice, or a simplified one completed with those details. In BeeL., that is a standard invoice (SIM-006).",
       "why": "Without an invoice the issuer breaches its invoicing obligation, and without the recipient's details and the tax shown apart the customer cannot deduct the VAT.",
       "applies_to": {
         "invoice_types": [
@@ -3320,8 +3320,8 @@
       "impact": "high",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "Identify a recipient without a Spanish NIF with an alternative_id of the type that fits (EU VAT number, passport, official ID, residence certificate, other document or not registered) and its country, never together with a nif. With country ES, only a passport or the not-registered type is accepted.",
-      "why": "AEAT identifies each recipient either by NIF or by this identifier, never both, and rejects combinations its validations do not allow.",
+      "statement": "Identify a recipient without a Spanish NIF with an alternative_id of the type that fits (EU VAT number, passport, official ID, residence certificate, other document or not registered) and its country, never together with a nif. With country ES, only a passport or the not-registered type is accepted. An EU VAT number (NIF_IVA) is accepted only with the country of another EU Member State and in that State's VAT number format: its country prefix (EL for Greece) followed by the national number, in capital letters and without spaces, as in FR40303265045. A Spanish NIF is never sent as an EU VAT number; a customer from outside the EU is identified with another type.",
+      "why": "AEAT identifies each recipient either by NIF or by this identifier, never both, and rejects combinations its validations do not allow, including an EU VAT number that is not from a Member State or does not have that State's structure.",
       "applies_to": {
         "invoice_types": [
           "STANDARD",
@@ -3329,7 +3329,10 @@
         ],
         "operations": [
           "createCompanyInvoice",
-          "createCompanyCustomer"
+          "issueCompanyInvoice",
+          "createCompanyCustomer",
+          "patchCompanyCustomer",
+          "createCompanyRecurringInvoice"
         ]
       },
       "error_codes": [
@@ -3344,6 +3347,14 @@
         {
           "code": "RECIPIENT_UNREGISTERED_ID_MUST_BE_DNI_OR_NIE",
           "url": "https://docs.beel.es/errors/RECIPIENT_UNREGISTERED_ID_MUST_BE_DNI_OR_NIE"
+        },
+        {
+          "code": "ALTERNATIVE_ID_VAT_REQUIRES_EU_COUNTRY",
+          "url": "https://docs.beel.es/errors/ALTERNATIVE_ID_VAT_REQUIRES_EU_COUNTRY"
+        },
+        {
+          "code": "ALTERNATIVE_ID_VAT_INVALID_FORMAT",
+          "url": "https://docs.beel.es/errors/ALTERNATIVE_ID_VAT_INVALID_FORMAT"
         }
       ],
       "legal_basis": [
@@ -3362,6 +3373,13 @@
           "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
         },
         {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.13 Agrupación Destinatarios",
+          "quote": "Cuando uno o varios destinatarios se identifiquen a través de la agrupación IDOtro e IDType sea “02”, se validará que el campo identificador se ajuste a la estructura de NIF-IVA de alguno de los Estados Miembros y debe estar identificado. Ver nota (1).",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
           "type": "boe",
           "norm": "Orden HAC/1177/2024",
           "article": "anexo, lista L7",
@@ -3374,12 +3392,12 @@
         "incorrect": {
           "text": "Sending a Spanish NIF in nif together with an alternative_id: it is rejected with RECIPIENT_NIF_AND_ID_OTHER_EXCLUSIVE.",
           "lang": "json",
-          "code": "{ \"recipient\": { \"legal_name\": \"Dupont SARL\", \"nif\": \"B12345674\", \"alternative_id\": { \"type\": \"NIF_IVA\", \"number\": \"FR12345678901\", \"country_code\": \"FR\" } } }"
+          "code": "{ \"recipient\": { \"legal_name\": \"Dupont SARL\", \"nif\": \"B12345674\", \"alternative_id\": { \"type\": \"NIF_IVA\", \"number\": \"FR40303265045\", \"country_code\": \"FR\" } } }"
         },
         "correct": {
           "text": "Sending only the alternative identifier, with its type and country.",
           "lang": "json",
-          "code": "{ \"recipient\": { \"legal_name\": \"Dupont SARL\", \"alternative_id\": { \"type\": \"NIF_IVA\", \"number\": \"FR12345678901\", \"country_code\": \"FR\" }, \"address\": { \"street\": \"12 rue de Rivoli\", \"postal_code\": \"75001\", \"city\": \"Paris\", \"province\": \"Paris\", \"country_code\": \"FR\" } } }"
+          "code": "{ \"recipient\": { \"legal_name\": \"Dupont SARL\", \"alternative_id\": { \"type\": \"NIF_IVA\", \"number\": \"FR40303265045\", \"country_code\": \"FR\" }, \"address\": { \"street\": \"12 rue de Rivoli\", \"postal_code\": \"75001\", \"city\": \"Paris\", \"province\": \"Paris\", \"country_code\": \"FR\" } } }"
         }
       },
       "related": [
@@ -3898,9 +3916,9 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "beel",
-      "enforced_by": "integrator",
-      "statement": "Issue an invoice that identifies its recipient as a standard invoice (F1). The billing record of a simplified invoice (F2) carries no recipient (SIM-005), so a nif sent on a SIMPLIFIED invoice never reaches AEAT: when a customer asks for its NIF and address on the invoice, issue it as STANDARD.",
-      "why": "The law also allows a simplified invoice completed with the recipient's details (SIM-009), which AEAT registers as F1; BeeL. documents that case as a standard invoice, so the invoice type and the record agree.",
+      "enforced_by": "api",
+      "statement": "Issue an invoice that identifies its recipient as a standard invoice (F1). BeeL. requires it: a SIMPLIFIED invoice whose recipient carries an nif or alternative_id is rejected with SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT when it is created, when an edit changes its type or recipient, and when it is issued. A simplified invoice BeeL. generates from a payment never carries the payer's tax id.",
+      "why": "The law would allow a simplified invoice completed with the recipient's details (SIM-009), but the billing record of a simplified invoice (F2) carries no recipient (SIM-005): the NIF would be on the invoice and never reach AEAT. BeeL. issues that case as a standard invoice, so the invoice type and the record agree.",
       "applies_to": {
         "invoice_types": [
           "SIMPLIFIED",
@@ -3908,15 +3926,21 @@
         ],
         "operations": [
           "createCompanyInvoice",
-          "patchCompanyInvoice"
+          "patchCompanyInvoice",
+          "issueCompanyInvoice"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT",
+          "url": "https://docs.beel.es/errors/SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT"
+        }
+      ],
       "legal_basis": [],
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A simplified invoice whose recipient carries the customer's nif, expecting AEAT to register the customer."
+          "text": "A simplified invoice whose recipient carries the customer's nif: the API answers 422 SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT."
         },
         "correct": {
           "text": "A standard invoice with the customer's NIF, name and address, whatever the amount."
@@ -6685,7 +6709,7 @@
       "impact": "critical",
       "kind": "beel",
       "enforced_by": "integrator",
-      "statement": "Track each issued invoice's verifactu.submission_status (NOT_SUBMITTED, PENDING, ACCEPTED, REJECTED, VOIDED) through the verifactu.status.updated webhook and a periodic reconciliation. A transient AEAT error keeps the invoice PENDING while BeeL. retries it. A REJECTED invoice is not registered: read its error_code and fix it.",
+      "statement": "Track each issued invoice's verifactu.submission_status (NOT_SUBMITTED, PENDING, ACCEPTED, REJECTED, VOIDED) through the verifactu.status.updated webhook and a periodic reconciliation. A transient AEAT error keeps the invoice PENDING while BeeL. retries it. A REJECTED invoice is not registered: read its error_message, and its error_code when AEAT gave one, and fix it. GET /v1/companies/{company_id}/invoices/{invoice_id}/verifactu-records lists each record of the invoice, its cancellation included, with its own status.",
       "why": "A 200 on issue means BeeL. accepted the invoice, not that AEAT registered it. A rejection nobody reads leaves an invoice outside AEAT's records.",
       "applies_to": {
         "scope": "Invoices of a company under VeriFactu.",
