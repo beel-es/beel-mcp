@@ -1,13 +1,14 @@
 ---
-title: Invoice lifecycle & state machine
+title: Invoice and proforma states, and the tool for each operation
 docPath: /verifactu/submission-states
-summary: When an invoice can still be changed, and what to do once it cannot.
+summary: The status names, the proforma lifecycle, and which tool performs each operation.
 ---
 
-An invoice is created as a **draft** and can be edited freely. Once **issued** it is
-registered, assigned a series and number, and — if the VeriFactu gates are open —
-submitted to AEAT. From that moment its fiscal data is immutable: there is no edit, only
-voiding or correcting.
+This guide names the states and the tools. **When** each operation is allowed is fiscal
+rule, not API usage: read it with `beel_rules_list` (domain `lifecycle`, `void`,
+`corrective`) — in particular LIF-001 (an issued invoice is never edited or deleted),
+LIF-002 (only a draft can be issued), VOI-002 (void an issued invoice; delete a draft)
+and COR-001 (which statuses a corrective accepts).
 
 ## States
 
@@ -19,27 +20,22 @@ and editable, and leaves in one of three ways: `CONVERTED` (turned into an invoi
 is terminal — the proforma survives as the record of the accepted quote), `VOIDED` (the
 offer was rejected or withdrawn) or `EXPIRED` (its `valid_until` has passed).
 
-## What each state allows
+## The tool for each operation
 
-| Operation | Tool | Allowed from |
-|---|---|---|
-| Edit | `beel_patch_invoice` | `DRAFT` only |
-| Delete | `beel_delete_invoice` | `DRAFT` only |
-| Issue | `beel_issue_invoice`, or create with `options.issue_directly` | `DRAFT` |
-| Schedule | `beel_set_invoice_schedule` | `DRAFT` only |
-| Mark sent / paid | `beel_set_invoice_status` | after issuing |
-| Send by email | `beel_send_invoice` | after issuing |
-| Void | `beel_void_invoice` | issued and not already voided |
-| Correct | `beel_create_corrective_invoice` | issued |
+| Operation | Tool |
+|---|---|
+| Edit | `beel_patch_invoice` |
+| Delete | `beel_delete_invoice` |
+| Issue | `beel_issue_invoice`, or create with `options.issue_directly` |
+| Schedule | `beel_set_invoice_schedule` |
+| Mark sent / paid | `beel_set_invoice_status` |
+| Send by email | `beel_send_invoice` |
+| Void | `beel_void_invoice` |
+| Correct | `beel_create_corrective_invoice` |
 
-## The rules that matter
+## Check before you mutate
 
-- **Issuing assigns the number, and numbers are never reused** — not even after voiding.
-- **Voiding is terminal.** It moves the invoice to `VOIDED`, sends a registro de
-  anulación to AEAT and burns the number. It cannot be reissued or undone, and calling it
-  twice answers `INVOICE_ALREADY_VOIDED` — which means the first call worked.
-- **Correcting creates a new invoice** that references the original. The original becomes
-  `RECTIFIED` (partial) or `VOIDED` (total). Nothing is ever erased from AEAT.
-- **Check before you mutate.** Read the current `status` with
-  `beel_get_invoice` rather than assuming; an operation the status does not allow
-  is rejected with `TRANSITION_NOT_SUPPORTED`.
+Read the current `status` with `beel_get_invoice` rather than assuming; an operation the
+status does not allow is rejected with `TRANSITION_NOT_SUPPORTED`. Calling
+`beel_void_invoice` twice answers `INVOICE_ALREADY_VOIDED`, which means the first call
+worked.

@@ -1,22 +1,20 @@
 ---
-title: VeriFactu submission — the three gates
+title: Issuing readiness and VeriFactu configuration
 docPath: /verifactu/auto-submit
-summary: Why an issued invoice may never reach AEAT, and how to tell before issuing.
+summary: How to tell, before issuing, whether a NIF can issue, and what each blocker means.
 ---
 
-Issuing an invoice and submitting it to AEAT are not the same act. An issued invoice is
-submitted **only when all three gates are open**; otherwise it is issued locally and
-carries `verifactu.enabled: false`. It looks successful either way, which is what makes
-this worth checking in advance.
+API usage: how to check that a company can issue and read what is missing. The fiscal
+rules on billing records and their submission to AEAT are the `records` domain of
+`beel_rules_list` — REC-002 (the record goes to AEAT as soon as the invoice is issued) and
+REC-011 (the NIF holder signs the AEAT representation first) in particular.
 
-## The gates
+## The configuration
 
-1. **Auto-submit is on** for the series or integration used.
-2. **A VeriFactu configuration exists** — signed representation document, target
-   environment, authorised NIFs. Read it with
-   `beel_get_verifactu_configuration`, change it with
-   `beel_update_verifactu_configuration`.
-3. **The configuration's `enabled` flag is on** — the account-wide kill switch.
+Read it with `beel_get_verifactu_configuration`, change it with
+`beel_update_verifactu_configuration`. The update carries two flags: `enabled` (whether
+VeriFactu is enabled) and `apply_by_default` (whether it is applied to new invoices, which
+requires `enabled`).
 
 ## Checking before you issue
 
@@ -32,10 +30,5 @@ reported one at a time and in order.
 
 Test credentials submit to AEAT's own test environment — real submissions, flagged as
 test. `ENV_MISMATCH` means the company's configured environment and the credential's do
-not agree; that is a configuration problem, and no retry will fix it.
-
-## Before issuing in bulk
-
-**Live submissions cannot be undone in batch.** Each one has to be voided or corrected
-individually, and each of those is itself a registro sent to AEAT. Turn auto-submit off
-*before* issuing a wave you are not certain about, not after.
+not agree; that is a configuration problem, and no retry will fix it. Never test with a
+production key: rule LIF-003.

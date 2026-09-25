@@ -30,6 +30,7 @@
     "sync:spec": "node scripts/bundle-spec.mjs",
     "spec:lock": "node scripts/spec-lock.mjs --write",
     "spec:verify": "node scripts/spec-lock.mjs",
+    "sync:rules": "node scripts/sync-rules.mjs",
     "manifest:write": "node scripts/server-manifest.mjs --write",
     "manifest:verify": "node scripts/server-manifest.mjs",
     "tools:catalog": "tsx --import ./scripts/text-loader.mjs scripts/gen-tools-catalog.mts",

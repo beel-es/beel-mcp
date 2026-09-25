@@ -110,13 +110,15 @@ than a redirect; both point at the same npm package and the same hosted server.
 
 - **117 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
-- **4 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
-  `beel_docs_get`, `beel_docs_list` over the documentation, and
-  `beel_get_setup_status`, which reports per NIF exactly what is missing before it can
-  issue and the one next action to take.
-- **Guardrail resources** under `beel://guardrails/*` — the fiscal invariants, plus
-  `beel://guardrails/errors`, a catalogue of every error code with the action it calls
-  for. Their summaries are woven into the description of every tool they constrain.
+- **6 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
+  `beel_docs_get`, `beel_docs_list` over the documentation; `beel_rules_list` and
+  `beel_rules_get` over the fiscal rules catalogue (by id, domain, keyword or error
+  code); and `beel_get_setup_status`, which reports per NIF exactly what is missing
+  before it can issue and the one next action to take.
+- **Guardrail resources** under `beel://guardrails/*` — the fiscal rules, one resource
+  per domain, the API usage guides, and `beel://guardrails/errors`, a catalogue of every
+  error code with the action it calls for. The domains and guides that apply are named in
+  the description of every tool they constrain.
 - **7 workflow prompts** encoding the safe order of operations for the flows where the
   order is what makes them safe: `issue-invoice` (validate NIF → choose F1/F2 → check the
   VeriFactu gates → issue), `fix-invoice` (void vs correct), `onboard-nif`,
@@ -142,11 +144,26 @@ an invoice that should have been corrected, using R1 on a simplified invoice, ed
 AEAT has already registered. The server addresses that in three layers, and the difference
 between them matters:
 
-**1. Advisory** — `src/guardrails/rules/*.md`, one Markdown file per topic: the invoice
-lifecycle, void vs rectify, invoice types, invoice lines, regime keys, series numbering,
-NIF validation, the VeriFactu gates, multi-NIF accounts. Each is exposed as an MCP
-resource under `beel://guardrails/*` and its one-line summary is appended to the
-description of every tool it constrains, so the constraint travels with the call.
+**1. Advisory** — two sources, kept apart on purpose:
+
+- **The fiscal rules** are the catalogue the documentation site publishes at
+  [`docs.beel.es/api/rules.json`](https://docs.beel.es/api/rules.json): each rule has an
+  id (`COR-002`), a statement, why it exists, its legal basis, the error codes that
+  enforce it and examples. The server reads it at runtime (cached, like the other docs
+  files) and serves it through `beel_rules_list` / `beel_rules_get` and one resource per
+  domain (`beel://guardrails/corrective`, …). Nothing fiscal is re-typed here. A
+  snapshot of the catalogue ships in the package as a fallback for when the docs host is
+  unreachable; `npm run sync:rules` is its only writer, and a test fails if it was edited
+  by hand. The former `beel://guardrails/cancel-vs-rectify`, `invoice-types` and
+  `regime-keys` URIs still resolve, to the domains that replaced them.
+- **The API usage guides** — `src/guardrails/rules/*.md` — cover what is not a fiscal
+  rule but still trips an agent: how a line states its price, how a series is configured,
+  which company an operation acts on, how to read NIF validation and issuing readiness,
+  and which tool performs each invoice operation. They link to rule ids rather than
+  restating them.
+
+The domains and guides that apply are named in the description of every tool they
+constrain, so the constraint travels with the call.
 
 **2. Enforced** — `src/guardrails/validate.ts`, checked before the request is sent, so a
 bad payload never even consumes an idempotency key:
@@ -165,12 +182,13 @@ bad payload never even consumes an idempotency key:
 
 **3. Explained** — the BeeL API already answers well: its `message` is written for a
 human in the caller's language, `error.details` carries the specifics, and the RFC 7807
-`type` field links to a documentation page for that exact code (around 357 of them). The
+`type` field links to a documentation page for that exact code. The
 server relays all of that untouched, and adds only the two things a response cannot
 carry: **the remedy as a tool call** — the docs address someone with the dashboard open
 ("create a series in settings"), an agent needs `beel_set_default_series` — and
 **whether retrying can possibly help**, which is what stops an agent looping on a 403
-that needs an administrator. `src/guardrails/catalog.ts` holds only codes where one of
+that needs an administrator. When the code is one a published rule cites, the error also
+names that rule (id, title, link). `src/guardrails/catalog.ts` holds only codes where one of
 those applies; anything else passes through, because a paraphrase would be worse than the
 original and would drift from it. The nested `blockers[]` of `EMISSION_NOT_READY` are the
 clearest case: they arrive as bare strings with no message and no link, and each comes
@@ -203,7 +221,7 @@ of silently switching a fiscal check off.
 | Variable | Purpose |
 |---|---|
 | `BEEL_BASE_URL` | API base URL. Default `https://app.beel.es/api`. |
-| `BEEL_DOCS_URL` | Documentation source for the docs tools. Default `https://docs.beel.es`. |
+| `BEEL_DOCS_URL` | Documentation source for the docs and rules tools. Default `https://docs.beel.es`. |
 | `BEEL_REQUEST_TIMEOUT_MS` | Hard ceiling on a single API call. Default `30000`. |
 | `BEEL_DISABLE_PREFLIGHT` | Set to `1` to skip the enforced guardrails. |
 
@@ -229,6 +247,7 @@ npm run typecheck    # both the Node and the Worker configs
 npm run build        # single-file bundle to dist/index.js
 npm run inspect      # MCP Inspector against the local build
 npm run spec:verify  # the vendored contract still matches its lock
+npm run sync:rules   # refresh the bundled rules snapshot from docs.beel.es
 ```
 
 `openapi/public-api.yaml` is a **generated** copy of the API contract, and

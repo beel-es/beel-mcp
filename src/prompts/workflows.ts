@@ -3,7 +3,8 @@ import type { GetPromptResult, Prompt } from '@modelcontextprotocol/sdk/types.js
 /**
  * Guided workflows as MCP prompts. They encode the *order of operations* a safe
  * agent should follow (validate NIF → choose type → check gates → issue), so the
- * model doesn't skip a fiscal step. The heavy detail stays in the guardrails and docs.
+ * model doesn't skip a fiscal step. The rules themselves come from `beel_rules_list` /
+ * `beel_rules_get` (the published catalogue); the prompts only point at them.
  */
 
 export const prompts: Prompt[] = [
@@ -120,13 +121,14 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
             [
               'Help me issue a compliant invoice through the BeeL API. Follow this order:',
               '',
-              '1. Read the `beel://guardrails/invoice-types` resource. Decide STANDARD (F1) vs',
-              '   SIMPLIFIED (F2): F2 only if recipient unidentified AND total ≤ 3 000 €.',
+              '1. Decide STANDARD (F1) vs SIMPLIFIED (F2) from the `simplified` rules:',
+              '   `beel_rules_list` with domain "simplified" (SIM-001, SIM-006 in particular).',
               '2. If F1 to a Spanish recipient, call `beel_validate_nif` first; for an individual,',
               '   the legal_name must match the AEAT census.',
               '3. Set `main_tax.regime_key` per line (default "01"). For exports/OSS/recargo/REBU,',
-              '   check `beel://guardrails/regime-keys` and `beel_docs_search` for the exact pairing.',
-              '4. Confirm the VeriFactu gates (`beel://guardrails/verifactu-gates`) before issuing if',
+              '   read the `taxes` and `surcharge` rules (`beel_rules_list` with domain) and use',
+              '   `beel_docs_search` for worked payloads.',
+              '4. Check issuing readiness (`beel://guardrails/verifactu-gates`) before issuing if',
               '   the invoice must reach AEAT.',
               '5. Create the invoice with `beel_create_invoice` (consider issuing as a draft first',
               '   to review). Never reuse a serie+número.',
@@ -143,14 +145,14 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
         messages: [
           userMessage(
             [
-              'Help me fix an already-issued invoice. First read',
-              '`beel://guardrails/cancel-vs-rectify`, then decide:',
+              'Help me fix an already-issued invoice. First read the rules with `beel_rules_list`',
+              '(domains "void" and "corrective"; VOI-001 and COR-001 decide which), then decide:',
               '',
               '- The invoice should never have existed (wrong customer, duplicate) → `beel_void_invoice`.',
               '- The invoice should exist but data is wrong (amount, IVA, NIF, discount, bad debt) →',
               '  `beel_create_corrective_invoice` with the right rectification_code (R1–R5) and',
               '  rectification_type (PARTIAL with lines, or TOTAL without).',
-              '- Remember R5 is only for simplified (F2); R1–R4 only for standard (F1).',
+              '- Pick the rectification_code with `beel_rules_get` id "COR-002".',
               '',
               args.problem
                 ? `Problem reported: ${args.problem}`
@@ -299,18 +301,19 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
           userMessage(
             [
               'Help me update an existing BeeL API integration to current best practices. Review',
-              'each area below, and use `beel_docs_search` for the exact rules and payloads:',
+              'each area below. Use `beel_rules_list` / `beel_rules_get` for the fiscal rules and',
+              '`beel_docs_search` for guides and payloads:',
               '',
               '1. Idempotency: send an Idempotency-Key on invoice creation and other unsafe writes',
-              '   so retries never duplicate. Search `beel_docs_search` ["idempotency"].',
+              '   so retries never duplicate. Rule LIF-004 (`beel_rules_get`).',
               '2. API-key security: keep beel_sk_live_ keys server-side only, rotate leaked keys,',
               '   and use beel_sk_test_ keys in non-production.',
               '3. Error handling: read the error `code` and request_id, back off on 429/5xx, and',
               '   surface fiscal error codes to the user rather than retrying blindly.',
               '4. Webhook signature verification: verify the signature before trusting a payload.',
               '   Search `beel_docs_search` ["webhook", "signature"].',
-              '5. Invoice lifecycle: respect the state machine — read `beel://guardrails/invoice-state-machine`',
-              '   and `beel://guardrails/cancel-vs-rectify`; never mutate an issued invoice in place.',
+              '5. Invoice lifecycle: read the `lifecycle`, `void` and `corrective` rules',
+              '   (`beel_rules_list` with domain); never mutate an issued invoice in place (LIF-001).',
               '6. Migrate off deprecated endpoints to the company-scoped API (the beel_*_company_*',
               '   tools under /v1/companies/{company_id}/...). Search `beel_docs_search` ["deprecated"].',
               '',

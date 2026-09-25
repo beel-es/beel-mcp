@@ -17,7 +17,9 @@
  * on state this process cannot see — AEAT census matching, the 3 000 € F2
  * ceiling (computed over server-side totals), the VeriFactu gates, whether a
  * series exists. Guessing at those would reject valid invoices, which is far
- * worse than letting the API answer. Their prose lives in `rules/*.md`.
+ * worse than letting the API answer. The rules themselves are the published
+ * catalogue the `beel_rules_list` and `beel_rules_get` tools serve; API usage
+ * notes live in `rules/*.md`.
  */
 
 import { ENV_VAR } from '../shared/defaults.js';

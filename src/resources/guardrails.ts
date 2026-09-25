@@ -7,27 +7,46 @@ import {
 } from '../guardrails/rules.js';
 import { ERROR_CATALOG, catalogCodes, docsUrlForCode } from '../guardrails/catalog.js';
 import { BEEL_DEFAULTS } from '../shared/defaults.js';
+import { loadRules } from '../rules/fetch.js';
+import type { Rule, RuleDomain, RulesCatalog } from '../rules/catalog.js';
 
 /**
- * The fiscal guardrails as MCP resources, so a client can pin or preload them
- * and a model can read the full rule instead of the one-line hint that fits in
- * a tool description.
+ * The guardrails as MCP resources, so a client can pin or preload them and a
+ * model can read a whole topic instead of the one-line hint in a tool
+ * description.
  *
- * Three kinds of resource: an index, one per guardrail, and the error catalogue
- * — the last so an agent can look up what a code means before it ever hits one.
+ * Four kinds of resource under `beel://guardrails`:
+ *  - the index;
+ *  - one per fiscal-rule domain (`beel://guardrails/corrective`, …), generated
+ *    from the rules catalogue the docs site publishes — never written here;
+ *  - one per API usage guide (`src/guardrails/rules/*.md`);
+ *  - the error catalogue.
+ *
+ * URIs of guides that became rule domains keep resolving (see LEGACY_ALIASES),
+ * since a client may have pinned them.
  */
 
 const OVERVIEW_URI = 'beel://guardrails';
 const ERRORS_URI = 'beel://guardrails/errors';
 
-export const guardrailResources: Resource[] = [
+/**
+ * Former guide URIs whose content now lives in the rules catalogue, mapped to the
+ * domains that cover it. Readable, not listed.
+ */
+export const LEGACY_ALIASES: Record<string, string[]> = {
+  'cancel-vs-rectify': ['void', 'corrective'],
+  'invoice-types': ['simplified', 'corrective'],
+  'regime-keys': ['taxes', 'surcharge'],
+};
+
+const staticResources: Resource[] = [
   {
     uri: OVERVIEW_URI,
-    name: 'BeeL fiscal guardrails (index)',
+    name: 'BeeL fiscal rules and API guides (index)',
     description:
-      'Index of the Spanish-invoicing invariants that govern the BeeL API: invoice ' +
-      'lifecycle, void vs rectify, invoice types F1/F2/R1–R5, invoice lines, regime ' +
-      'keys, series numbering, NIF validation, VeriFactu gates and multi-NIF accounts.',
+      'Index of the fiscal rules BeeL. publishes, grouped by domain (lifecycle, voiding, ' +
+      'correctives, numbering, contents, simplified invoices, taxes, dates, QR, VeriFactu ' +
+      'records…), plus the API usage guides and the error catalogue.',
     mimeType: 'text/markdown',
   },
   {
@@ -46,15 +65,39 @@ export const guardrailResources: Resource[] = [
   })),
 ];
 
-function overviewBody(): string {
+function domainResource(domain: RuleDomain): Resource {
+  return {
+    uri: guardrailUri(domain.slug),
+    name: `Fiscal rules: ${domain.title}`,
+    description: domain.description,
+    mimeType: 'text/markdown',
+  };
+}
+
+/** Every resource: the static ones plus one per rule domain of the current catalogue. */
+export async function listGuardrailResources(): Promise<Resource[]> {
+  const { catalog } = await loadRules();
+  const [overview, ...rest] = staticResources;
+  return [overview!, ...catalog.domains.map(domainResource), ...rest];
+}
+
+function overviewBody(catalog: RulesCatalog): string {
   return [
-    '# BeeL fiscal guardrails',
+    '# BeeL fiscal rules and API guides',
     '',
-    'Spanish invoicing has invariants that are not visible in a request schema. Read the',
-    'relevant guardrail before mutating fiscal data; call `beel_docs_search` for the',
-    'exhaustive rules and worked examples.',
+    'Spanish invoicing has invariants that are not visible in a request schema. Find the',
+    'rule that applies with `beel_rules_list` and read it with `beel_rules_get` before',
+    'mutating fiscal data; `beel_docs_search` covers guides and worked examples.',
     '',
-    '## Guardrails',
+    '## Fiscal rules, by domain',
+    '',
+    ...catalog.domains.map(
+      (d) =>
+        `- **${d.title}** (${d.prefix}, ${d.rules.length} rules) — ${d.description}\n` +
+        `  \`${guardrailUri(d.slug)}\``,
+    ),
+    '',
+    '## API usage guides',
     '',
     ...GUARDRAILS.map((g) => `- **${g.title}** — ${g.summary}\n  \`${guardrailUri(g.id)}\``),
     '',
@@ -63,6 +106,32 @@ function overviewBody(): string {
     `\`${ERRORS_URI}\` explains every error code this API answers with, and what each one`,
     'calls for. A subset is checked before the request is even sent, so those arrive as a',
     'refusal from this server rather than as an API error.',
+  ].join('\n');
+}
+
+function ruleSection(rule: Rule): string {
+  const lines = [`## ${rule.id} · ${rule.severity} · ${rule.title}`, '', rule.statement];
+  if (rule.error_codes.length > 0) {
+    lines.push('', `Error codes: ${rule.error_codes.map((e) => `\`${e.code}\``).join(', ')}`);
+  }
+  lines.push(`Enforced by: ${rule.enforced_by} · ${rule.url}`);
+  return lines.join('\n');
+}
+
+function domainBody(catalog: RulesCatalog, domain: RuleDomain): string {
+  const rules = catalog.rules.filter((r) => r.domain === domain.slug);
+  return [
+    `# ${domain.title}`,
+    '',
+    domain.description,
+    '',
+    'Each rule in full (why, legal basis, examples): `beel_rules_get` with its id.',
+    '',
+    ...rules.map(ruleSection).join('\n\n').split('\n'),
+    '',
+    '---',
+    '',
+    `Canonical documentation: ${domain.url}`,
   ].join('\n');
 }
 
@@ -86,8 +155,9 @@ function errorsBody(): string {
     '# BeeL error codes',
     '',
     'Every BeeL error carries its own documentation link as the RFC 7807 `type` field, and',
-    `around 357 codes have a page under \`${BEEL_DEFAULTS.docsUrl}/errors/<CODE>\`. That is the`,
-    'canonical explanation of what a code means, in the language you asked for.',
+    `every code has a page under \`${BEEL_DEFAULTS.docsUrl}/errors/<CODE>\`. That is the`,
+    'canonical explanation of what a code means, in the language you asked for. The fiscal',
+    'rules a code enforces: `beel_rules_get` with `error_code`.',
     '',
     'Listed here are only the codes this server can add something to: the tool call that',
     'resolves them, and whether retrying is worth attempting. A code missing from this list',
@@ -98,11 +168,33 @@ function errorsBody(): string {
 }
 
 /** Resolve a guardrail resource URI to its Markdown; null if unknown. */
-export function readGuardrailResource(uri: string): string | null {
-  if (uri === OVERVIEW_URI) return overviewBody();
+export async function readGuardrailResource(uri: string): Promise<string | null> {
   if (uri === ERRORS_URI) return errorsBody();
-  if (!uri.startsWith(GUARDRAIL_URI_PREFIX)) return null;
-  const doc = findGuardrail(uri.slice(GUARDRAIL_URI_PREFIX.length));
-  if (!doc) return null;
-  return `# ${doc.title}\n\n${doc.body}\n\n---\n\nCanonical documentation: ${doc.docPath}`;
+  if (uri !== OVERVIEW_URI && !uri.startsWith(GUARDRAIL_URI_PREFIX)) return null;
+
+  const id = uri.slice(GUARDRAIL_URI_PREFIX.length);
+  const guide = findGuardrail(id);
+  if (guide) {
+    return `# ${guide.title}\n\n${guide.body}\n\n---\n\nCanonical documentation: ${guide.docPath}`;
+  }
+
+  const { catalog } = await loadRules();
+  if (uri === OVERVIEW_URI) return overviewBody(catalog);
+
+  const domain = catalog.domains.find((d) => d.slug === id);
+  if (domain) return domainBody(catalog, domain);
+
+  const aliased = LEGACY_ALIASES[id]
+    ?.map((slug) => catalog.domains.find((d) => d.slug === slug))
+    .filter((d): d is RuleDomain => d !== undefined);
+  if (aliased && aliased.length > 0) {
+    return [
+      `> This topic is now covered by the fiscal rules catalogue: ${aliased
+        .map((d) => `\`${guardrailUri(d.slug)}\``)
+        .join(' and ')}.`,
+      '',
+      ...aliased.map((d) => domainBody(catalog, d)),
+    ].join('\n\n');
+  }
+  return null;
 }

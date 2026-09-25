@@ -1,27 +1,29 @@
 /**
- * The fiscal guardrails: the invariants a blindly generated MCP would miss.
+ * The API usage guides: how to drive the BeeL API correctly where the request
+ * schema cannot say it — how a line states its price, how a series is
+ * configured, which company an operation acts on, how to read issuing readiness.
  *
- * Each guardrail is one Markdown file in `rules/`, carrying its own metadata in
- * front matter. Keeping the metadata inside the file it describes means the two
- * cannot fall out of step, and it makes a guardrail editable by anyone who
- * understands Spanish invoicing, whether or not they read TypeScript — which
- * matters, because the fiscal wording is where correctness actually lives.
+ * They are NOT the fiscal rules. Those are published by the documentation site
+ * as a catalogue (`/api/rules.json`) and served by `src/rules/` — through the
+ * `beel_rules_list`/`beel_rules_get` tools and the per-domain
+ * `beel://guardrails/<domain>` resources — so there is one source for what the
+ * law and BeeL. require. A guide here links
+ * to rule ids instead of restating them.
  *
- * Files are embedded as text at build time (tsup for Node, a wrangler Text rule
- * for the Worker, a plugin for vitest), so there is no filesystem read at runtime.
+ * Each guide is one Markdown file in `rules/`, carrying its own metadata in
+ * front matter. Files are embedded as text at build time (tsup for Node, a
+ * wrangler Text rule for the Worker, a plugin for vitest), so there is no
+ * filesystem read at runtime.
  *
  * These are the *advisory* layer — read by the model, never enforced. The subset
  * that is actually enforced before a request leaves lives in `validate.ts`, and
  * the errors the API answers with are explained by `catalog.ts`.
  */
 
-import cancelVsRectify from './rules/cancel-vs-rectify.md';
 import invoiceLines from './rules/invoice-lines.md';
 import invoiceStateMachine from './rules/invoice-state-machine.md';
-import invoiceTypes from './rules/invoice-types.md';
 import multiNif from './rules/multi-nif.md';
 import nifValidation from './rules/nif-validation.md';
-import regimeKeys from './rules/regime-keys.md';
 import seriesAndNumbering from './rules/series-and-numbering.md';
 import verifactuGates from './rules/verifactu-gates.md';
 
@@ -45,13 +47,10 @@ export function guardrailUri(id: string): string {
 
 /** Raw sources, keyed by the id each file is named after. */
 const SOURCES: Record<string, string> = {
-  'cancel-vs-rectify': cancelVsRectify,
   'invoice-lines': invoiceLines,
   'invoice-state-machine': invoiceStateMachine,
-  'invoice-types': invoiceTypes,
   'multi-nif': multiNif,
   'nif-validation': nifValidation,
-  'regime-keys': regimeKeys,
   'series-and-numbering': seriesAndNumbering,
   'verifactu-gates': verifactuGates,
 };

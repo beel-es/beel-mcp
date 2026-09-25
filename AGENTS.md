@@ -22,7 +22,8 @@ npm run tools:list  # every tool the server exposes, with its scopes
 
 - `src/spec/` — loads the OpenAPI contract (`openapi/public-api.yaml`) and derives the operation manifest. The contract is synced from the API, never edited by hand.
 - `src/policy/` — which operations become tools (`tool-policy.ts`) and which scopes they need (`scopes.ts`). Least privilege: never add a scope no tool uses.
-- `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the rules as markdown (`rules/`), and the error catalogue (`catalog.ts`).
+- `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the API usage guides as markdown (`rules/`), and the error catalogue (`catalog.ts`).
+- `src/rules/` — the fiscal rules catalogue, read from `docs.beel.es/api/rules.json`. `snapshot.json` is only its offline fallback, written by `npm run sync:rules`; never edit it, and never re-type a rule anywhere else.
 - `src/tools/` — API tools, docs tools, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
 - `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.

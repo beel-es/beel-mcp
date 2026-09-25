@@ -4,6 +4,9 @@ docPath: /api-reference/multi-nif
 summary: Which company an operation acts on, and how that is selected.
 ---
 
+API usage: how the company an operation acts on is chosen. The fiscal side — one record
+chain per NIF, so one company per NIF — is rule REC-005.
+
 One account can hold several companies, each with its own NIF. Customers, products,
 series and invoices all belong to a company — never to the account at large — so every
 operation has to say which one it means.

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 import { ERROR_CATALOG } from '../src/guardrails/catalog.js';
 
@@ -20,6 +21,7 @@ import { ERROR_CATALOG } from '../src/guardrails/catalog.js';
 const TOOL_NAMES = new Set([
   ...buildApiTools().tools.map((t) => t.tool.name),
   ...docsTools.map((t) => t.name),
+  ...rulesTools.map((t) => t.name),
   ...workflowTools.map((t) => t.name),
 ]);
 
