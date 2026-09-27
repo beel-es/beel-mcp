@@ -217,26 +217,32 @@ function createCallToolHandler(
 }
 
 /**
- * What the client puts in the agent's context. It says when the fiscal rules
- * catalogue is worth a call and when it is not, so the agent consults it without
- * being asked and does not spend a call on questions it does not touch.
+ * What the client puts in the agent's context: the ONE place for guidance that
+ * applies to every tool — which tool family to reach for, in what order, when
+ * not to, and how to cite. Tool descriptions only say what each tool does and
+ * how it differs from its neighbours; they do not repeat this.
  */
 export const SERVER_INSTRUCTIONS = [
-  'BeeL is a Spanish invoicing API with VeriFactu compliance; these tools are derived from ' +
-    'its public OpenAPI contract. Test keys (beel_sk_test_) are safe to experiment with.',
+  'BeeL is a Spanish invoicing API with VeriFactu built in. These tools call its public API ' +
+    '(one tool per operation) and read its documentation and fiscal rules.',
   '',
-  'Consult the fiscal rules (beel_rules_list, then beel_rules_get) without waiting to be asked:',
-  '- when designing or implementing an integration flow that issues, voids or corrects ' +
-    'invoices, handles refunds, simplified invoices or their exchange for a full invoice, ' +
-    'series and numbering, retries, the PDF or QR, dates or currency;',
-  '- before proposing code or a call that creates or changes a fiscal document;',
-  '- when the API answers a 4xx with a fiscal error.code: beel_rules_get with error_code ' +
-    'names the rule behind it.',
-  'Rules with enforced_by "integrator" are the ones the API does not check: the ' +
-    "integration has to implement them (beel_rules_list with enforced_by: 'integrator').",
-  'Skip the rules for usage questions that do not touch them (listing, reading, auth, ' +
-    'pagination). beel_docs_search covers guides and worked examples; the ' +
-    'beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
+  'Which tools, in this order:',
+  '1. Designing a flow, or before proposing code or a call that creates or changes a fiscal ' +
+    'document (issue, void, correct, simplified exchange, series and numbering, refunds, dates, ' +
+    'PDF or QR): beel_rules_list, then beel_rules_get for the rule that governs it. Rules with ' +
+    'enforced_by "integrator" are not checked by the API; the integration must implement them.',
+  '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get on the ' +
+    'result that answers. Not for which fiscal rule applies; that is step 1.',
+  '3. To act: the API tool for the operation. Use a test key (beel_sk_test_) unless the user ' +
+    'asks for Live. Send an Idempotency-Key on every create, issue, correct or void, and reuse ' +
+    'it only to retry the same request.',
+  '4. A 4xx with a fiscal error.code: beel_rules_get with that error_code, fix the request, ' +
+    'and send it again with a new Idempotency-Key.',
+  'Skip the rules for questions that do not touch them (listing, reading, auth, pagination). ' +
+    'The beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
+  '',
+  'When your answer relies on a rule, cite its id with its link (e.g. COR-024, ' +
+    'https://docs.beel.es/rules/corrective#cor-024); when it relies on a docs page, link it.',
 ].join('\n');
 
 /** Build and wire the BeeL MCP server (transport-agnostic). */

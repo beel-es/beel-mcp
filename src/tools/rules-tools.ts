@@ -15,7 +15,9 @@ import { assertValidArguments } from './validate-args.js';
  * The fiscal rules catalogue as tools. Each rule is one short, citable statement
  * with an id (LIF-001, COR-002…), the error codes that enforce it and its legal
  * basis — the precise answer where `beel_docs_search` returns prose. Read from
- * the catalogue the docs site publishes; spends no API quota.
+ * the catalogue the docs site publishes (`/api/rules.json`, cached, with a
+ * bundled snapshot as fallback, so a lookup by error code answers even when the
+ * docs host does not); spends no API quota.
  */
 
 export const RULES_LIST = 'beel_rules_list';
@@ -36,13 +38,10 @@ export const rulesTools: Tool[] = [
   {
     name: RULES_LIST,
     description:
-      'Use before designing or coding any flow that issues, voids or corrects invoices, and ' +
-      'before creating or changing a fiscal document. Lists the Spanish invoicing rules BeeL. ' +
-      'publishes (VeriFactu records, correctives, voids, numbering, simplified invoices, taxes, ' +
-      'dates, QR); filter by domain, or by enforced_by "integrator" for the rules the API does ' +
-      'not check and your code must. One line per rule: ID · SEVERITY · statement · ' +
-      'enforced_by. Called with no filters it also lists the domains. Use it to find which rule ' +
-      'governs a case, then beel_rules_get for the full rule.' +
+      'List the Spanish invoicing rules BeeL. publishes, one line each (ID · severity · ' +
+      'statement · enforced_by), filtered by domain, enforced_by, severity or keywords; with ' +
+      'no filters it also lists the domains. Use it to find the rule that governs a flow before ' +
+      'designing or changing it, then beel_rules_get for the full rule.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -83,10 +82,10 @@ export const rulesTools: Tool[] = [
   {
     name: RULES_GET,
     description:
-      'Use when a BeeL. call fails with a fiscal error: pass its error_code (e.g. ' +
-      '"RECTIFICATIVA_R5_ONLY_SIMPLIFICADA") to get every rule that code enforces. Or get one ' +
-      'rule by id (e.g. "COR-002"): statement, why, legal basis, error codes, examples, related ' +
-      'rules and its docs URL.' +
+      'Get one fiscal rule by id (e.g. "COR-024"), or every rule behind an API error_code ' +
+      '(e.g. "CORRECTIVE_WITHHOLDING_ONLY"): statement, why, legal basis, error codes, examples ' +
+      'and its docs URL. Use it when a call fails with a fiscal error, or to read a rule found ' +
+      'with beel_rules_list.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',

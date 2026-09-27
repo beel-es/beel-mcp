@@ -1,61 +1,123 @@
 import { describe, expect, it } from 'vitest';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer, SERVER_INSTRUCTIONS } from '../src/server.js';
-import { FISCAL_ERROR_HINT } from '../src/guardrails/enrich.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { DOCS_GET, DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
+import { workflowTools } from '../src/tools/workflow-tools.js';
 
 /**
- * The agent consults the fiscal rules only if something tells it when to. These
- * are the texts that do: the server instructions, the first sentence of the rules
- * tools, and the last line of every invoice tool that can fail on a rule.
+ * Everything the agent reads before it picks a tool. The rule of these texts:
+ * guidance that applies to every tool — which family first, when not to, the
+ * test key, idempotency, fiscal errors, citing rules — lives ONCE, in the server
+ * instructions; a tool description says what the tool does and how it differs
+ * from its neighbours, and its first sentence is enough to choose it.
  */
-describe('when the agent is told to consult the fiscal rules', () => {
-  it('the client receives the instructions on initialize', async () => {
+
+const SYNTHETIC: Tool[] = [...docsTools, ...rulesTools, ...workflowTools];
+const API: Tool[] = buildApiTools().tools.map((t) => t.tool);
+
+/** Up to the first full stop followed by a space or the end; "e.g." and "BeeL." are not one. */
+function firstSentence(text: string): string {
+  const masked = text
+    .trim()
+    .replace(/\be\.g\./g, 'e~g~')
+    .replace(/BeeL\./g, 'BeeL~');
+  const first = (/^[\s\S]*?[.!?](?=\s|$)/.exec(masked)?.[0] ?? masked).trim();
+  return first.replace(/e~g~/g, 'e.g.').replace(/BeeL~/g, 'BeeL.');
+}
+
+/** A description this repository writes must fit in a glance. */
+const MAX_SYNTHETIC_DESCRIPTION = 600;
+/**
+ * API tool descriptions come from the operation's own text in the public
+ * contract. This is a ceiling against a runaway, not a style limit.
+ */
+const MAX_API_DESCRIPTION = 8_000;
+
+describe('the server instructions', () => {
+  it('reach the client on initialize', async () => {
     const server = createServer({ name: 'test', version: '0' }, { quiet: true });
     const client = new Client({ name: 'test-client', version: '0' });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
     expect(client.getInstructions()).toBe(SERVER_INSTRUCTIONS);
+    expect(SERVER_INSTRUCTIONS.length).toBeGreaterThan(200);
     await client.close();
   });
 
-  it('the instructions say when to consult the rules, when not to, and what integrator means', () => {
-    expect(SERVER_INSTRUCTIONS).toContain(RULES_LIST);
+  it('say which tool family to use, in order: rules, docs, API, then rules by error code', () => {
+    const order = [RULES_LIST, DOCS_SEARCH, 'the API tool', 'error_code'].map((s) =>
+      SERVER_INSTRUCTIONS.indexOf(s),
+    );
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(SERVER_INSTRUCTIONS).toContain(RULES_GET);
-    expect(SERVER_INSTRUCTIONS).toMatch(/designing or implementing an integration flow/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/before proposing code/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/4xx .*error_code/s);
+    expect(SERVER_INSTRUCTIONS).toContain(DOCS_GET);
+  });
+
+  it('hold the general rules: when not to, test key, idempotency, integrator rules, citing', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/Skip the rules for questions/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/beel_sk_test_/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/Idempotency-Key/);
     expect(SERVER_INSTRUCTIONS).toMatch(/enforced_by "integrator"/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/Skip the rules for usage questions/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/cite its id with its link/);
   });
 
-  it('the rules tools open with when to use them', () => {
-    const byName = new Map(rulesTools.map((t) => [t.name, t]));
-    expect(byName.get(RULES_LIST)?.description).toMatch(/^Use before designing or coding any flow/);
-    expect(byName.get(RULES_GET)?.description).toMatch(/^Use when a BeeL\. call fails/);
-    expect(Object.keys(byName.get(RULES_LIST)?.inputSchema.properties ?? {})).toEqual(
-      expect.arrayContaining(['domain', 'enforced_by']),
-    );
-    expect(Object.keys(byName.get(RULES_GET)?.inputSchema.properties ?? {})).toContain(
-      'error_code',
-    );
+  it('stay short enough to be read whole', () => {
+    expect(SERVER_INSTRUCTIONS.length).toBeLessThan(2_000);
   });
+});
 
-  it('every invoice tool that can fail on a fiscal rule says how to look the rule up', () => {
-    const operations = [
-      'createCompanyInvoice',
-      'issueCompanyInvoice',
-      'voidCompanyInvoice',
-      'createCompanyCorrectiveInvoice',
-      'createCompanySimplifiedExchange',
-    ];
-    const { tools } = buildApiTools();
-    for (const operationId of operations) {
-      const tool = tools.find((t) => t.operation.operationId === operationId);
-      expect(tool, operationId).toBeDefined();
-      expect(tool?.tool.description, operationId).toContain(FISCAL_ERROR_HINT);
+describe('the tool descriptions', () => {
+  it('open with a first sentence no other tool shares', () => {
+    const seen = new Map<string, string>();
+    const clashes: string[] = [];
+    for (const tool of [...SYNTHETIC, ...API]) {
+      const first = firstSentence(tool.description ?? '');
+      const other = seen.get(first);
+      if (other) clashes.push(`${other} / ${tool.name}: ${first}`);
+      seen.set(first, tool.name);
     }
+    expect(clashes).toEqual([]);
+  });
+
+  it('stay within a reasonable size', () => {
+    const long = [
+      ...SYNTHETIC.filter((t) => (t.description ?? '').length > MAX_SYNTHETIC_DESCRIPTION),
+      ...API.filter((t) => (t.description ?? '').length > MAX_API_DESCRIPTION),
+    ].map((t) => `${t.name}: ${t.description?.length}`);
+    expect(long).toEqual([]);
+  });
+
+  it('do not repeat the general guidance of the instructions', () => {
+    const general = [/Idempotency-Key/, /beel_sk_test_/, /If it fails with a fiscal error/];
+    const repeats = [...SYNTHETIC, ...API]
+      .filter(
+        (t) => SYNTHETIC.includes(t) || /If it fails with a fiscal error/.test(t.description ?? ''),
+      )
+      .filter((t) => general.some((re) => re.test(t.description ?? '')))
+      .map((t) => t.name);
+    expect(repeats).toEqual([]);
+  });
+
+  it('tell the docs and the rules tools apart', () => {
+    const byName = new Map(SYNTHETIC.map((t) => [t.name, t.description ?? '']));
+    expect(firstSentence(byName.get(DOCS_SEARCH)!)).toMatch(/^Search the BeeL documentation/);
+    expect(byName.get(DOCS_SEARCH)).toContain(DOCS_GET);
+    expect(firstSentence(byName.get(RULES_LIST)!)).toMatch(/^List the Spanish invoicing rules/);
+    expect(firstSentence(byName.get(RULES_GET)!)).toMatch(/error_code/);
+    expect(
+      Object.keys(rulesTools.find((t) => t.name === RULES_GET)!.inputSchema.properties ?? {}),
+    ).toContain('error_code');
+  });
+
+  it('are written in English', () => {
+    const spanish = SYNTHETIC.filter((t) =>
+      /\b(para|factura|cuando|usar|regla)\b/i.test(t.description ?? ''),
+    ).map((t) => t.name);
+    expect(spanish).toEqual([]);
   });
 });
