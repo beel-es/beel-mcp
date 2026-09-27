@@ -20,7 +20,13 @@ export interface RuleFilters {
 
 /** Longest statement a concise list line carries before it is cut. */
 export const CONCISE_STATEMENT_CHARS = 160;
-/** Default and ceiling for how many rules a list returns. */
+/**
+ * How many rules a list returns. `default` applies to a list with no filter or
+ * only keywords, which may match most of the catalogue. A list filtered by
+ * domain, enforced_by or severity is a checklist the agent works through, so it
+ * returns every match up to `max`: cut short, it is re-requested with a higher
+ * limit, and the second call costs more than the rules it was missing.
+ */
 export const LIST_LIMIT = { default: 20, min: 1, max: 200 } as const;
 
 /** Raised for a filter or lookup the catalogue cannot answer; the message says how to fix it. */
@@ -104,6 +110,16 @@ export function listLine(rule: Rule, format: ResponseFormat): string {
   return `${rule.id} · ${strength(rule)} · ${statement} · ${rule.enforced_by}`;
 }
 
+/** Whether the list is narrowed by a category (domain, enforced_by, severity), not just keywords. */
+export function hasCategoryFilter(filters: RuleFilters): boolean {
+  return Boolean(filters.domain || filters.enforced_by || filters.severity);
+}
+
+/** How many rules a list returns when the caller does not say; see {@link LIST_LIMIT}. */
+export function defaultListLimit(filters: RuleFilters): number {
+  return hasCategoryFilter(filters) ? LIST_LIMIT.max : LIST_LIMIT.default;
+}
+
 function domainLine(domain: RuleDomain): string {
   return `- ${domain.slug} (${domain.prefix}, ${domain.rules.length}) — ${domain.title}`;
 }
@@ -119,7 +135,7 @@ export function renderRuleList(
   limit: number,
 ): string {
   const matches = filterRules(catalog, filters);
-  const unfiltered = !filters.domain && !filters.enforced_by && !filters.severity && !filters.query;
+  const unfiltered = !hasCategoryFilter(filters) && !filters.query;
   const parts: string[] = [];
 
   if (unfiltered) parts.push(renderDomainList(catalog), '');
@@ -133,16 +149,23 @@ export function renderRuleList(
   }
 
   const shown = matches.slice(0, limit);
+  const total = `${matches.length} rule${matches.length === 1 ? '' : 's'}`;
+  const truncated = matches.length > shown.length;
   parts.push(
-    `${matches.length} rule${matches.length === 1 ? '' : 's'} (ID · SEVERITY · statement · enforced_by):`,
+    `${truncated ? `${total} match, the first ${shown.length} shown` : total} ` +
+      '(ID · SEVERITY · statement · enforced_by):',
   );
   parts.push(...shown.map((rule) => listLine(rule, format)));
-  if (matches.length > shown.length) {
+  // A cut list says so, with the count and the call that returns the rest: an
+  // agent that cannot tell it saw part of a checklist treats it as all of it.
+  if (truncated) {
     parts.push(
-      `… ${matches.length - shown.length} more. Narrow with domain, severity or query, or raise limit.`,
+      `Truncated: ${matches.length - shown.length} more not shown. Pass limit ` +
+        `${Math.min(matches.length, LIST_LIMIT.max)} to list them, or narrow with domain, ` +
+        'enforced_by, severity or query.',
     );
   }
-  parts.push('', 'Full rule: beel_rules_get with id.');
+  parts.push('', 'Full rules: beel_rules_get with ids, several in one call.');
   return parts.join('\n');
 }
 
@@ -154,16 +177,21 @@ function renderExample(
   return [`${label}: ${example.text}`, ...(example.code ? [example.code] : [])];
 }
 
-/** One rule. `concise` is statement, why, error codes, legal basis cited with its link, and docs; `detailed` is everything the catalogue holds. */
+/**
+ * One rule. `concise` is what an agent needs while it builds: the statement,
+ * the error codes that enforce it and the link to cite. `detailed` is everything
+ * the catalogue holds: the rationale, the legal basis with its quotes, the
+ * examples and the related rules.
+ */
 export function renderRule(rule: Rule, format: ResponseFormat): string {
   const lines = [
     `${rule.id} · ${rule.title} (${strength(rule)})`,
     `Domain: ${rule.domain} · enforced by: ${rule.enforced_by} · impact: ${rule.impact}`,
     '',
     rule.statement,
-    '',
-    `Why: ${rule.why}`,
   ];
+
+  if (format === 'detailed') lines.push('', `Why: ${rule.why}`);
 
   if (rule.error_codes.length > 0) {
     lines.push('', `Error codes: ${rule.error_codes.map((e) => e.code).join(', ')}`);
@@ -185,12 +213,6 @@ export function renderRule(rule: Rule, format: ResponseFormat): string {
     if (examples.length > 0) lines.push('', ...examples);
     if (rule.related.length > 0) lines.push('', `Related: ${rule.related.join(', ')}`);
     if (rule.docs.length > 0) lines.push(`Guides: ${rule.docs.join(' · ')}`);
-  } else if (rule.legal_basis.length > 0) {
-    const cites = rule.legal_basis.map((b) => {
-      const cite = [b.norm, b.article].filter(Boolean).join(' ');
-      return b.url ? `${cite} (${b.url})` : cite;
-    });
-    lines.push(`Legal basis: ${cites.join('; ')}`);
   }
 
   lines.push(`Docs: ${rule.url}`);
