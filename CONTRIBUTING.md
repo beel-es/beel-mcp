@@ -138,8 +138,8 @@ version in `package.json`, `package-lock.json` and `server.json`. The release wo
 dispatches CI on that PR so its required checks exist.
 
 **Merging the release PR is the release.** The workflow creates the tag and the GitHub
-Release and starts `publish.yml` for that tag, which still pauses in the `npm-publish`
-environment for a human approval before anything reaches npm or the MCP Registry.
+Release and starts `publish.yml` for that tag, which publishes to npm and then to the MCP
+Registry with no further approval: the `npm-publish` environment only admits `v*` tags.
 
 Commit titles therefore matter: they become the CHANGELOG. `chore:`, `ci:`, `build:` and
 `test:` are hidden from it; everything else is listed under its section.
@@ -222,8 +222,7 @@ It has to sit on the apex — the registry rejects the same value under a select
 `_mcp-auth.beel.es`, and says so.
 
 The private half is the seed, hex-encoded, in the `MCP_DNS_PRIVATE_KEY` secret of the
-`npm-publish` environment — so it is reachable only after the same human approval that
-gates npm. It is the one credential in the release: npm needs none, but a domain namespace
+`npm-publish` environment — so it is reachable only from a `v*` tag, never from a branch. It is the one credential in the release: npm needs none, but a domain namespace
 cannot work without proof only the domain holder can produce. Rotating it means publishing
 a new public key in the DNS/infrastructure repository **and** replacing the secret; do one
 without the other and releases stop.
