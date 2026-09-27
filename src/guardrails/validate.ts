@@ -220,9 +220,7 @@ function checkInvoice(body: Record<string, unknown>, out: GuardrailViolation[]):
       ),
     );
   }
-  // Invoices carry `type`; a recurring template names it `invoice_type`.
-  const declaredType = body.type ?? body.invoice_type;
-  const invoiceType = typeof declaredType === 'string' ? declaredType : undefined;
+  const invoiceType = typeof body.type === 'string' ? body.type : undefined;
   // BeeL's own rule, not the law's: a simplified invoice is for a recipient who
   // is not identified. Only checkable when the identifier travels in this body;
   // anything the request does not carry is left to the API.
@@ -272,6 +270,15 @@ function checkCorrective(body: Record<string, unknown>, out: GuardrailViolation[
     );
   }
   checkInvoice(body, out);
+}
+
+/**
+ * A recurring template names its type `invoice_type`. The contract states that a
+ * SIMPLIFIED template cannot keep lines a simplified invoice does not admit only
+ * for an edit, so only the patch reads it.
+ */
+function checkRecurringPatch(body: Record<string, unknown>, out: GuardrailViolation[]): void {
+  checkInvoice(body.invoice_type === undefined ? body : { ...body, type: body.invoice_type }, out);
 }
 
 // ── Series numbering ────────────────────────────────────────────────────────
@@ -358,7 +365,7 @@ export const CHECKED_OPERATIONS: Record<string, Check> = {
   createCompanyCorrectiveInvoice: checkCorrective,
   createCompanyInvoiceBatch: checkInvoice,
   createCompanyRecurringInvoice: checkInvoice,
-  patchCompanyRecurringInvoice: checkInvoice,
+  patchCompanyRecurringInvoice: checkRecurringPatch,
 
   // A company is born with its series, so numbering is validated at creation.
   createCompany: checkCompany,

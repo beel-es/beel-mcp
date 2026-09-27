@@ -200,9 +200,9 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   SIMPLIFIED_NOT_EXCHANGEABLE: {
     actor: 'request',
     remedy:
-      'Each simplified invoice can be exchanged once, and only while it is issued, not ' +
-      'voided and not corrected. Check them with beel_get_invoice and drop the ones already ' +
-      'exchanged, voided or corrected.',
+      'Each simplified invoice can be exchanged once, only after it has been issued and ' +
+      'while it is not voided, exchanged or corrected. Check them with beel_get_invoice and ' +
+      'drop the ones that no longer qualify.',
     guardrail: 'invoice-types',
   },
   SIMPLIFIED_EXCHANGE_NOT_RECORDABLE: {

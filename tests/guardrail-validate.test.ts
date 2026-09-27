@@ -168,9 +168,10 @@ describe('executable guardrails — correctives', () => {
 });
 
 describe('executable guardrails — recurring templates', () => {
-  it('reads the invoice type of a recurring template from invoice_type', () => {
+  it('reads invoice_type when a template is edited, where the contract refuses F2 lines', () => {
     const body = { invoice_type: 'SIMPLIFIED', lines: [line({ irpf_rate: 15 })] };
-    expect(codes(body, 'createCompanyRecurringInvoice')).toContain('SIMPLIFICADA_FORBIDS_IRPF');
+    expect(codes(body, 'patchCompanyRecurringInvoice')).toContain('SIMPLIFICADA_FORBIDS_IRPF');
+    expect(codes(body, 'createCompanyRecurringInvoice')).toEqual([]);
   });
 });
 
