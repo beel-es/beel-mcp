@@ -4,6 +4,10 @@ docPath: /nif-validation/validateNif
 summary: Why a name that does not match the census makes an invoice unsubmittable.
 ---
 
+API usage: how to run the census check and read its answer. The rules that require it
+are CNT-020 (a Spanish recipient's NIF is in the AEAT census) and CNT-021 (a recipient
+without a Spanish NIF is identified by an alternative id).
+
 Spanish tax ids (NIF, CIF, DNI, NIE) are checked against the AEAT census, not merely
 against a checksum. Use `beel_validate_nif` before creating a customer or issuing an
 ordinary (F1) invoice to a Spanish recipient.

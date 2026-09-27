@@ -4,6 +4,7 @@ import { createServer } from '../src/server.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
 import { DOCS_SEARCH } from '../src/tools/docs-tools.js';
+import { RULES_GET, RULES_LIST } from '../src/tools/rules-tools.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = {
@@ -107,6 +108,38 @@ describe('CallTool dispatch', () => {
     expect(textOf(result)).toContain('INVOICE_NO_LINES');
   });
 
+  it('names the published rules behind an API error code', async () => {
+    // The rules catalogue is unreachable here, so this also covers the fallback.
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).endsWith('/api/rules.json')) throw new Error('offline');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: { code: 'STATUS_NOT_MODIFIABLE', message: 'already issued' },
+        }),
+        { status: 409 },
+      );
+    });
+    const result = await callTool('beel_list_companies', {
+      account_id: '9c8f1f2e-2b7a-4a1e-9d1f-3f5a8c2b7e10',
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('Rules behind STATUS_NOT_MODIFIABLE:');
+    expect(textOf(result)).toContain('- LIF-001 ');
+  });
+
+  it('dispatches the rules tools', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('offline');
+    });
+    const list = await callTool(RULES_LIST, { domain: 'void' });
+    expect(list.isError).toBeFalsy();
+    expect(textOf(list)).toContain('VOI-001 · ');
+    const bad = await callTool(RULES_GET, { id: 'VOI-999' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toContain('beel_rules_list');
+  });
+
   it('logs one structured line per call, with no arguments in it', async () => {
     const lines: string[] = [];
     vi.stubGlobal('console', { ...console, error: (line: string) => lines.push(line) });
@@ -129,6 +162,8 @@ describe('hand-written tool names', () => {
     DOCS_SEARCH,
     'beel_docs_get',
     'beel_docs_list',
+    RULES_LIST,
+    RULES_GET,
   ];
 
   it('follow the beel_ convention', () => {

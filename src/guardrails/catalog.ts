@@ -43,7 +43,10 @@ export interface CatalogEntry {
    * already says it well enough for an agent to follow.
    */
   remedy?: string;
-  /** Guardrail whose prose explains the rule behind the code. */
+  /**
+   * The `beel://guardrails/<id>` resource that explains the background: an API usage
+   * guide id, or a fiscal-rule domain slug of the published rules catalogue.
+   */
   guardrail?: string;
 }
 
@@ -180,7 +183,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   INVOICE_ALREADY_VOIDED: {
     actor: 'benign',
     remedy: 'Voiding is not repeatable — treat this as a retry that already landed.',
-    guardrail: 'cancel-vs-rectify',
+    guardrail: 'void',
   },
   VOID_REQUIRES_ISSUED_IN_ERROR: {
     actor: 'request',
@@ -188,14 +191,14 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'The invoice was already sent or paid. If it really was issued by mistake, retry ' +
       'beel_void_invoice with issued_in_error: true; if the operation took place, correct it ' +
       'with beel_create_corrective_invoice instead.',
-    guardrail: 'cancel-vs-rectify',
+    guardrail: 'void',
   },
   INVOICE_HAS_LIVE_CORRECTIVES: {
     actor: 'request',
     remedy:
       'An invoice that was corrected cannot be voided. Issue another corrective with ' +
       'beel_create_corrective_invoice; retrying the void will not help.',
-    guardrail: 'cancel-vs-rectify',
+    guardrail: 'void',
   },
   SIMPLIFIED_NOT_EXCHANGEABLE: {
     actor: 'request',
@@ -203,14 +206,14 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'Each simplified invoice can be exchanged once, only after it has been issued and ' +
       'while it is not voided, exchanged or corrected. Check them with beel_get_invoice and ' +
       'drop the ones that no longer qualify.',
-    guardrail: 'invoice-types',
+    guardrail: 'simplified',
   },
   SIMPLIFIED_EXCHANGE_NOT_RECORDABLE: {
     actor: 'configuration',
     remedy:
       'Nothing was issued, and retrying unchanged will not help while VeriFactu cannot record ' +
       'the exchange. Tell the user; do not work around it with a void and a new invoice.',
-    guardrail: 'invoice-types',
+    guardrail: 'simplified',
   },
   INVOICE_STATUS_NOT_SCHEDULABLE: { actor: 'request', guardrail: 'invoice-state-machine' },
   INVOICE_DUPLICATE_EXTERNAL_REFERENCE: {
@@ -239,7 +242,7 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
       'default, which may be non-zero.',
-    guardrail: 'invoice-types',
+    guardrail: 'simplified',
   },
   // Also answered when issuing a draft saved with an identified recipient, where
   // the fix is an edit of the draft rather than of the request.
@@ -249,10 +252,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'Nothing was issued. Make it a STANDARD invoice (on a draft, beel_patch_invoice with ' +
       'type: STANDARD), or remove recipient.nif and recipient.alternative_id to keep it ' +
       'SIMPLIFIED. BeeL applies this at any amount.',
-    guardrail: 'invoice-types',
+    guardrail: 'simplified',
   },
-  SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'regime-keys' },
-  REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'regime-keys' },
+  SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'surcharge' },
+  REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'surcharge' },
 
   // ── Identity ──────────────────────────────────────────────────────────────
   NIF_INVALID: {
