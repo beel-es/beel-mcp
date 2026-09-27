@@ -151,6 +151,9 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               '  `beel_create_corrective_invoice` with the right rectification_code (R1–R5) and',
               '  rectification_type (PARTIAL with lines, or TOTAL without).',
               '- Remember R5 is only for simplified (F2); R1–R4 only for standard (F1).',
+              '- A void of a sent or paid invoice needs `issued_in_error: true`, only when it is true.',
+              '- The customer of a simplified invoice wants one with their details →',
+              '  `beel_create_simplified_exchange`, not a void or a corrective.',
               '',
               args.problem
                 ? `Problem reported: ${args.problem}`

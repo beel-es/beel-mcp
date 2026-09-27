@@ -15,8 +15,21 @@ and, for correctives, from `rectification_code`.
 | `type: SIMPLIFIED` | **F2**, factura simplificada | Ticket-style sales to an unidentified recipient, total ≤ 3 000 € |
 | A corrective operation | **R1–R5** | Amending an invoice already issued |
 
-**F3** (sustitutiva) is not emitted. To turn an F2 into an F1, issue an R5 `TOTAL`
-corrective and then a new `STANDARD` invoice for the same operation.
+## Exchanging simplified invoices for a full one (F3)
+
+When the customer of one or more simplified invoices asks for an invoice with their
+details, call `beel_create_simplified_exchange` with the `simplified_invoice_ids` and the
+`recipient`. It is not a corrective: it issues a `STANDARD` invoice with the same lines,
+listing the invoices it replaces in `replaced_invoice_ids`, and the AEAT records it as
+**F3**. In the same act each simplified invoice becomes `VOIDED` with `void_cause`
+`EXCHANGED`; do not void them yourself.
+
+- Only issued simplified invoices that were never voided, exchanged or corrected can be
+  exchanged (`EXCHANGE_REQUIRES_SIMPLIFIED`, `SIMPLIFIED_NOT_EXCHANGEABLE`).
+- The exchange invoice cannot be voided (`EXCHANGE_INVOICE_NOT_VOIDABLE`); an error in it
+  is fixed with a corrective.
+- While VeriFactu cannot record the exchange as F3, an exchange that would be submitted
+  fails with `SIMPLIFIED_EXCHANGE_NOT_RECORDABLE` and nothing is issued.
 
 ## F1 — ordinary
 

@@ -145,6 +145,35 @@ describe('executable guardrails — invoice level', () => {
   });
 });
 
+describe('executable guardrails — correctives', () => {
+  const CORRECTIVE_OP = 'createCompanyCorrectiveInvoice';
+  const base = { rectification_code: 'R1', reason: 'Price agreed was lower' };
+
+  it('rejects lines on a TOTAL corrective and accepts them on a PARTIAL one', () => {
+    const lines = [{ quantity: -1, unit_price: 10 }];
+    expect(codes({ ...base, rectification_type: 'TOTAL', lines }, CORRECTIVE_OP)).toContain(
+      'RECTIFICATIVA_TOTAL_CON_LINEAS',
+    );
+    expect(codes({ ...base, rectification_type: 'TOTAL' }, CORRECTIVE_OP)).toEqual([]);
+    expect(codes({ ...base, rectification_type: 'PARTIAL', lines }, CORRECTIVE_OP)).toEqual([]);
+  });
+
+  it('rejects circumstance_date with R4 and accepts it with the article 80 codes', () => {
+    const body = { ...base, rectification_type: 'TOTAL', circumstance_date: '2026-03-10' };
+    expect(codes({ ...body, rectification_code: 'R4' }, CORRECTIVE_OP)).toEqual([
+      'CORRECTIVE_CIRCUMSTANCE_DATE_NOT_APPLICABLE',
+    ]);
+    expect(codes(body, CORRECTIVE_OP)).toEqual([]);
+  });
+});
+
+describe('executable guardrails — recurring templates', () => {
+  it('reads the invoice type of a recurring template from invoice_type', () => {
+    const body = { invoice_type: 'SIMPLIFIED', lines: [line({ irpf_rate: 15 })] };
+    expect(codes(body, 'createCompanyRecurringInvoice')).toContain('SIMPLIFICADA_FORBIDS_IRPF');
+  });
+});
+
 describe('executable guardrails — reporting and escape hatch', () => {
   it('reports every violation at once, not just the first', () => {
     const body = {
@@ -288,6 +317,15 @@ describe('every violation carries a usable fix', () => {
       },
     ],
     ['createCompanyInvoice', { type: 'CORRECTIVE', lines: [{ quantity: 1, unit_price: 1 }] }],
+    [
+      'createCompanyCorrectiveInvoice',
+      {
+        rectification_type: 'TOTAL',
+        rectification_code: 'R4',
+        circumstance_date: '2026-03-10',
+        lines: [{ quantity: -1, unit_price: 10 }],
+      },
+    ],
     ['createCompanySeries', { format: '{CODIGO}-{NUM:6}' }],
     ['createCompanySeries', { format: '{CODIGO}-{YYYY}-{NUM:4}', counter_reset: 'MONTHLY' }],
     ['createCompany', { numbering: { code: 'F' }, activate: false }],

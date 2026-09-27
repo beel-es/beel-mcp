@@ -182,6 +182,36 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy: 'Voiding is not repeatable — treat this as a retry that already landed.',
     guardrail: 'cancel-vs-rectify',
   },
+  VOID_REQUIRES_ISSUED_IN_ERROR: {
+    actor: 'request',
+    remedy:
+      'The invoice was already sent or paid. If it really was issued by mistake, retry ' +
+      'beel_void_invoice with issued_in_error: true; if the operation took place, correct it ' +
+      'with beel_create_corrective_invoice instead.',
+    guardrail: 'cancel-vs-rectify',
+  },
+  INVOICE_HAS_LIVE_CORRECTIVES: {
+    actor: 'request',
+    remedy:
+      'An invoice that was corrected cannot be voided. Issue another corrective with ' +
+      'beel_create_corrective_invoice; retrying the void will not help.',
+    guardrail: 'cancel-vs-rectify',
+  },
+  SIMPLIFIED_NOT_EXCHANGEABLE: {
+    actor: 'request',
+    remedy:
+      'Each simplified invoice can be exchanged once, and only while it is issued, not ' +
+      'voided and not corrected. Check them with beel_get_invoice and drop the ones already ' +
+      'exchanged, voided or corrected.',
+    guardrail: 'invoice-types',
+  },
+  SIMPLIFIED_EXCHANGE_NOT_RECORDABLE: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued, and retrying unchanged will not help while VeriFactu cannot record ' +
+      'the exchange. Tell the user; do not work around it with a void and a new invoice.',
+    guardrail: 'invoice-types',
+  },
   INVOICE_STATUS_NOT_SCHEDULABLE: { actor: 'request', guardrail: 'invoice-state-machine' },
   INVOICE_DUPLICATE_EXTERNAL_REFERENCE: {
     actor: 'request',
