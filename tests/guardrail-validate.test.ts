@@ -52,6 +52,36 @@ describe('executable guardrails — F2 and IRPF', () => {
   });
 });
 
+describe('executable guardrails — F2 and an identified recipient', () => {
+  it('rejects a SIMPLIFIED invoice whose recipient carries a nif or an alternative_id', () => {
+    const id = { type: 'NIF_IVA', number: 'FR40303265045', country_code: 'FR' };
+    for (const recipient of [
+      { legal_name: 'Ana', nif: '12345678Z' },
+      { legal_name: 'Anne', alternative_id: id },
+    ]) {
+      for (const op of ['createCompanyInvoice', 'patchCompanyInvoice']) {
+        expect(codes({ type: 'SIMPLIFIED', recipient, lines: [line()] }, op)).toContain(
+          'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
+        );
+      }
+    }
+  });
+
+  it('allows a SIMPLIFIED invoice with no identifier, and a STANDARD one with it', () => {
+    expect(codes({ type: 'SIMPLIFIED', recipient: {}, lines: [line()] })).toEqual([]);
+    expect(
+      codes({ type: 'SIMPLIFIED', recipient: { legal_name: 'Ana', nif: null }, lines: [line()] }),
+    ).toEqual([]);
+    expect(
+      codes({
+        type: 'STANDARD',
+        recipient: { legal_name: 'Ana', nif: '12345678Z' },
+        lines: [line()],
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe('executable guardrails — equivalence surcharge and regime', () => {
   it('rejects a surcharge under a regime that does not admit one', () => {
     const body = {
@@ -112,6 +142,36 @@ describe('executable guardrails — invoice level', () => {
     expect(
       codes({ lines: [line({ exemption_reason: 'OTRO', exemption_reason_text: 'x' })] }),
     ).toEqual([]);
+  });
+});
+
+describe('executable guardrails — correctives', () => {
+  const CORRECTIVE_OP = 'createCompanyCorrectiveInvoice';
+  const base = { rectification_code: 'R1', reason: 'Price agreed was lower' };
+
+  it('rejects lines on a TOTAL corrective and accepts them on a PARTIAL one', () => {
+    const lines = [{ quantity: -1, unit_price: 10 }];
+    expect(codes({ ...base, rectification_type: 'TOTAL', lines }, CORRECTIVE_OP)).toContain(
+      'RECTIFICATIVA_TOTAL_CON_LINEAS',
+    );
+    expect(codes({ ...base, rectification_type: 'TOTAL' }, CORRECTIVE_OP)).toEqual([]);
+    expect(codes({ ...base, rectification_type: 'PARTIAL', lines }, CORRECTIVE_OP)).toEqual([]);
+  });
+
+  it('rejects circumstance_date with R4 and accepts it with the article 80 codes', () => {
+    const body = { ...base, rectification_type: 'TOTAL', circumstance_date: '2026-03-10' };
+    expect(codes({ ...body, rectification_code: 'R4' }, CORRECTIVE_OP)).toEqual([
+      'CORRECTIVE_CIRCUMSTANCE_DATE_NOT_APPLICABLE',
+    ]);
+    expect(codes(body, CORRECTIVE_OP)).toEqual([]);
+  });
+});
+
+describe('executable guardrails — recurring templates', () => {
+  it('reads invoice_type when a template is edited, where the contract refuses F2 lines', () => {
+    const body = { invoice_type: 'SIMPLIFIED', lines: [line({ irpf_rate: 15 })] };
+    expect(codes(body, 'patchCompanyRecurringInvoice')).toContain('SIMPLIFICADA_FORBIDS_IRPF');
+    expect(codes(body, 'createCompanyRecurringInvoice')).toEqual([]);
   });
 });
 
@@ -258,6 +318,15 @@ describe('every violation carries a usable fix', () => {
       },
     ],
     ['createCompanyInvoice', { type: 'CORRECTIVE', lines: [{ quantity: 1, unit_price: 1 }] }],
+    [
+      'createCompanyCorrectiveInvoice',
+      {
+        rectification_type: 'TOTAL',
+        rectification_code: 'R4',
+        circumstance_date: '2026-03-10',
+        lines: [{ quantity: -1, unit_price: 10 }],
+      },
+    ],
     ['createCompanySeries', { format: '{CODIGO}-{NUM:6}' }],
     ['createCompanySeries', { format: '{CODIGO}-{YYYY}-{NUM:4}', counter_reset: 'MONTHLY' }],
     ['createCompany', { numbering: { code: 'F' }, activate: false }],
