@@ -89,6 +89,19 @@ describe('CallTool dispatch', () => {
     expect(result.structuredContent).toMatchObject({ environment: 'test' });
   });
 
+  it('returns an API payload as compact JSON, every field kept', async () => {
+    const data = { companies: [{ id: 'co-1', nif: 'B1', trade_name: null }] };
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ success: true, data }), { status: 200 }),
+    );
+    const result = await callTool('beel_list_companies', {
+      account_id: '9c8f1f2e-2b7a-4a1e-9d1f-3f5a8c2b7e10',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toBe(JSON.stringify(data));
+  });
+
   it('reports an upstream API error through the guardrail catalogue', async () => {
     vi.stubGlobal(
       'fetch',

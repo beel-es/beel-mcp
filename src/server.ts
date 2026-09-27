@@ -16,7 +16,7 @@ import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { executeRulesTool, isRulesTool, rulesTools } from './tools/rules-tools.js';
 import { getSetupStatus, workflowTools } from './tools/workflow-tools.js';
 import { listGuardrailResources, readGuardrailResource } from './resources/guardrails.js';
-import { enrichToolResult } from './tools/tool-result.js';
+import { enrichToolResult, jsonText } from './tools/tool-result.js';
 import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
 import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
@@ -134,7 +134,7 @@ async function runSyntheticTool(
   // The output schema is advertised to the client, which may validate against
   // it. A divergence is our defect and is reported as one.
   assertValidOutput(tool, status);
-  const result = textResult(JSON.stringify(status, null, 2));
+  const result = textResult(jsonText(status));
   // Validated against that same outputSchema just above; the SDK types
   // structuredContent as an open record and cannot see it.
   result.structuredContent = status as unknown as Record<string, unknown>;
@@ -203,11 +203,10 @@ function createCallToolHandler(
       assertValidArguments(apiTool.tool, args);
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
       // A few tools enrich their payload — the invoice PDF supplies viewer data
-      // and an attachment — while the rest fall back to formatted JSON. The
-      // registry lives in ./tools/tool-result.
+      // and an attachment — while the rest fall back to compact JSON. Both live
+      // in ./tools/tool-result.
       const result =
-        (await enrichToolResult(apiTool.operation.operationId, data)) ??
-        textResult(JSON.stringify(data, null, 2));
+        (await enrichToolResult(apiTool.operation.operationId, data)) ?? textResult(jsonText(data));
       logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {

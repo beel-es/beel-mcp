@@ -12,7 +12,21 @@ import { ENV_VAR, HTTP_DEFAULTS } from '../shared/defaults.js';
 import { ambientEnv, readEnvInt, readEnvList, type EnvRecord } from '../shared/env.js';
 import { fetchWithTimeout, readBoundedArrayBuffer } from '../shared/fetch.js';
 
-/** Turns a tool payload into a CallToolResult; `null` falls back to plain JSON. */
+/**
+ * The text a JSON payload travels as in a tool result: every API tool without an
+ * enricher, and the structured workflow reports.
+ *
+ * Compact, with no indentation. A tool result stays in the conversation and is
+ * read again on every later turn, and indentation is about a quarter of a
+ * typical invoice while telling a model nothing. The value itself is untouched:
+ * every field is kept, `null` ones included. `undefined`, which JSON cannot
+ * carry, is sent as `null` so the result is always a string.
+ */
+export function jsonText(data: unknown): string {
+  return JSON.stringify(data) ?? 'null';
+}
+
+/** Turns a tool payload into a CallToolResult; `null` falls back to {@link jsonText}. */
 export type ResultEnricher = (data: unknown) => Promise<CallToolResult | null>;
 
 /** operationId → enricher. The single point of registration. */
