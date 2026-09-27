@@ -66,6 +66,17 @@ describe('the server instructions', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/cite its id with its link/);
   });
 
+  it('keep the study short: a filtered list first, then only the rules relied on, in one call', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/beel_rules_list filtered/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/do not read every rule first/);
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /only the rules your answer relies on, all in one call with ids/,
+    );
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /page\s+and section of the result that answers, not the whole page/,
+    );
+  });
+
   it('stay short enough to be read whole', () => {
     expect(SERVER_INSTRUCTIONS.length).toBeLessThan(2_000);
   });
