@@ -258,7 +258,7 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               '5. The document must be signed by the NIF holder (digital certificate / autofirma) and',
               '   the SIGNED copy uploaded. Uploading a file is not available over the MCP, so direct',
               '   me to do it in the BeeL web app (the NIF > Representation section). Search',
-              '   `beel_docs_search` ["representation"] for the exact steps if unsure.',
+              '   `beel_docs_search` "representation" for the exact steps if unsure.',
               '6. Verify with `beel_get_representation` until its status is valid, then re-run',
               '   `beel_get_issuing_readiness` to confirm the blocker is gone.',
               '   Use `beel_cancel_representation` only to discard a wrong/pending document.',
@@ -314,11 +314,11 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               '3. Error handling: read the error `code` and request_id, back off on 429/5xx, and',
               '   surface fiscal error codes to the user rather than retrying blindly.',
               '4. Webhook signature verification: verify the signature before trusting a payload.',
-              '   Search `beel_docs_search` ["webhook", "signature"].',
+              '   Search `beel_docs_search` "webhook signature".',
               '5. Invoice lifecycle: read the `lifecycle`, `void` and `corrective` rules',
               '   (`beel_rules_list` with domain); never mutate an issued invoice in place (LIF-001).',
               '6. Migrate off deprecated endpoints to the company-scoped API (the beel_*_company_*',
-              '   tools under /v1/companies/{company_id}/...). Search `beel_docs_search` ["deprecated"].',
+              '   tools under /v1/companies/{company_id}/...). Search `beel_docs_search` "deprecated".',
               '',
               args.current_stack
                 ? `Current stack: ${args.current_stack}`
