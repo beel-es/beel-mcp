@@ -13,8 +13,9 @@ import { resolveConfig, type ResolvedConfig } from './config.js';
 import { ApiError } from './api/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
+import { executeRulesTool, isRulesTool, rulesTools } from './tools/rules-tools.js';
 import { getSetupStatus, workflowTools } from './tools/workflow-tools.js';
-import { guardrailResources, readGuardrailResource } from './resources/guardrails.js';
+import { listGuardrailResources, readGuardrailResource } from './resources/guardrails.js';
 import { enrichToolResult } from './tools/tool-result.js';
 import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
 import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
@@ -27,7 +28,7 @@ import {
 } from './tools/validate-args.js';
 import { isRecord } from './shared/guards.js';
 import { GuardrailError } from './guardrails/validate.js';
-import { explainError } from './guardrails/explain.js';
+import { explainErrorWithRules } from './guardrails/explain.js';
 import { SERVER_NAME } from './shared/defaults.js';
 
 export interface ServerInfo {
@@ -53,10 +54,11 @@ function textResult(text: string, isError = false): CallToolResult {
 /**
  * Render an API error for the model. Goes through the guardrail catalogue, so a
  * bare code like EMISSION_NOT_READY arrives with its meaning, its remedy and its
- * nested blockers expanded — an agent that only sees the code retries blindly.
+ * nested blockers expanded — an agent that only sees the code retries blindly —
+ * and names the published fiscal rules that code enforces.
  */
-function formatApiError(err: ApiError): string {
-  return explainError({
+function formatApiError(err: ApiError): Promise<string> {
+  return explainErrorWithRules({
     status: err.status,
     message: err.message,
     code: err.code,
@@ -92,7 +94,7 @@ function writeStderr(line: string): void {
 }
 
 /** Resolve a resource URI to its contents: the MCP App, or a guardrail document. */
-function readResource(uri: string): { contents: Array<Record<string, unknown>> } {
+async function readResource(uri: string): Promise<{ contents: Array<Record<string, unknown>> }> {
   if (uri === INVOICE_PDF_APP_URI) {
     const app = readInvoicePdfApp();
     if (!app) throw new Error('Invoice PDF app not built. Run `npm run build:mcpapp`.');
@@ -108,7 +110,7 @@ function readResource(uri: string): { contents: Array<Record<string, unknown>> }
       ],
     };
   }
-  const body = readGuardrailResource(uri);
+  const body = await readGuardrailResource(uri);
   if (body === null) throw new Error(`Unknown resource: ${uri}`);
   return { contents: [{ uri, mimeType: 'text/markdown', text: body }] };
 }
@@ -126,6 +128,7 @@ async function runSyntheticTool(
 ): Promise<CallToolResult> {
   assertValidArguments(tool, args);
   if (isDocsTool(tool.name)) return textResult(await executeDocsTool(tool.name, args));
+  if (isRulesTool(tool.name)) return textResult(await executeRulesTool(tool.name, args));
 
   const status = await getSetupStatus(getConfig(), args);
   // The output schema is advertised to the client, which may validate against
@@ -143,10 +146,10 @@ async function runSyntheticTool(
  * call. A local rejection never reached the API, and the log says so: "we
  * stopped this" and "BeeL stopped this" call for different fixes.
  */
-function errorResult(name: string, err: unknown, ms: number): CallToolResult {
+async function errorResult(name: string, err: unknown, ms: number): Promise<CallToolResult> {
   if (err instanceof ApiError) {
     logToolCall(name, 'error', ms, { status: err.status, code: err.code });
-    return textResult(formatApiError(err), true);
+    return textResult(await formatApiError(err), true);
   }
   if (err instanceof GuardrailError) {
     logToolCall(name, 'error', ms, { code: 'guardrail_violation' });
@@ -228,23 +231,26 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     capabilities: { tools: {}, resources: {}, prompts: {} },
     instructions:
       'BeeL is a Spanish invoicing API with VeriFactu compliance. Tools are derived from ' +
-      'the public OpenAPI spec. Before mutating fiscal data, consult the beel://guardrails/* ' +
-      'resources and use beel_docs_search. Test keys (beel_sk_test_) are safe to experiment with.',
+      'the public OpenAPI spec. Before mutating fiscal data, find the fiscal rules that apply ' +
+      'with beel_rules_list and read them with beel_rules_get (also by error_code after a ' +
+      'failure); the beel://guardrails/* resources hold the same rules by domain plus API ' +
+      'usage guides, and beel_docs_search covers guides and worked examples. Test keys ' +
+      '(beel_sk_test_) are safe to experiment with.',
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...apiTools.map((t) => t.tool), ...docsTools, ...workflowTools],
+    tools: [...apiTools.map((t) => t.tool), ...docsTools, ...rulesTools, ...workflowTools],
   }));
 
   const syntheticByName = new Map<string, Tool>(
-    [...docsTools, ...workflowTools].map((t) => [t.name, t]),
+    [...docsTools, ...rulesTools, ...workflowTools].map((t) => [t.name, t]),
   );
   const callTool = createCallToolHandler(apiByName, syntheticByName, getConfig);
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => callTool(request));
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: [...guardrailResources, invoicePdfAppResource],
+    resources: [...(await listGuardrailResources()), invoicePdfAppResource],
   }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) =>
@@ -261,7 +267,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     writeStderr(
-      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + workflowTools.length} synthetic tools, ` +
+      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + workflowTools.length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }

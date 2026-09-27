@@ -14,6 +14,8 @@
 
 import { docsUrlForCode, lookupError } from './catalog.js';
 import { guardrailUri } from './rules.js';
+import { loadRules, type LoadedRules } from '../rules/fetch.js';
+import { rulesCitingCode } from '../rules/render.js';
 
 export interface ExplainableError {
   status: number;
@@ -77,4 +79,44 @@ export function explainError(err: ExplainableError): string {
  */
 export function explainCode(code: string): string {
   return lookupError(code)?.remedy ?? `See ${docsUrlForCode(code)}`;
+}
+
+/** Most rules named under a failed call; the rest are one tool call away. */
+export const MAX_RULES_PER_ERROR = 3;
+
+/**
+ * The published fiscal rules an error code enforces, as a short block to append
+ * to an error: id, title and link per rule. Empty when no rule cites the code,
+ * and empty — never an exception — when the catalogue cannot be read, because
+ * the error itself is what the agent needs and must not be lost to this.
+ */
+export async function rulesNoteForCode(
+  code: string | undefined,
+  load: () => Promise<LoadedRules> = () => loadRules(),
+): Promise<string> {
+  if (!code) return '';
+  try {
+    const rules = rulesCitingCode((await load()).catalog, code);
+    if (rules.length === 0) return '';
+    const shown = rules.slice(0, MAX_RULES_PER_ERROR);
+    return [
+      `Rules behind ${code}:`,
+      ...shown.map((rule) => `- ${rule.id} ${rule.title} — ${rule.url}`),
+      rules.length > shown.length
+        ? `(${rules.length - shown.length} more: beel_rules_get with error_code ${code})`
+        : `(Full text: beel_rules_get with error_code ${code})`,
+    ].join('\n');
+  } catch {
+    return '';
+  }
+}
+
+/** {@link explainError}, followed by the rules the code enforces when there are any. */
+export async function explainErrorWithRules(
+  err: ExplainableError,
+  load?: () => Promise<LoadedRules>,
+): Promise<string> {
+  const base = explainError(err);
+  const note = await rulesNoteForCode(err.code, load);
+  return note ? `${base}\n\n${note}` : base;
 }

@@ -146,6 +146,37 @@ describe('client authentication against the token endpoint', () => {
     stubFetch(() => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }));
     await expect(exchange()).rejects.toMatchObject({ oauthError: 'invalid_grant' });
   });
+
+  it('keeps the error description, with anything token-like masked', async () => {
+    const leaked = 'sI53yotYpTY565M1D7NlSytl-PWj5gc_8rsiLbCD68';
+    stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: 'invalid_grant',
+            error_description: `Authorization code ${leaked} is invalid\n or expired`,
+          }),
+          { status: 400 },
+        ),
+    );
+
+    const error = (await exchange().catch((e: unknown) => e)) as TokenEndpointError;
+
+    expect(error.oauthErrorDescription).toBe('Authorization code [redacted] is invalid or expired');
+    expect(error.oauthErrorDescription).not.toContain(leaked);
+  });
+
+  it('bounds the description it keeps', async () => {
+    stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({ error: 'invalid_request', error_description: 'word '.repeat(200) }),
+          { status: 400 },
+        ),
+    );
+    const error = (await exchange().catch((e: unknown) => e)) as TokenEndpointError;
+    expect(error.oauthErrorDescription!.length).toBeLessThanOrEqual(200);
+  });
 });
 
 describe('the token response is validated before it is trusted', () => {

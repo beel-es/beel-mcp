@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { catalogCodes, ERROR_CATALOG, lookupError } from '../src/guardrails/catalog.js';
 import { specErrorCodes, specIssuingBlockers } from './spec-error-codes.js';
 import { GUARDRAILS } from '../src/guardrails/rules.js';
+import { snapshotCatalog } from '../src/rules/fetch.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { CHECKED_OPERATIONS, findViolations } from '../src/guardrails/validate.js';
 
@@ -16,8 +17,11 @@ describe('the error catalogue stays anchored to the contract', () => {
     expect(stale).toEqual([]);
   });
 
-  it('every catalogued code names a guardrail that exists', () => {
-    const ids = new Set(GUARDRAILS.map((g) => g.id));
+  it('every catalogued code names a guide or a rule domain that exists', () => {
+    const ids = new Set([
+      ...GUARDRAILS.map((g) => g.id),
+      ...snapshotCatalog().domains.map((d) => d.slug),
+    ]);
     const dangling = Object.entries(ERROR_CATALOG)
       .filter(([, entry]) => entry.guardrail && !ids.has(entry.guardrail))
       .map(([code, entry]) => `${code} → ${entry.guardrail}`);
@@ -51,6 +55,7 @@ describe('the error catalogue stays anchored to the contract', () => {
     // from. If it were wrong, an agent would search the docs for something that
     // does not exist, or dismiss a real code as invented.
     const PROBES: Array<[string, unknown]> = [
+      ['createCompanyInvoice', { type: 'SIMPLIFIED', recipient: { nif: '12345678Z' }, lines: [] }],
       [
         'createCompanyInvoice',
         {
@@ -92,6 +97,7 @@ describe('the error catalogue stays anchored to the contract', () => {
     const enforced = [
       'LINE_UNIT_PRICE_XOR_DECLARED_TOTAL',
       'SIMPLIFICADA_FORBIDS_IRPF',
+      'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
       'SURCHARGE_REQUIRES_REGIME',
       'SERIES_ANNUAL_REQUIRES_YEAR',
       'NUMBERING_REQUIRES_ACTIVATION',

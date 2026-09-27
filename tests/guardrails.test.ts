@@ -1,55 +1,134 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
-import { describeTool, guardrailsForOperation } from '../src/guardrails/enrich.js';
+import {
+  BY_OPERATION_ID,
+  BY_TAG,
+  describeTool,
+  guardrailsForOperation,
+} from '../src/guardrails/enrich.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { readGuardrailResource } from '../src/resources/guardrails.js';
+import {
+  LEGACY_ALIASES,
+  listGuardrailResources,
+  readGuardrailResource,
+} from '../src/resources/guardrails.js';
 import { GUARDRAILS, guardrailUri } from '../src/guardrails/rules.js';
+import { clearRulesCache, snapshotCatalog } from '../src/rules/fetch.js';
 import { splitChunks, searchChunks, renderChunks } from '../src/docs/search.js';
 
 const RULES_DIR = 'src/guardrails/rules';
 
 const manifest = buildManifest(loadSpec());
 const byId = (id: string): OperationSpec => manifest.find((o) => o.operationId === id)!;
+const domains = snapshotCatalog().domains;
+
+// The resources read the rules catalogue; keep these tests off the network and
+// on the bundled snapshot.
+beforeEach(() => {
+  clearRulesCache();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('offline');
+    }),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
 
 describe('guardrail enrichment', () => {
-  it('attaches invoice-type and regime-key guardrails to createCompanyInvoice', () => {
+  it('points createCompanyInvoice at the simplified and tax rules and the line guide', () => {
     const ids = guardrailsForOperation(byId('createCompanyInvoice'));
-    expect(ids).toContain('invoice-types');
-    expect(ids).toContain('regime-keys');
+    expect(ids).toContain('simplified');
+    expect(ids).toContain('taxes');
+    expect(ids).toContain('invoice-lines');
   });
 
-  it('attaches cancel-vs-rectify to void and corrective', () => {
-    expect(guardrailsForOperation(byId('voidCompanyInvoice'))).toContain('cancel-vs-rectify');
-    expect(guardrailsForOperation(byId('createCompanyCorrectiveInvoice'))).toContain(
-      'cancel-vs-rectify',
-    );
+  it('points void and corrective at the void and corrective rules', () => {
+    expect(guardrailsForOperation(byId('voidCompanyInvoice'))).toContain('void');
+    expect(guardrailsForOperation(byId('createCompanyCorrectiveInvoice'))).toContain('corrective');
   });
 
-  it('injects a guardrails footer and the endpoint into the description', () => {
+  it('every mapped id is an API guide or a domain of the rules catalogue', () => {
+    const known = new Set([...GUARDRAILS.map((g) => g.id), ...domains.map((d) => d.slug)]);
+    const dangling = [...Object.values(BY_OPERATION_ID), ...Object.values(BY_TAG)]
+      .flat()
+      .filter((id) => !known.has(id));
+    expect(dangling).toEqual([]);
+  });
+
+  it('injects the rule domains, the guides and the endpoint into the description', () => {
     const desc = describeTool(byId('createCompanyInvoice'));
-    expect(desc).toContain('Fiscal guardrails');
     expect(desc).toContain('POST /v1/companies/{company_id}/invoices');
-    expect(desc).toContain(guardrailUri('invoice-types'));
+    expect(desc).toContain('beel_rules_list');
+    expect(desc).toMatch(/domains simplified, contents, taxes, surcharge/);
+    expect(desc).toContain(guardrailUri('invoice-lines'));
+  });
+
+  it('copies no rule text into a tool description', () => {
+    // Rule wording lives in the catalogue only; a description that quoted it
+    // would be a second copy, and the first to go stale.
+    const statements = snapshotCatalog().rules.map((r) => r.statement);
+    for (const op of manifest) {
+      const desc = describeTool(op);
+      expect(statements.filter((s) => desc.includes(s))).toEqual([]);
+    }
   });
 });
 
 describe('guardrail resources', () => {
-  it('resolves every guardrail URI to markdown', () => {
+  it('guide ids, rule domains and the errors resource never share a URI', () => {
+    const ids = [...GUARDRAILS.map((g) => g.id), ...domains.map((d) => d.slug), 'errors'];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const legacy of Object.keys(LEGACY_ALIASES)) expect(ids).not.toContain(legacy);
+  });
+
+  it('lists the index, one resource per rule domain, every guide and the errors', async () => {
+    const uris = (await listGuardrailResources()).map((r) => r.uri);
+    expect(uris[0]).toBe('beel://guardrails');
+    for (const d of domains) expect(uris).toContain(guardrailUri(d.slug));
+    for (const g of GUARDRAILS) expect(uris).toContain(guardrailUri(g.id));
+    expect(uris).toContain('beel://guardrails/errors');
+  });
+
+  it('resolves every guide URI to markdown', async () => {
     for (const g of GUARDRAILS) {
-      const body = readGuardrailResource(guardrailUri(g.id));
-      expect(body).toBeTruthy();
+      const body = await readGuardrailResource(guardrailUri(g.id));
       expect(body).toContain(g.title);
     }
   });
 
-  it('resolves the overview resource', () => {
-    expect(readGuardrailResource('beel://guardrails')).toContain('fiscal guardrails');
+  it('serves every rule domain from the catalogue, each rule with its id and link', async () => {
+    const { rules } = snapshotCatalog();
+    for (const d of domains) {
+      const body = (await readGuardrailResource(guardrailUri(d.slug)))!;
+      expect(body).toContain(`# ${d.title}`);
+      for (const rule of rules.filter((r) => r.domain === d.slug)) {
+        expect(body).toContain(rule.id);
+        expect(body).toContain(rule.url);
+      }
+      // A domain is read whole; keep it well inside a context window.
+      expect(body.length).toBeLessThan(40_000);
+    }
   });
 
-  it('returns null for unknown URIs', () => {
-    expect(readGuardrailResource('beel://guardrails/does-not-exist')).toBeNull();
+  it('groups the index by domain and links the guides', async () => {
+    const body = (await readGuardrailResource('beel://guardrails'))!;
+    for (const d of domains) expect(body).toContain(guardrailUri(d.slug));
+    for (const g of GUARDRAILS) expect(body).toContain(guardrailUri(g.id));
+  });
+
+  it('keeps the URIs of guides that became rule domains readable', async () => {
+    for (const [legacy, slugs] of Object.entries(LEGACY_ALIASES)) {
+      const body = (await readGuardrailResource(guardrailUri(legacy)))!;
+      for (const slug of slugs) expect(body).toContain(guardrailUri(slug));
+    }
+  });
+
+  it('returns null for unknown URIs', async () => {
+    expect(await readGuardrailResource('beel://guardrails/does-not-exist')).toBeNull();
+    expect(await readGuardrailResource('beel://elsewhere')).toBeNull();
   });
 });
 
