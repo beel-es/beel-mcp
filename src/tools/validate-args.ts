@@ -114,10 +114,55 @@ function describe(errors: OutputUnit[]): string[] {
   });
 }
 
+/** A JSON Pointer token for a property name (RFC 6901). */
+function pointerToken(name: string): string {
+  return name.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+/** The top-level arguments a closed input schema does not declare. */
+function unknownArguments(schema: Tool['inputSchema'], args: unknown): string[] {
+  if (schema.additionalProperties !== false) return [];
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return [];
+  const declared = schema.properties ?? {};
+  return Object.keys(args).filter((name) => !Object.hasOwn(declared, name));
+}
+
+/**
+ * One line for every unknown top-level argument, naming the ones the tool takes.
+ *
+ * The validator reports an unknown argument twice («Property "url" does not
+ * match additional properties schema», then «url: False boolean schema»),
+ * and neither says what the tool does accept. A model told only that retries
+ * with another guess; told the accepted names, it fixes the call in one step.
+ */
+function describeUnknownArguments(schema: Tool['inputSchema'], unknown: string[]): string {
+  const required = new Set(schema.required ?? []);
+  const accepted = Object.keys(schema.properties ?? {}).map((name) =>
+    required.has(name) ? `${name} (required)` : name,
+  );
+  const names = unknown.map((name) => `"${name}"`).join(', ');
+  return (
+    `unknown argument${unknown.length === 1 ? '' : 's'} ${names}. ` +
+    `This tool takes: ${accepted.join(', ') || 'no arguments'}.`
+  );
+}
+
 /** Human-readable issues against a tool's `inputSchema`. Empty when valid. */
 export function findArgumentIssues(tool: Tool, args: unknown): string[] {
   const result = validatorFor(tool.inputSchema, tool.name).validate(args);
-  return result.valid ? [] : describe(result.errors);
+  if (result.valid) return [];
+  const unknown = unknownArguments(tool.inputSchema, args);
+  if (unknown.length === 0) return describe(result.errors);
+  // Replace the validator's two lines per unknown argument with one that says
+  // what to send instead. The list comes from the schema, not from the errors:
+  // the validator can stop reporting a closed object after its first failure.
+  const unknownLocations = new Set(unknown.map((name) => `#/${pointerToken(name)}`));
+  const rest = result.errors.filter(
+    (err) =>
+      !unknownLocations.has(err.instanceLocation) &&
+      !(err.instanceLocation === '#' && err.keyword === 'additionalProperties'),
+  );
+  return [describeUnknownArguments(tool.inputSchema, unknown), ...describe(rest)];
 }
 
 /** Throw when the arguments do not satisfy the tool's advertised contract. */

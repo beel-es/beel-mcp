@@ -89,6 +89,23 @@ describe('unknown top-level arguments', () => {
     }
     expect(issues.join(' ')).toMatch(/not_a_parameter/);
   });
+
+  it('name the arguments the tool takes, once per call, so the retry is not a guess', () => {
+    const tool = byName.get('beel_get_default_series')!;
+    const issues = findArgumentIssues(tool, { nif: 'B12345678' });
+    expect(issues).toEqual([
+      'unknown argument "nif". This tool takes: company_id (required).',
+      'Instance does not have required property "company_id".',
+    ]);
+  });
+
+  it('list every unknown argument in one line and keep the other issues', () => {
+    const tool = byName.get('beel_create_invoice')!;
+    const issues = findArgumentIssues(tool, { company_id: 123, foo: 1, 'a/b': 2 });
+    expect(issues[0]).toMatch(/^unknown arguments "foo", "a\/b"\. This tool takes: .*company_id/);
+    expect(issues.join('\n')).not.toMatch(/additional properties|^(foo|a\/b): /m);
+    expect(issues.join('\n')).toMatch(/^company_id: /m);
+  });
 });
 
 describe('the validator runs where the remote transport runs', () => {
