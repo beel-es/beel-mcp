@@ -3,6 +3,31 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.6.0](https://github.com/beel-es/beel-mcp/compare/v0.5.0...v0.6.0) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* payment-connection tools address the connection by connection_id instead of provider, and beel_create_series requires document_type.
+
+### Novedades
+
+* align with the production API contract (payment connections by connection_id, series document type, event resolution) ([#101](https://github.com/beel-es/beel-mcp/issues/101)) ([154f96f](https://github.com/beel-es/beel-mcp/commit/154f96f3526b1d0a54f97ebf7ca875a08a999fe3))
+* **rules:** serve the published fiscal rules catalogue as tools and resources ([#103](https://github.com/beel-es/beel-mcp/issues/103)) ([241950e](https://github.com/beel-es/beel-mcp/commit/241950ec1d6073d2a490d526e79c099bffae0261))
+* **rules:** tell the agent when to consult the fiscal rules ([#107](https://github.com/beel-es/beel-mcp/issues/107)) ([dad6050](https://github.com/beel-es/beel-mcp/commit/dad6050277cf1558400567526ea4fec9cda5db33))
+
+
+### Correcciones
+
+* **oauth:** answer every token-less request to /mcp with the challenge ([#99](https://github.com/beel-es/beel-mcp/issues/99)) ([21c5e2c](https://github.com/beel-es/beel-mcp/commit/21c5e2ccffc25f5dc3cc183c399343c304dd3d09))
+* **oauth:** report why the token endpoint rejected an exchange ([#102](https://github.com/beel-es/beel-mcp/issues/102)) ([b8d045f](https://github.com/beel-es/beel-mcp/commit/b8d045f9c530ff72c9dfd9d3e15d145033c5c6a0))
+* **oauth:** tell a transient upstream failure from a configuration fault ([#104](https://github.com/beel-es/beel-mcp/issues/104)) ([82a463e](https://github.com/beel-es/beel-mcp/commit/82a463e5522382893aaa83ae0449ae17c728861a))
+
+
+### Documentación
+
+* **agents:** what must not be written in a public PR ([#89](https://github.com/beel-es/beel-mcp/issues/89)) ([b53aa91](https://github.com/beel-es/beel-mcp/commit/b53aa91049a6b2fa09cb22b3bd5ba6141e06fb34))
+
 ## [0.5.0](https://github.com/beel-es/beel-mcp/compare/v0.4.2...v0.5.0) (2026-08-29)
 
 
