@@ -4,7 +4,7 @@ import { explainCode, explainError } from '../src/guardrails/explain.js';
 describe('explaining API errors', () => {
   it("leads with the API's own message and links its documentation page", () => {
     // The message and the doc page are the API's job and it does it well, in the
-    // caller's language and across ~357 codes. This layer must not paraphrase them.
+    // caller's language and across every code it can answer with. This layer must not paraphrase them.
     const text = explainError({
       status: 422,
       message: 'Environments do not match',
@@ -112,5 +112,25 @@ describe('explaining API errors', () => {
   it('explainCode returns the remedy, or a usable fallback', () => {
     expect(explainCode('NIF_NOT_REGISTERED')).toMatch(/beel_get_verifactu_configuration/);
     expect(explainCode('UNKNOWN_BLOCKER')).toContain('errors/UNKNOWN_BLOCKER');
+  });
+
+  it('does not present a series clash (409) as work that already happened', () => {
+    const text = explainError({
+      status: 409,
+      message: 'The format overlaps with series FAC',
+      code: 'SERIES_FORMAT_OVERLAPS',
+    });
+    expect(text).toContain('beel_list_series');
+    expect(text).not.toContain('may have already succeeded');
+  });
+
+  it('says a number collision at issue time will not clear by retrying', () => {
+    const text = explainError({
+      status: 400,
+      message: 'The number is already used',
+      code: 'SERIES_NUMBER_COLLISION',
+    });
+    expect(text).toContain('no number was consumed');
+    expect(text).toContain('Retrying this call unchanged will not help.');
   });
 });
