@@ -4,7 +4,15 @@ import { buildApiTools, executeApiTool } from './api-tools.js';
 import type { OperationSpec } from '../spec/manifest.js';
 import { explainCode } from '../guardrails/explain.js';
 import { ApiError } from '../api/client.js';
-import { compact, isRecord, readBoolean, readString, stringItems } from '../shared/guards.js';
+import {
+  compact,
+  isRecord,
+  readArray,
+  readBoolean,
+  readNumber,
+  readString,
+  stringItems,
+} from '../shared/guards.js';
 import { pLimit } from '../shared/fetch.js';
 
 /**
@@ -18,9 +26,9 @@ export const SETUP_STATUS = 'beel_get_setup_status';
 /**
  * How many companies are reported on at once.
  *
- * Each company costs four API calls, so an unbounded fan-out over a large
- * account opens hundreds of connections at the same instant and earns a 429 for
- * every one of them.
+ * Each company costs five API calls, made one after another, so an unbounded
+ * fan-out over a large account opens hundreds of connections at the same
+ * instant and earns a 429 for every one of them.
  */
 const MAX_COMPANIES_IN_FLIGHT = 4;
 
@@ -40,11 +48,12 @@ export const workflowTools: Tool[] = [
   {
     name: SETUP_STATUS,
     description:
-      'Read-only setup status across your account: for each company it reports whether it can ' +
-      'issue Live, exactly what is missing (issuing-readiness blockers, default series, ' +
-      'VeriFactu, payment connection) and the single recommended next action. Use this to drive ' +
-      'onboarding instead of guessing. Aggregates several endpoints; a section that could not ' +
-      'be read carries an `error` and never a default, so an unknown is never reported as ready.',
+      'Read-only setup status across your account, with the ids an integration needs: for each ' +
+      'company its company_id and NIF, whether it can issue Live and exactly what is missing ' +
+      '(issuing-readiness blockers, default series, VeriFactu, payment connection), its default ' +
+      'series per document type (id and code), its VeriFactu status and its tax defaults, and ' +
+      'the single recommended next action. A section that could not be read carries an `error` ' +
+      'and never a default, so an unknown is never reported as ready.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -103,6 +112,21 @@ export const workflowTools: Tool[] = [
                 properties: {
                   all_configured: { type: 'boolean' },
                   missing: { type: 'array', items: { type: 'string' } },
+                  defaults: {
+                    type: 'array',
+                    description:
+                      'The default series of each document type that has one: the series_id ' +
+                      'to send when issuing, and its code.',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        document_type: { type: 'string' },
+                        series_id: { type: 'string' },
+                        code: { type: 'string' },
+                      },
+                      required: ['document_type', 'series_id'],
+                    },
+                  },
                   error: errorSchema,
                 },
               },
@@ -111,6 +135,34 @@ export const workflowTools: Tool[] = [
                 properties: {
                   enabled: { type: 'boolean' },
                   apply_by_default: { type: 'boolean' },
+                  status: {
+                    type: 'string',
+                    description: 'VeriFactu state as the API derives it, e.g. ACTIVE or UNSIGNED.',
+                  },
+                  error: errorSchema,
+                },
+              },
+              tax_defaults: {
+                type: 'object',
+                description:
+                  'The tax configuration as stored, under the API field names. A prefill the ' +
+                  'API never applies to a line on its own: every NORMAL line still sends its ' +
+                  'main_tax. allowed_irpf_rates are the IRPF rates this NIF may bear.',
+                properties: {
+                  default_main_tax: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string' },
+                      percentage: { type: 'number' },
+                      regime_key: { type: 'string' },
+                    },
+                  },
+                  apply_irpf: { type: 'boolean' },
+                  default_irpf_rate: { type: 'number' },
+                  irpf_exempt: { type: 'boolean' },
+                  allowed_irpf_rates: { type: 'array', items: { type: 'number' } },
+                  apply_equivalence_surcharge: { type: 'boolean' },
+                  default_equivalence_surcharge: { type: 'number' },
                   error: errorSchema,
                 },
               },
@@ -200,15 +252,42 @@ function listOf(value: unknown, key: string): unknown[] | undefined {
   return Array.isArray(nested) ? nested : undefined;
 }
 
+/** A document type's default series: what to send as series_id when issuing it. */
+interface DefaultSeries {
+  document_type: string;
+  series_id: string;
+  code?: string;
+}
+
 interface SeriesSection {
   all_configured?: boolean;
   missing?: string[];
+  defaults?: DefaultSeries[];
   error?: string;
 }
 
 interface VerifactuSection {
   enabled?: boolean;
   apply_by_default?: boolean;
+  status?: string;
+  error?: string;
+}
+
+interface MainTax {
+  type: string;
+  percentage: number;
+  regime_key?: string;
+}
+
+/** The tax configuration as stored, under the contract's own field names. */
+interface TaxDefaultsSection {
+  default_main_tax?: MainTax;
+  apply_irpf?: boolean;
+  default_irpf_rate?: number;
+  irpf_exempt?: boolean;
+  allowed_irpf_rates?: number[];
+  apply_equivalence_surcharge?: boolean;
+  default_equivalence_surcharge?: number;
   error?: string;
 }
 
@@ -228,12 +307,14 @@ interface CompanyReport {
   error?: string;
   default_series: SeriesSection;
   verifactu: VerifactuSection;
+  tax_defaults: TaxDefaultsSection;
   payment_connection: PaymentSection;
   missing: string[];
   next_action: string;
 }
 
 const MALFORMED_LISTING = 'the response was not the listing envelope the contract declares';
+const MALFORMED_OBJECT = 'the response was not the object the contract declares';
 
 function seriesSection(outcome: Outcome<unknown>): SeriesSection {
   if (!outcome.ok) return { error: outcome.error };
@@ -242,15 +323,62 @@ function seriesSection(outcome: Outcome<unknown>): SeriesSection {
   const missing = entries
     .filter((entry) => readBoolean(entry, 'exists') === false)
     .map((entry) => readString(entry, 'document_type') ?? 'unknown');
-  return { all_configured: missing.length === 0, missing };
+  return { all_configured: missing.length === 0, missing, defaults: defaultSeries(entries) };
+}
+
+/** The entries that name a default series; one without a type or an id names nothing usable. */
+function defaultSeries(entries: unknown[]): DefaultSeries[] {
+  return entries.flatMap((entry) => {
+    const documentType = readString(entry, 'document_type');
+    const seriesId = readString(entry, 'series_id');
+    if (readBoolean(entry, 'exists') !== true || !documentType || !seriesId) return [];
+    return [
+      compact({
+        document_type: documentType,
+        series_id: seriesId,
+        code: readString(entry, 'code'),
+      }),
+    ];
+  });
 }
 
 function verifactuSection(outcome: Outcome<unknown>): VerifactuSection {
   if (!outcome.ok) return { error: outcome.error };
-  return {
+  return compact({
     enabled: readBoolean(outcome.value, 'enabled') === true,
-    apply_by_default: readBoolean(outcome.value, 'apply_by_default') === true,
-  };
+    // Only when the API sends it: the contract no longer declares this field,
+    // and an absent flag read as `false` would be a default this report made up.
+    apply_by_default: readBoolean(outcome.value, 'apply_by_default'),
+    status: readString(outcome.value, 'status'),
+  });
+}
+
+function mainTax(value: unknown): MainTax | undefined {
+  const type = readString(value, 'type');
+  const percentage = readNumber(value, 'percentage');
+  if (type === undefined || percentage === undefined) return undefined;
+  return compact({ type, percentage, regime_key: readString(value, 'regime_key') });
+}
+
+/**
+ * The fields of the tax configuration an integration builds lines from. Each is
+ * reported only when the API sent it with its declared type: a default this
+ * report made up would be copied into invoices.
+ */
+function taxDefaultsSection(outcome: Outcome<unknown>): TaxDefaultsSection {
+  if (!outcome.ok) return { error: outcome.error };
+  const config = outcome.value;
+  if (!isRecord(config)) return { error: MALFORMED_OBJECT };
+  const rates = readArray(config.withholding_options, 'allowed_irpf_rates');
+  return compact({
+    default_main_tax: mainTax(config.default_main_tax),
+    apply_irpf: readBoolean(config, 'apply_irpf'),
+    default_irpf_rate: readNumber(config, 'default_irpf_rate'),
+    irpf_exempt: readBoolean(config, 'irpf_exempt'),
+    allowed_irpf_rates: rates?.filter((rate): rate is number => typeof rate === 'number'),
+    apply_equivalence_surcharge: readBoolean(config, 'apply_equivalence_surcharge'),
+    default_equivalence_surcharge: readNumber(config, 'default_equivalence_surcharge'),
+  });
 }
 
 function paymentSection(outcome: Outcome<unknown>): PaymentSection {
@@ -319,6 +447,9 @@ async function reportForCompany(
   const verifactu = verifactuSection(
     await attempt(() => call('getCompanyVeriFactuConfiguration', args)),
   );
+  const taxDefaults = taxDefaultsSection(
+    await attempt(() => call('getCompanyTaxConfiguration', args)),
+  );
   const payment = paymentSection(await attempt(() => call('listCompanyPaymentConnections', args)));
 
   const blockers = readiness.ok
@@ -336,6 +467,7 @@ async function reportForCompany(
     error: readiness.ok ? undefined : readiness.error,
     default_series: series,
     verifactu,
+    tax_defaults: taxDefaults,
     payment_connection: payment,
     missing: missingFor(blockers, verifactu, payment),
   });

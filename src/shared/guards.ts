@@ -28,6 +28,13 @@ export function readBoolean(source: unknown, key: string): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
+/** The value at `key` when it is a finite number, else `undefined`. */
+export function readNumber(source: unknown, key: string): number | undefined {
+  if (!isRecord(source)) return undefined;
+  const value = source[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 /** The value at `key` when it is an array, else `undefined`. */
 export function readArray(source: unknown, key: string): unknown[] | undefined {
   if (!isRecord(source)) return undefined;

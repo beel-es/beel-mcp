@@ -35,8 +35,27 @@ const HEALTHY: Record<string, unknown> = {
   getMyIdentity: { account_id: 'acc-1', name: 'Ada', email: 'ada@example.com' },
   listCompanies: { companies: [{ id: 'co-1', nif: 'B1', legal_name: 'One SL' }] },
   getCompanyIssuingReadiness: { ready: true, blockers: [] },
-  getCompanyDefaultSeries: { defaults: [{ document_type: 'F1', exists: true }] },
-  getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true },
+  getCompanyDefaultSeries: {
+    defaults: [
+      {
+        document_type: 'STANDARD',
+        exists: true,
+        series_id: 'ser-1',
+        code: 'F',
+        provisional: false,
+      },
+    ],
+  },
+  getCompanyVeriFactuConfiguration: { enabled: true, apply_by_default: true, status: 'ACTIVE' },
+  getCompanyTaxConfiguration: {
+    default_main_tax: { type: 'IVA', percentage: 21, regime_key: '01' },
+    apply_irpf: true,
+    default_irpf_rate: 15,
+    irpf_exempt: false,
+    apply_equivalence_surcharge: false,
+    default_payment_method: 'BANK_TRANSFER',
+    withholding_options: { allowed_irpf_rates: [0, 1, 2, 7, 15, 19], suggested_irpf_rate: null },
+  },
   listCompanyPaymentConnections: { connections: [{ status: 'ACTIVE' }] },
 };
 
@@ -62,7 +81,7 @@ describe('beel_get_setup_status', () => {
       getCompanyDefaultSeries: {
         defaults: [
           { document_type: 'F1', exists: false },
-          { document_type: 'F2', exists: true },
+          { document_type: 'F2', exists: true, series_id: 'ser-2', code: 'R' },
         ],
       },
       getCompanyVeriFactuConfiguration: { enabled: false, apply_by_default: false },
@@ -77,7 +96,11 @@ describe('beel_get_setup_status', () => {
     expect(co.nif).toBe('B1');
     expect(co.ready).toBe(false);
     expect(co.blockers).toContain('SERIES_DEFAULT_NOT_FOUND');
-    expect(co.default_series).toEqual({ all_configured: false, missing: ['F1'] });
+    expect(co.default_series).toEqual({
+      all_configured: false,
+      missing: ['F1'],
+      defaults: [{ document_type: 'F2', series_id: 'ser-2', code: 'R' }],
+    });
     expect(co.verifactu).toEqual({ enabled: false, apply_by_default: false });
     expect(co.next_action).toContain('beel_set_default_series');
     expect(status.next_action).toContain('B1');
@@ -103,7 +126,11 @@ describe('beel_get_setup_status', () => {
     });
     const status = await getSetupStatus(config, {}, caller);
     expect(status.companies).toHaveLength(1);
-    expect(status.companies[0]!.default_series).toEqual({ all_configured: false, missing: ['F1'] });
+    expect(status.companies[0]!.default_series).toEqual({
+      all_configured: false,
+      missing: ['F1'],
+      defaults: [],
+    });
     expect(status.companies[0]!.payment_connection).toEqual({ count: 1, active: true });
   });
 
@@ -120,6 +147,91 @@ describe('beel_get_setup_status', () => {
     expect(status.companies).toEqual([]);
     expect(status.error).toMatch(/Could not list companies/);
     expect(status.next_action).not.toMatch(/No companies yet/);
+  });
+});
+
+describe('what an integration needs to start', () => {
+  it('reports the default series ids, the VeriFactu status and the tax defaults', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    assertValidOutput(setupTool, status);
+    const co = status.companies[0]!;
+    expect(co.company_id).toBe('co-1');
+    expect(co.nif).toBe('B1');
+    expect(co.default_series.defaults).toEqual([
+      { document_type: 'STANDARD', series_id: 'ser-1', code: 'F' },
+    ]);
+    expect(co.verifactu).toEqual({ enabled: true, apply_by_default: true, status: 'ACTIVE' });
+    // Under the API's own field names, and only those a line is built from.
+    expect(co.tax_defaults).toEqual({
+      default_main_tax: { type: 'IVA', percentage: 21, regime_key: '01' },
+      apply_irpf: true,
+      default_irpf_rate: 15,
+      irpf_exempt: false,
+      allowed_irpf_rates: [0, 1, 2, 7, 15, 19],
+      apply_equivalence_surcharge: false,
+    });
+  });
+
+  it('reports apply_by_default only when the API sends it', async () => {
+    const caller = fakeCaller({
+      ...HEALTHY,
+      getCompanyVeriFactuConfiguration: { enabled: true, status: 'ACTIVE' },
+    });
+    const status = await getSetupStatus(config, {}, caller);
+    assertValidOutput(setupTool, status);
+    expect(status.companies[0]!.verifactu).toEqual({ enabled: true, status: 'ACTIVE' });
+  });
+
+  it('asks for the tax configuration of each company by its id', async () => {
+    const seen: Array<[string, Record<string, unknown>]> = [];
+    await getSetupStatus(config, {}, async (operationId, args) => {
+      seen.push([operationId, args]);
+      return HEALTHY[operationId];
+    });
+    expect(seen).toContainEqual(['getCompanyTaxConfiguration', { company_id: 'co-1' }]);
+  });
+
+  it('leaves out a series entry with no id, and a tax field of the wrong type', async () => {
+    const caller = fakeCaller({
+      ...HEALTHY,
+      getCompanyDefaultSeries: {
+        defaults: [
+          { document_type: 'STANDARD', exists: true },
+          { document_type: 'SIMPLIFIED', exists: false, series_id: null, code: null },
+        ],
+      },
+      getCompanyTaxConfiguration: {
+        default_main_tax: { type: 'IVA' },
+        apply_irpf: 'yes',
+        default_irpf_rate: '15',
+        withholding_options: { allowed_irpf_rates: [0, '19'] },
+      },
+    });
+    const status = await getSetupStatus(config, {}, caller);
+    assertValidOutput(setupTool, status);
+    const co = status.companies[0]!;
+    expect(co.default_series.defaults).toEqual([]);
+    expect(co.tax_defaults).toEqual({ allowed_irpf_rates: [0] });
+  });
+
+  it('reports a tax configuration that is not an object instead of reading it', async () => {
+    const caller = fakeCaller({ ...HEALTHY, getCompanyTaxConfiguration: [] });
+    const status = await getSetupStatus(config, {}, caller);
+    assertValidOutput(setupTool, status);
+    expect(status.companies[0]!.tax_defaults.error).toMatch(/not the object/);
+  });
+
+  it('keeps the rest of the report when the tax configuration cannot be read', async () => {
+    const failures = new Map<string, unknown>([
+      ['getCompanyTaxConfiguration', new ApiError('Missing scope', 403, 'INSUFFICIENT_SCOPE')],
+    ]);
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY, failures));
+    assertValidOutput(setupTool, status);
+    const co = status.companies[0]!;
+    expect(co.tax_defaults).toEqual({ error: 'INSUFFICIENT_SCOPE: Missing scope' });
+    expect(co.ready).toBe(true);
+    expect(co.default_series.defaults).toHaveLength(1);
+    expect(co.missing).toEqual([]);
   });
 });
 
