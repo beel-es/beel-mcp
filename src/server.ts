@@ -216,6 +216,13 @@ function createCallToolHandler(
 }
 
 /**
+ * The docs page that maps each invoicing case to its typed SDK call: where an
+ * agent writing integration code starts. Only named in the instructions; no
+ * behaviour depends on the page being there.
+ */
+export const INTEGRATION_GUIDE_PATH = '/guides/order-to-invoice';
+
+/**
  * What the client puts in the agent's context: the ONE place for guidance that
  * applies to every tool — which tool family to reach for, in what order, when
  * not to, and how to cite. Tool descriptions only say what each tool does and
@@ -242,6 +249,12 @@ export const SERVER_INSTRUCTIONS = [
     'and send it again with a new Idempotency-Key.',
   'Skip the rules for questions that do not touch them (listing, reading, auth, pagination). ' +
     'The beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
+  '',
+  `To write integration code, read beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (each ` +
+    'invoicing case with its typed SDK call); take the company id, series ids and tax ' +
+    'defaults from beel_get_setup_status.',
+  'Every call re-reads the conversation, so batch reads: several sections of one page in one ' +
+    'beel_docs_get (sections), several rules in one beel_rules_get (ids).',
   '',
   'When your answer relies on a rule, cite its id with its link (e.g. COR-024, ' +
     'https://docs.beel.es/rules/corrective#cor-024); when it relies on a docs page, link it.',
