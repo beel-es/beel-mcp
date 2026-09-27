@@ -216,6 +216,29 @@ function createCallToolHandler(
   };
 }
 
+/**
+ * What the client puts in the agent's context. It says when the fiscal rules
+ * catalogue is worth a call and when it is not, so the agent consults it without
+ * being asked and does not spend a call on questions it does not touch.
+ */
+export const SERVER_INSTRUCTIONS = [
+  'BeeL is a Spanish invoicing API with VeriFactu compliance; these tools are derived from ' +
+    'its public OpenAPI contract. Test keys (beel_sk_test_) are safe to experiment with.',
+  '',
+  'Consult the fiscal rules (beel_rules_list, then beel_rules_get) without waiting to be asked:',
+  '- when designing or implementing an integration flow that issues, voids or corrects ' +
+    'invoices, handles refunds, simplified invoices or their exchange for a full invoice, ' +
+    'series and numbering, retries, the PDF or QR, dates or currency;',
+  '- before proposing code or a call that creates or changes a fiscal document;',
+  '- when the API answers a 4xx with a fiscal error.code: beel_rules_get with error_code ' +
+    'names the rule behind it.',
+  'Rules with enforced_by "integrator" are the ones the API does not check: the ' +
+    "integration has to implement them (beel_rules_list with enforced_by: 'integrator').",
+  'Skip the rules for usage questions that do not touch them (listing, reading, auth, ' +
+    'pagination). beel_docs_search covers guides and worked examples; the ' +
+    'beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
+].join('\n');
+
 /** Build and wire the BeeL MCP server (transport-agnostic). */
 export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
@@ -229,13 +252,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
 
   const server = new Server(info, {
     capabilities: { tools: {}, resources: {}, prompts: {} },
-    instructions:
-      'BeeL is a Spanish invoicing API with VeriFactu compliance. Tools are derived from ' +
-      'the public OpenAPI spec. Before mutating fiscal data, find the fiscal rules that apply ' +
-      'with beel_rules_list and read them with beel_rules_get (also by error_code after a ' +
-      'failure); the beel://guardrails/* resources hold the same rules by domain plus API ' +
-      'usage guides, and beel_docs_search covers guides and worked examples. Test keys ' +
-      '(beel_sk_test_) are safe to experiment with.',
+    instructions: SERVER_INSTRUCTIONS,
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

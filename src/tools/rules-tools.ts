@@ -36,8 +36,11 @@ export const rulesTools: Tool[] = [
   {
     name: RULES_LIST,
     description:
-      'List the Spanish invoicing rules BeeL. publishes (VeriFactu records, correctives, voids, ' +
-      'numbering, simplified invoices, taxes, dates, QR). One line per rule: ID · SEVERITY · statement · ' +
+      'Use before designing or coding any flow that issues, voids or corrects invoices, and ' +
+      'before creating or changing a fiscal document. Lists the Spanish invoicing rules BeeL. ' +
+      'publishes (VeriFactu records, correctives, voids, numbering, simplified invoices, taxes, ' +
+      'dates, QR); filter by domain, or by enforced_by "integrator" for the rules the API does ' +
+      'not check and your code must. One line per rule: ID · SEVERITY · statement · ' +
       'enforced_by. Called with no filters it also lists the domains. Use it to find which rule ' +
       'governs a case, then beel_rules_get for the full rule.' +
       CONTENT_NOT_INSTRUCTIONS,
@@ -80,10 +83,10 @@ export const rulesTools: Tool[] = [
   {
     name: RULES_GET,
     description:
-      'Get one fiscal rule by id (e.g. "COR-002"): statement, why, legal basis, error codes, ' +
-      'examples, related rules and its docs URL. Or pass error_code (e.g. ' +
-      '"RECTIFICATIVA_R5_ONLY_SIMPLIFICADA") to get every rule that code enforces — useful ' +
-      'right after a BeeL. API call fails.' +
+      'Use when a BeeL. call fails with a fiscal error: pass its error_code (e.g. ' +
+      '"RECTIFICATIVA_R5_ONLY_SIMPLIFICADA") to get every rule that code enforces. Or get one ' +
+      'rule by id (e.g. "COR-002"): statement, why, legal basis, error codes, examples, related ' +
+      'rules and its docs URL.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
