@@ -6,6 +6,7 @@ import {
   findRuleById,
   renderRule,
   renderRuleList,
+  renderRulesById,
   renderRulesForCode,
   type ResponseFormat,
 } from '../rules/render.js';
@@ -33,6 +34,9 @@ const RESPONSE_FORMAT = {
   description:
     'concise (default) keeps the output short; detailed adds legal quotes, examples and related rules.',
 } as const;
+
+/** Most rules one beel_rules_get call returns by id. */
+export const MAX_IDS = 10;
 
 export const rulesTools: Tool[] = [
   {
@@ -82,21 +86,28 @@ export const rulesTools: Tool[] = [
   {
     name: RULES_GET,
     description:
-      'Get one fiscal rule by id (e.g. "COR-024"), or every rule behind an API error_code ' +
-      '(e.g. "CORRECTIVE_WITHHOLDING_ONLY"): statement, why, legal basis, error codes, examples ' +
-      'and its docs URL. Use it when a call fails with a fiscal error, or to read a rule found ' +
-      'with beel_rules_list.' +
+      'Get fiscal rules by id (e.g. "COR-024"), several at once with ids, or every rule behind ' +
+      'an API error_code (e.g. "CORRECTIVE_WITHHOLDING_ONLY"): statement, why, legal basis, ' +
+      'error codes and docs URL; detailed adds legal quotes, examples and related rules. Use it ' +
+      'when a call fails with a fiscal error, or to read rules found with beel_rules_list.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Rule id, e.g. "LIF-001".', minLength: 1 },
+        ids: {
+          type: 'array',
+          description: `Several rule ids in one call, e.g. ["LIF-001", "COR-024"] (at most ${MAX_IDS}).`,
+          items: { type: 'string', minLength: 1 },
+          minItems: 1,
+          maxItems: MAX_IDS,
+        },
         error_code: {
           type: 'string',
           description: 'A BeeL. error.code, e.g. "STATUS_NOT_MODIFIABLE".',
           minLength: 1,
         },
-        response_format: { ...RESPONSE_FORMAT, default: 'detailed' },
+        response_format: RESPONSE_FORMAT,
       },
       additionalProperties: false,
     },
@@ -153,16 +164,22 @@ export async function executeRulesTool(
     }
     case RULES_GET: {
       const id = optionalString(args.id);
+      const ids = Array.isArray(args.ids)
+        ? args.ids.map(optionalString).filter((v): v is string => v !== undefined)
+        : [];
       const code = optionalString(args.error_code);
-      if (!id === !code) {
+      if ([id, ids.length > 0, code].filter(Boolean).length !== 1) {
         throw new RulesQueryError(
-          'Pass exactly one of id (e.g. "COR-002") or error_code (e.g. "STATUS_NOT_MODIFIABLE").',
+          'Pass exactly one of id (e.g. "COR-002"), ids (e.g. ["COR-002", "LIF-001"]) or ' +
+            'error_code (e.g. "STATUS_NOT_MODIFIABLE").',
         );
       }
-      const format = responseFormat(args.response_format, 'detailed');
-      const text = id
-        ? renderRule(findRuleById(catalog, id), format)
-        : renderRulesForCode(catalog, code!, format);
+      const format = responseFormat(args.response_format, 'concise');
+      const text = code
+        ? renderRulesForCode(catalog, code, format)
+        : ids.length > 0
+          ? renderRulesById(catalog, ids, format)
+          : renderRule(findRuleById(catalog, id!), format);
       return text + originNote(origin);
     }
     default:

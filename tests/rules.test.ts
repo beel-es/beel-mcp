@@ -9,7 +9,13 @@ import {
   filterRules,
   renderRuleList,
 } from '../src/rules/render.js';
-import { RULES_GET, RULES_LIST, executeRulesTool, rulesTools } from '../src/tools/rules-tools.js';
+import {
+  MAX_IDS,
+  RULES_GET,
+  RULES_LIST,
+  executeRulesTool,
+  rulesTools,
+} from '../src/tools/rules-tools.js';
 import {
   MAX_RULES_PER_ERROR,
   explainErrorWithRules,
@@ -233,9 +239,9 @@ describe(`${RULES_GET}`, () => {
     offline();
   });
 
-  it('returns the full rule by id: statement, why, legal quote, examples, related, docs', async () => {
+  it('returns the full rule by id when detailed: statement, why, legal quote, examples, related, docs', async () => {
     const rule = snapshot.rules.find((r) => r.id === 'LIF-001')!;
-    const text = await executeRulesTool(RULES_GET, { id: 'lif-001' });
+    const text = await executeRulesTool(RULES_GET, { id: 'lif-001', response_format: 'detailed' });
     expect(text).toContain(rule.statement);
     expect(text).toContain(rule.why);
     expect(text).toContain(rule.legal_basis[0]!.quote!);
@@ -244,12 +250,41 @@ describe(`${RULES_GET}`, () => {
     expect(text).toContain(rule.url);
   });
 
-  it('keeps the concise form short', async () => {
+  it('is concise by default: statement, why, error codes, legal basis with its link, docs', async () => {
     const rule = snapshot.rules.find((r) => r.id === 'LIF-001')!;
-    const text = await executeRulesTool(RULES_GET, { id: 'LIF-001', response_format: 'concise' });
+    const text = await executeRulesTool(RULES_GET, { id: 'LIF-001' });
     expect(text).toContain(rule.statement);
+    expect(text).toContain(rule.why);
+    expect(text).toContain(rule.error_codes[0]!.code);
+    expect(text).toContain(rule.legal_basis[0]!.url!);
+    expect(text).toContain(rule.url);
     expect(text).not.toContain(rule.legal_basis[0]!.quote!);
+    expect(text).not.toContain(rule.examples.incorrect!.text);
     expect(text.length).toBeLessThan(1_500);
+  });
+
+  it('returns several rules in one call with ids, in the order asked, each once', async () => {
+    const text = await executeRulesTool(RULES_GET, { ids: ['cor-024', 'LIF-001', 'COR-024'] });
+    expect(text.indexOf('COR-024 · ')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('COR-024 · ')).toBeLessThan(text.indexOf('LIF-001 · '));
+    expect(text.split('COR-024 · ').length).toBe(2);
+    expect(text).toContain('---');
+  });
+
+  it('names the ids it cannot find without failing the ones it can', async () => {
+    const text = await executeRulesTool(RULES_GET, { ids: ['LIF-001', 'COR-999'] });
+    expect(text).toContain('LIF-001 · ');
+    expect(text).toMatch(/Not found: COR-999/);
+    await expect(executeRulesTool(RULES_GET, { ids: ['COR-999'] })).rejects.toThrow(
+      /beel_rules_list/,
+    );
+  });
+
+  it('caps ids at the advertised maximum', async () => {
+    const ids = snapshot.rules.slice(0, MAX_IDS + 1).map((r) => r.id);
+    await expect(executeRulesTool(RULES_GET, { ids })).rejects.toThrow(/ids/);
+    const text = await executeRulesTool(RULES_GET, { ids: ids.slice(0, MAX_IDS) });
+    for (const id of ids.slice(0, MAX_IDS)) expect(text).toContain(`${id} · `);
   });
 
   it('returns every rule citing an error code', async () => {
@@ -272,6 +307,9 @@ describe(`${RULES_GET}`, () => {
     await expect(
       executeRulesTool(RULES_GET, { id: 'LIF-001', error_code: 'STATUS_NOT_MODIFIABLE' }),
     ).rejects.toThrow(/exactly one of id/);
+    await expect(executeRulesTool(RULES_GET, { id: 'LIF-001', ids: ['COR-024'] })).rejects.toThrow(
+      /exactly one of id/,
+    );
   });
 });
 

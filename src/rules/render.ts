@@ -154,7 +154,7 @@ function renderExample(
   return [`${label}: ${example.text}`, ...(example.code ? [example.code] : [])];
 }
 
-/** One rule. `concise` is statement, why and link; `detailed` is everything the catalogue holds. */
+/** One rule. `concise` is statement, why, error codes, legal basis cited with its link, and docs; `detailed` is everything the catalogue holds. */
 export function renderRule(rule: Rule, format: ResponseFormat): string {
   const lines = [
     `${rule.id} · ${rule.title} (${strength(rule)})`,
@@ -186,9 +186,11 @@ export function renderRule(rule: Rule, format: ResponseFormat): string {
     if (rule.related.length > 0) lines.push('', `Related: ${rule.related.join(', ')}`);
     if (rule.docs.length > 0) lines.push(`Guides: ${rule.docs.join(' · ')}`);
   } else if (rule.legal_basis.length > 0) {
-    lines.push(
-      `Legal basis: ${rule.legal_basis.map((b) => [b.norm, b.article].filter(Boolean).join(' ')).join('; ')}`,
-    );
+    const cites = rule.legal_basis.map((b) => {
+      const cite = [b.norm, b.article].filter(Boolean).join(' ');
+      return b.url ? `${cite} (${b.url})` : cite;
+    });
+    lines.push(`Legal basis: ${cites.join('; ')}`);
   }
 
   lines.push(`Docs: ${rule.url}`);
@@ -208,6 +210,29 @@ export function findRuleById(catalog: RulesCatalog, id: string): Rule {
         : `Ids look like ${catalog.rules[0]?.id ?? 'LIF-001'}; prefixes are ${catalog.domains.map((d) => d.prefix).join(', ')}. `) +
       'Call beel_rules_list to find the right one.',
   );
+}
+
+/**
+ * Several rules by id, in the order asked, each once. An id that does not exist
+ * is named at the end rather than failing the rules that do; if none exists,
+ * the lookup of the first explains how to find the right one.
+ */
+export function renderRulesById(
+  catalog: RulesCatalog,
+  ids: string[],
+  format: ResponseFormat,
+): string {
+  const wanted = [...new Set(ids.map((id) => id.trim().toUpperCase()))];
+  const found = wanted
+    .map((id) => catalog.rules.find((r) => r.id === id))
+    .filter((r): r is Rule => r !== undefined);
+  const missing = wanted.filter((id) => !found.some((r) => r.id === id));
+  if (found.length === 0) findRuleById(catalog, wanted[0]!);
+  const parts = [found.map((rule) => renderRule(rule, format)).join('\n\n---\n\n')];
+  if (missing.length > 0) {
+    parts.push(`Not found: ${missing.join(', ')}. Call beel_rules_list to find the right ids.`);
+  }
+  return parts.join('\n\n');
 }
 
 export function rulesCitingCode(catalog: RulesCatalog, code: string): Rule[] {

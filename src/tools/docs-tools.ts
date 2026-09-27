@@ -33,8 +33,8 @@ export const docsTools: Tool[] = [
     name: DOCS_SEARCH,
     description:
       'Search the BeeL documentation — guides, API reference, error codes and fiscal rules — ' +
-      'and get the matching pages with a snippet and the address to read each. Use it for how ' +
-      'the API, a field or a flow works; then read the page you need with beel_docs_get.' +
+      'and get the matching pages with a snippet and the page and section to read each. Use it ' +
+      'for how the API, a field or a flow works; then read that section with beel_docs_get.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -69,8 +69,9 @@ export const docsTools: Tool[] = [
   {
     name: DOCS_GET,
     description:
-      'Read one documentation page as Markdown. Pass the md_url or url of a beel_docs_search ' +
-      'result (a page title also works). Use it after searching, to read the page that answers.' +
+      'Read one documentation page, or one section of it, as Markdown. Pass the md_url or url ' +
+      'of a beel_docs_search result (a page title also works) and, to read only part of it, ' +
+      'section. A long page without section answers with its introduction and its sections.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -79,6 +80,13 @@ export const docsTools: Tool[] = [
           type: 'string',
           description:
             'A result\'s md_url or url, a path such as "/guides/idempotency", or a page title.',
+          minLength: 1,
+        },
+        section: {
+          type: 'string',
+          description:
+            'Anchor or title of a heading on the page, e.g. "request-body", "Responses", "422" ' +
+            'or the section of a search result. Returns that heading up to the next one of its level.',
           minLength: 1,
         },
       },
@@ -126,7 +134,10 @@ export async function executeDocsTool(
       return renderSearch(response);
     }
     case DOCS_GET:
-      return readPage(String(args.page));
+      return readPage(
+        String(args.page),
+        typeof args.section === 'string' && args.section.trim() ? args.section.trim() : undefined,
+      );
     case DOCS_LIST: {
       const entries = parseIndex(await fetchDocs('/llms.txt'));
       return entries.map((e) => `- ${e.title} — ${e.url}`).join('\n') || 'No pages found.';

@@ -9,6 +9,7 @@ import {
 import { ArgumentError } from '../src/tools/validate-args.js';
 import { MAX_DOCS_BYTES, clearDocsCache, fetchDocs } from '../src/docs/fetch.js';
 import { MAX_PAGE_CHARS, markdownPath } from '../src/docs/search.js';
+import { OUTLINE_THRESHOLD_CHARS } from '../src/docs/sections.js';
 
 const SEARCH = {
   query: 'corrective',
@@ -74,6 +75,29 @@ describe('beel_docs_search asks the docs search endpoint', () => {
     expect(text).toContain('read: beel_docs_get with "https://docs.beel.es/rules/COR-024.md"');
   });
 
+  it('gives the section to read when the result points into the same page', async () => {
+    stubHost({
+      '/api/search': () =>
+        json({
+          ...SEARCH,
+          results: [
+            {
+              title: 'Idempotency',
+              section: 'What is idempotency?',
+              url: 'https://docs.beel.es/guides/idempotency#what-is-idempotency',
+              md_url: 'https://docs.beel.es/llms.mdx/guides/idempotency',
+              snippet: '',
+              score: 1,
+            },
+          ],
+        }),
+    });
+    const text = await executeDocsTool(DOCS_SEARCH, { query: 'idempotency' });
+    expect(text).toContain(
+      'read: beel_docs_get with page "https://docs.beel.es/llms.mdx/guides/idempotency", section "what-is-idempotency"',
+    );
+  });
+
   it('says so when nothing matches, rather than returning an empty string', async () => {
     stubHost({ '/api/search': () => json({ ...SEARCH, total: 0, results: [] }) });
     expect(await executeDocsTool(DOCS_SEARCH, { query: 'zzz' })).toMatch(
@@ -118,11 +142,99 @@ describe('beel_docs_get reads one page', () => {
     expect(seen[1]).toBe('/rules/COR-024.md');
   });
 
-  it('truncates a long page and says so', async () => {
+  it('truncates a long page with no sections and says so', async () => {
     stubHost({ '/llms.mdx/big': () => new Response('x'.repeat(MAX_PAGE_CHARS + 10)) });
     const text = await executeDocsTool(DOCS_GET, { page: '/big' });
     expect(text).toMatch(/truncated/);
     expect(text.length).toBeLessThan(MAX_PAGE_CHARS + 200);
+  });
+});
+
+/** An API reference page shaped like the real ones, well past the outline threshold. */
+const REFERENCE = [
+  '# Create an invoice API Reference',
+  '',
+  'Creates an invoice for this company.',
+  '',
+  '## POST /v1/companies/{company_id}/invoices',
+  '',
+  '### Parameters',
+  '',
+  '- **company_id** (required) in path',
+  '',
+  '### Request Body',
+  '',
+  'BODY-START ' + 'lines '.repeat(1_500),
+  '```md',
+  '# not a heading',
+  '```',
+  '',
+  '### Responses',
+  '',
+  '#### 201: Invoice created successfully',
+  '',
+  'CREATED',
+  '',
+  '#### 422: Validation error, or the company is not ready',
+  '',
+  'EMISSION_NOT_READY',
+  '',
+  '# Related Schema Definitions',
+  '',
+  '## Invoice',
+  '',
+  'INVOICE-SCHEMA',
+].join('\n');
+
+describe('beel_docs_get reads a section of a long page', () => {
+  beforeEach(() => {
+    stubHost({ '/llms.mdx/invoices/createCompanyInvoice': () => new Response(REFERENCE) });
+  });
+  const page = '/invoices/createCompanyInvoice';
+
+  it('answers a long page without section with its introduction and its sections', async () => {
+    expect(REFERENCE.length).toBeGreaterThan(OUTLINE_THRESHOLD_CHARS);
+    const text = await executeDocsTool(DOCS_GET, { page });
+    expect(text).toContain('Creates an invoice for this company.');
+    expect(text).toContain('- Request Body [request-body]');
+    expect(text).toContain('- 422: Validation error, or the company is not ready [422-');
+    expect(text).toMatch(/section/);
+    expect(text).not.toContain('BODY-START');
+    expect(text).not.toContain('not a heading');
+    expect(text.length).toBeLessThan(2_000);
+  });
+
+  it.each([
+    ['request-body', 'BODY-START', 'CREATED'],
+    ['Responses', 'EMISSION_NOT_READY', 'INVOICE-SCHEMA'],
+    ['422', 'EMISSION_NOT_READY', 'CREATED'],
+    ['#parameters', 'company_id', 'BODY-START'],
+    ['Invoice', 'INVOICE-SCHEMA', 'CREATED'],
+  ])('with section %s returns only that section', async (section, inside, outside) => {
+    const text = await executeDocsTool(DOCS_GET, { page, section });
+    expect(text).toContain(inside);
+    expect(text).not.toContain(outside);
+  });
+
+  it('keeps a fenced "#" inside its section', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, section: 'request-body' });
+    expect(text).toContain('# not a heading');
+  });
+
+  it('lists the sections when the one asked for is not there', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, section: 'webhooks' });
+    expect(text).toMatch(/No section "webhooks"/);
+    expect(text).toContain('[responses]');
+  });
+
+  it('returns a short page whole, and still a section of it when asked', async () => {
+    stubHost({
+      '/llms.mdx/guides/short': () =>
+        new Response('# Short\n\nIntro\n\n## A\n\nAAA\n\n## B\n\nBBB'),
+    });
+    expect(await executeDocsTool(DOCS_GET, { page: '/guides/short' })).toContain('BBB');
+    const section = await executeDocsTool(DOCS_GET, { page: '/guides/short', section: 'a' });
+    expect(section).toBe('## A\n\nAAA');
   });
 });
 

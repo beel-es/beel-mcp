@@ -229,10 +229,13 @@ export const SERVER_INSTRUCTIONS = [
   'Which tools, in this order:',
   '1. Designing a flow, or before proposing code or a call that creates or changes a fiscal ' +
     'document (issue, void, correct, simplified exchange, series and numbering, refunds, dates, ' +
-    'PDF or QR): beel_rules_list, then beel_rules_get for the rule that governs it. Rules with ' +
-    'enforced_by "integrator" are not checked by the API; the integration must implement them.',
-  '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get on the ' +
-    'result that answers. Not for which fiscal rule applies; that is step 1.',
+    'PDF or QR): start with beel_rules_list filtered, by domain for that flow or with ' +
+    'enforced_by "integrator", the checklist of what the API does not check and the integration ' +
+    'must implement. Answer from that list; do not read every rule first. Open with beel_rules_get ' +
+    'only the rules your answer relies on, all in one call with ids.',
+  '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get with the page ' +
+    'and section of the result that answers, not the whole page. Not for which fiscal rule ' +
+    'applies; that is step 1.',
   '3. To act: the API tool for the operation. Use a test key (beel_sk_test_) unless the user ' +
     'asks for Live. Send an Idempotency-Key on every create, issue, correct or void, and reuse ' +
     'it only to retry the same request.',
