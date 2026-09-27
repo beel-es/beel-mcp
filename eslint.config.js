@@ -38,7 +38,15 @@ const NODE_GLOBALS = {
 export default tseslint.config(
   {
     // Generated, vendored or built output: not ours to style.
-    ignores: ['dist/**', 'openapi/**', 'src/mcpapp/generated/**', 'node_modules/**'],
+    // `.wrangler/` holds the bundles `wrangler dev` and `--dry-run` leave behind:
+    // generated code, and not ours to lint.
+    ignores: [
+      'dist/**',
+      '.wrangler/**',
+      'openapi/**',
+      'src/mcpapp/generated/**',
+      'node_modules/**',
+    ],
   },
   {
     linterOptions: {

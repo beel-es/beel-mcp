@@ -10,7 +10,8 @@ import { loadSpec, type SpecNode } from '../src/spec/load.js';
  */
 
 const CODE = /^[A-Z][A-Z0-9_]{3,}$/;
-const QUOTED_CODE = /`([A-Z][A-Z0-9_]{3,})`/g;
+// A code is quoted alone (`CODE`) or after the status it comes with (`422 CODE`).
+const QUOTED_CODE = /`(?:\d{3} )?([A-Z][A-Z0-9_]{3,})`/g;
 
 function collect(node: unknown, out: Set<string>): void {
   if (typeof node === 'string') {

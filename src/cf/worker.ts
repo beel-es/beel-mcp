@@ -12,7 +12,6 @@ import { advertisedScopes, keyEnvFromScopes } from '../policy/scopes.js';
 import { SERVER_INFO } from '../shared/defaults.js';
 import { withAgentAuth } from './agent-auth.js';
 import { BeelAuthHandler } from './beel-handler.js';
-import { handlePublicDiscovery, publicDiscoveryEnabled } from './public-discovery.js';
 import { WORKER_PATH, WORKER_TTL } from './constants.js';
 import { sentryOptions } from './telemetry.js';
 import { createTokenExchangeCallback, type SessionProps } from './token-exchange.js';
@@ -25,6 +24,12 @@ import { upstreamConfig, workerAccessTokenTTL } from './upstream.js';
  * (DCR, /authorize, /token, KV-backed grants). The BeeL access token obtained
  * upstream travels encrypted inside the grant's props and surfaces as
  * `this.props` here, where it becomes the per-session bearer for every API call.
+ *
+ * Every request to WORKER_PATH.api goes through the provider, `initialize`
+ * included. Hosts decide whether a server uses OAuth by sending a token-less
+ * `initialize` and reading the answer: a 200 is taken as "no account needed"
+ * and the connector is saved with login disabled, which the 401 on every later
+ * tools/call never gets to correct. Nothing may be routed around the provider.
  */
 
 // The Worker bundle has no filesystem: the spec and the MCP-App HTML are
@@ -113,10 +118,6 @@ function createProvider(env: Env): OAuthProvider {
 
 export default Sentry.withSentry(workerSentryOptions, {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (publicDiscoveryEnabled(env)) {
-      const response = await handlePublicDiscovery(request);
-      if (response) return response;
-    }
     return withAgentAuth(request, await createProvider(env).fetch(request, env, ctx));
   },
 } satisfies ExportedHandler<Env>);

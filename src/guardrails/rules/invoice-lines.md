@@ -4,6 +4,10 @@ docPath: /api-reference/invoices
 summary: How a line states its price, and which field combinations are rejected.
 ---
 
+API usage, not fiscal rules: how to express a line so the request is accepted. The
+fiscal rules for lines (rates, exemptions, surcharge, withholding) are in the `taxes`,
+`surcharge` and `contents` domains of `beel_rules_list`.
+
 Every line states its price in **exactly one** of three ways. Sending two, or none,
 is rejected with `LINE_UNIT_PRICE_XOR_DECLARED_TOTAL`.
 
@@ -26,20 +30,21 @@ discount, so combining them is rejected with `LINE_DECLARED_TOTAL_FORBIDS_DISCOU
 ## Withholding
 
 Omitting `irpf_rate` **inherits the account default**, which may be non-zero. To issue a
-line with no withholding you must send `irpf_rate: 0` explicitly. On simplified (F2)
-invoices AEAT forbids withholding entirely: a non-zero rate is rejected with
-`SIMPLIFICADA_FORBIDS_IRPF` rather than coerced to zero.
+line with no withholding you must send `irpf_rate: 0` explicitly. When withholding
+applies, and why a simplified invoice never carries it: rules TAX-010 and SIM-003
+(`beel_rules_get`).
 
 ## SUPLIDO lines
 
-`line_type: SUPLIDO` marks a payment made on behalf of the final client (art. 78.Tres.3
-LIVA), which is not part of your taxable base. It requires `source_invoice_reference` —
+`line_type: SUPLIDO` marks a payment made on behalf of the final client, which is not
+part of your taxable base (rule TAX-008). It requires `source_invoice_reference` —
 the reference of the third party's invoice issued in the client's name — otherwise the
 payment is untraceable and the line is rejected.
 
 ## Exemptions
 
-`exemption_reason` takes a code from a fixed catalogue. `exemption_reason_text` is free
+`exemption_reason` takes a code from a fixed catalogue; when a line needs one is rule
+CNT-010. `exemption_reason_text` is free
 text that is **only** read when the reason is `OTRO`; sending it with any other reason
 means the text will be silently ignored, so BeeL rejects it instead.
 
