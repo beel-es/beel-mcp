@@ -34,6 +34,7 @@ export const BY_OPERATION_ID: Record<string, string[]> = {
     'series-and-numbering',
   ],
   issueCompanyInvoice: ['lifecycle', 'records', 'invoice-state-machine', 'verifactu-gates'],
+  createCompanySimplifiedExchange: ['simplified', 'records', 'verifactu-gates'],
   setCompanyInvoiceStatus: ['invoice-state-machine'],
   setCompanyInvoiceSchedule: ['lifecycle', 'invoice-state-machine'],
   validateNif: ['nif-validation'],
@@ -67,6 +68,11 @@ function guardrailIdsFor(op: OperationSpec): string[] {
   return [...ids];
 }
 
+/** The line every tool that can fail on a fiscal rule ends with. */
+export const FISCAL_ERROR_HINT =
+  'If it fails with a fiscal error, look up the rule for that error code: beel_rules_get ' +
+  'with error_code.';
+
 /** guide id → the one-line summary shown in the tool description footer. */
 const ONE_LINER: Record<string, string> = Object.fromEntries(
   GUARDRAILS.map((g) => [g.id, g.summary]),
@@ -94,11 +100,7 @@ export function describeTool(op: OperationSpec): string {
     );
   }
   lines.push(...guides);
-  lines.push(
-    '',
-    'After an error, beel_rules_get with error_code names the rule behind it; ' +
-      'beel_docs_search has guides and worked examples.',
-  );
+  lines.push('', FISCAL_ERROR_HINT + ' beel_docs_search has guides and worked examples.');
   return lines.join('\n');
 }
 
