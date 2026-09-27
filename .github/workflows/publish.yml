@@ -32,9 +32,8 @@ jobs:
   publish:
     name: Build, verify and publish
     runs-on: ubuntu-latest
-    # Gate the release behind a protected environment. Configure `npm-publish` in
-    # Settings → Environments with required reviewers, so a push of a v* tag pauses
-    # here until a human approves — the last checkpoint before anything reaches npm.
+    # `npm-publish` only lets v* tags through; there is no human approval. The
+    # checkpoint is the release PR: merging it is the decision to publish.
     environment: npm-publish
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +130,24 @@ jobs:
             echo "@beel_es/mcp@${version} is already on npm — skipping, this is a retry."
             exit 0
           fi
-          npm publish
+          # npm can take minutes to show a version it already accepted: a retry in that
+          # window gets 409 «previously staged/published». That is a success, not a failure.
+          if ! npm publish 2>publish.err; then
+            cat publish.err
+            grep -qE 'E409|previously (staged|published)|cannot publish over' publish.err || exit 1
+            echo "@beel_es/mcp@${version} was already accepted by npm — continuing."
+          fi
+
+      # The registry validates the package against npm, so it waits until npm serves it.
+      - name: Wait until npm serves the version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          for i in $(seq 1 40); do
+            npm view "@beel_es/mcp@${version}" version >/dev/null 2>&1 && exit 0
+            sleep 15
+          done
+          echo "::error::@beel_es/mcp@${version} is still not visible on npm after 10 minutes."
+          exit 1
 
       # The registry is a discovery index, not a distribution channel: it points
       # at the npm package and at the hosted server, so it is announced only once
@@ -146,14 +162,14 @@ jobs:
       # earlier listing used it; a domain namespace cannot work that way, because
       # the proof has to be something only the domain holder can produce. It is an
       # environment secret rather than a repository one, so it is reachable only
-      # from the `npm-publish` environment and therefore only after the same human
-      # approval that gates npm.
+      # from the `npm-publish` environment, which only v* tags can use.
       #
       # Rotating it means publishing a new public key in the DNS/infrastructure
       # repository and replacing this secret — both, or releases stop.
       - name: Announce the release to the MCP Registry
         run: |
           ./mcp-publisher login dns --domain beel.es --private-key "$MCP_DNS_PRIVATE_KEY"
-          ./mcp-publisher publish
+          for i in 1 2 3; do ./mcp-publisher publish && exit 0; sleep 30; done
+          exit 1
         env:
           MCP_DNS_PRIVATE_KEY: ${{ secrets.MCP_DNS_PRIVATE_KEY }}
