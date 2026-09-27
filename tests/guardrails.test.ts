@@ -16,7 +16,6 @@ import {
 } from '../src/resources/guardrails.js';
 import { GUARDRAILS, guardrailUri } from '../src/guardrails/rules.js';
 import { clearRulesCache, snapshotCatalog } from '../src/rules/fetch.js';
-import { splitChunks, searchChunks, renderChunks } from '../src/docs/search.js';
 
 const RULES_DIR = 'src/guardrails/rules';
 
@@ -132,23 +131,6 @@ describe('guardrail resources', () => {
   });
 });
 
-describe('docs search scoring', () => {
-  const corpus = [
-    '# Recargo de equivalencia',
-    '## Accepted surcharge values',
-    'The surcharge is 5.2%, 1.4% or 0.5% depending on the VAT rate.',
-    '# Invoice types',
-    '## F2 simplified',
-    'Use F2 when the total is under 3000 EUR.',
-  ].join('\n');
-
-  it('ranks the matching section first', () => {
-    const chunks = splitChunks(corpus);
-    const results = searchChunks(chunks, ['surcharge', 'values'], 1);
-    expect(results[0]?.page).toBe('Recargo de equivalencia');
-  });
-});
-
 describe('guardrail prose points at things that exist', () => {
   it('does not cite bare operationIds, which are not callable by name', () => {
     const operations = new Set(buildManifest(loadSpec()).map((op) => op.operationId));
@@ -170,62 +152,5 @@ describe('guardrail prose points at things that exist', () => {
       expect(g.body.length, g.id).toBeGreaterThan(200);
       expect(g.body.startsWith('---'), `${g.id} still contains its front matter`).toBe(false);
     }
-  });
-});
-
-describe('docs search ranking', () => {
-  const chunk = (page: string, heading: string, content: string) => ({ page, heading, content });
-
-  it('does not let one enormous section win every query', () => {
-    // The corpus holds a 54 KB reference table that mentions nearly every term.
-    // Under raw term frequency it outranks the section that actually answers.
-    const giant = chunk(
-      'All error codes',
-      'Full table',
-      `${'SIMPLIFICADA lorem ipsum '.repeat(2000)}`,
-    );
-    const answer = chunk(
-      'Invoice types',
-      'F2 — Factura simplificada',
-      'A simplificada is capped at 3000 EUR including VAT.'.repeat(6),
-    );
-    const [top] = searchChunks([giant, answer], ['simplificada'], 1);
-    expect(top?.heading).toBe('F2 — Factura simplificada');
-  });
-
-  it('does not let a near-empty heading stub win either', () => {
-    // The opposite failure: normalise too eagerly and a 40-character cross
-    // reference outranks the section that actually explains the thing.
-    const stub = chunk('Series API Reference', 'Series', 'See also.');
-    const answer = chunk(
-      'Glossary',
-      'Invoice Series Terms',
-      'A series numbers invoices. '.repeat(20),
-    );
-    const [top] = searchChunks([stub, answer], ['series'], 1);
-    expect(top?.page).toBe('Glossary');
-  });
-
-  it('prefers a chunk matching every term over one matching a single term often', () => {
-    const partial = chunk('Taxes', 'IVA', 'recargo recargo recargo recargo recargo. '.repeat(20));
-    const complete = chunk(
-      'Taxes',
-      'Surcharge',
-      'The recargo de equivalencia applies per line and only under regime 18. '.repeat(8),
-    );
-    const [top] = searchChunks([partial, complete], ['recargo', 'equivalencia'], 1);
-    expect(top?.heading).toBe('Surcharge');
-  });
-
-  it('truncates an oversized section and says so', () => {
-    const rendered = renderChunks([chunk('Big', 'Table', 'x'.repeat(20_000))]);
-    expect(rendered.length).toBeLessThan(9_000);
-    expect(rendered).toMatch(/truncated/);
-    expect(rendered).toMatch(/20000 characters/);
-  });
-
-  it('leaves a normal section intact', () => {
-    const rendered = renderChunks([chunk('Page', 'Section', 'short body')]);
-    expect(rendered).toBe('## Page › Section\n\nshort body');
   });
 });

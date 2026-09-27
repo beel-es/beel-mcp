@@ -68,11 +68,6 @@ function guardrailIdsFor(op: OperationSpec): string[] {
   return [...ids];
 }
 
-/** The line every tool that can fail on a fiscal rule ends with. */
-export const FISCAL_ERROR_HINT =
-  'If it fails with a fiscal error, look up the rule for that error code: beel_rules_get ' +
-  'with error_code.';
-
 /** guide id → the one-line summary shown in the tool description footer. */
 const ONE_LINER: Record<string, string> = Object.fromEntries(
   GUARDRAILS.map((g) => [g.id, g.summary]),
@@ -100,7 +95,8 @@ export function describeTool(op: OperationSpec): string {
     );
   }
   lines.push(...guides);
-  lines.push('', FISCAL_ERROR_HINT + ' beel_docs_search has guides and worked examples.');
+  // What to do on a fiscal error is general guidance and lives in the server
+  // instructions, once, instead of at the end of every tool.
   return lines.join('\n');
 }
 
