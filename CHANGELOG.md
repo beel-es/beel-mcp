@@ -3,6 +3,18 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.7.0](https://github.com/beel-es/beel-mcp/compare/v0.6.0...v0.7.0) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **docs:** beel_docs_search takes `query` (a string) instead of `terms` (a list), `limit` is capped at 20, and it accepts an optional `area`. beel_docs_get also accepts a result's url or md_url.
+
+### Novedades
+
+* **docs:** search through the docs site's search endpoint, read one page at a time ([9c7f990](https://github.com/beel-es/beel-mcp/commit/9c7f990ca3e61edad824f99dedd76a09593e33bd))
+* **guidance:** one place for general guidance, short tool descriptions ([fb55f63](https://github.com/beel-es/beel-mcp/commit/fb55f63bf4114ce6aea51018aee8038b6649fc71))
+
 ## [0.6.0](https://github.com/beel-es/beel-mcp/compare/v0.5.0...v0.6.0) (2026-09-27)
 
 
