@@ -64,6 +64,8 @@ export async function fetchDocsFile(
     return text;
   } catch (err) {
     if (hit) return hit.text;
-    throw new Error(`Failed to fetch ${url}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`Failed to fetch ${url}: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
   }
 }
