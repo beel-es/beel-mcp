@@ -3,6 +3,7 @@ import {
   DOCS_GET,
   DOCS_LIST,
   DOCS_SEARCH,
+  MAX_SECTIONS,
   docsTools,
   executeDocsTool,
 } from '../src/tools/docs-tools.js';
@@ -96,6 +97,34 @@ describe('beel_docs_search asks the docs search endpoint', () => {
     expect(text).toContain(
       'read: beel_docs_get with page "https://docs.beel.es/llms.mdx/guides/idempotency", section "what-is-idempotency"',
     );
+  });
+
+  it('offers one call for several results that are sections of the same page', async () => {
+    const idempotency = (anchor: string) => ({
+      title: 'Idempotency',
+      section: anchor,
+      url: `https://docs.beel.es/guides/idempotency#${anchor}`,
+      md_url: 'https://docs.beel.es/llms.mdx/guides/idempotency',
+      snippet: '',
+      score: 1,
+    });
+    stubHost({
+      '/api/search': () =>
+        json({
+          ...SEARCH,
+          results: [idempotency('retries'), SEARCH.results[1], idempotency('key-reuse')],
+        }),
+    });
+    const text = await executeDocsTool(DOCS_SEARCH, { query: 'idempotency' });
+    expect(text).toContain(
+      '- beel_docs_get with page "https://docs.beel.es/llms.mdx/guides/idempotency", ' +
+        'sections ["retries","key-reuse"]',
+    );
+  });
+
+  it('offers no batch when every result is on a different page', async () => {
+    stubHost({ '/api/search': () => json(SEARCH) });
+    expect(await executeDocsTool(DOCS_SEARCH, { query: 'corrective' })).not.toMatch(/in one call/);
   });
 
   it('says so when nothing matches, rather than returning an empty string', async () => {
@@ -227,6 +256,65 @@ describe('beel_docs_get reads a section of a long page', () => {
     expect(text).toContain('[responses]');
   });
 
+  it('reads several sections of the page in one call, in the order asked', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, sections: ['422', 'parameters'] });
+    expect(text).toContain('EMISSION_NOT_READY');
+    expect(text).toContain('company_id');
+    expect(text.indexOf('EMISSION_NOT_READY')).toBeLessThan(text.indexOf('company_id'));
+    expect(text).not.toContain('BODY-START');
+    expect(text).not.toContain('CREATED');
+  });
+
+  it('reads section and sections together, each section once', async () => {
+    const text = await executeDocsTool(DOCS_GET, {
+      page,
+      section: 'parameters',
+      sections: ['Parameters', '422'],
+    });
+    expect(text.split('### Parameters')).toHaveLength(2);
+    expect(text).toContain('EMISSION_NOT_READY');
+  });
+
+  it('returns the sections it found and names the ones it did not', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, sections: ['422', 'webhooks'] });
+    expect(text).toContain('EMISSION_NOT_READY');
+    expect(text).toMatch(/\[No section "webhooks" on this page\.\]$/);
+  });
+
+  it('lists the sections when none of those asked for is there', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, sections: ['webhooks', 'oauth'] });
+    expect(text).toMatch(/^No section "webhooks", "oauth" on this page/);
+    expect(text).toContain('[responses]');
+  });
+
+  it(`takes at most ${MAX_SECTIONS} sections`, async () => {
+    const sections = Array.from({ length: MAX_SECTIONS + 1 }, (_unused, i) => `s${i}`);
+    await expect(executeDocsTool(DOCS_GET, { page, sections })).rejects.toThrow(/sections/);
+  });
+
+  it('accepts url as the page, since search results show one', async () => {
+    const text = await executeDocsTool(DOCS_GET, {
+      url: 'https://docs.beel.es/invoices/createCompanyInvoice#422',
+      section: '422',
+    });
+    expect(text).toContain('EMISSION_NOT_READY');
+  });
+
+  it('prefers page when both page and url are given', async () => {
+    const text = await executeDocsTool(DOCS_GET, { page, url: '/nowhere', section: '422' });
+    expect(text).toContain('EMISSION_NOT_READY');
+  });
+
+  it('says how long several sections are when together they pass the ceiling', async () => {
+    const big = (n: number) => `## Big ${n}\n\n${'y'.repeat(MAX_PAGE_CHARS / 2)}`;
+    stubHost({ '/llms.mdx/guides/big': () => new Response([1, 2, 3].map(big).join('\n\n')) });
+    const text = await executeDocsTool(DOCS_GET, {
+      page: '/guides/big',
+      sections: ['big-1', 'big-2', 'big-3'],
+    });
+    expect(text).toMatch(/truncated: these 3 sections are \d+ characters/);
+  });
+
   it('returns a short page whole, and still a section of it when asked', async () => {
     stubHost({
       '/llms.mdx/guides/short': () =>
@@ -267,6 +355,19 @@ describe('docs tool arguments are validated like every other tool', () => {
 
   it('rejects an empty page', async () => {
     await expect(executeDocsTool(DOCS_GET, { page: '' })).rejects.toThrow(/page/);
+  });
+
+  it('rejects a read with neither page nor url, saying what page takes', async () => {
+    stubHost({});
+    const call = executeDocsTool(DOCS_GET, { section: 'retries' });
+    await expect(call).rejects.toBeInstanceOf(ArgumentError);
+    await expect(executeDocsTool(DOCS_GET, {})).rejects.toThrow(/page is required: the md_url/);
+  });
+
+  it('names the arguments it takes when given one it does not', async () => {
+    await expect(executeDocsTool(DOCS_GET, { path: '/guides/idempotency' })).rejects.toThrow(
+      /unknown argument "path"\. This tool takes: page, section, sections, url\./,
+    );
   });
 
   it('declares the bounds in the schema it advertises', () => {
