@@ -62,6 +62,13 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'list with a next action per NIF.',
     guardrail: 'verifactu-gates',
   },
+  PROFILE_INCOMPLETE: {
+    actor: 'configuration',
+    remedy:
+      'Fill the fields named in error.details.missing_fields (entity_type, legal_name, ' +
+      'address) with beel_patch_company, then retry.',
+    guardrail: 'verifactu-gates',
+  },
   COMPANY_NOT_ACTIVATED: {
     actor: 'configuration',
     remedy: 'Activate the company with beel_activate_company.',
@@ -134,6 +141,35 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'numbering is never rewritten.',
     guardrail: 'series-and-numbering',
   },
+  // A 409 here is a clash, not a retry that already landed.
+  SERIES_FORMAT_OVERLAPS: {
+    actor: 'request',
+    remedy:
+      'Nothing was saved. Change the code or format so it cannot print the numbers of the ' +
+      'series named in the error; beel_list_series shows the existing formats.',
+    guardrail: 'series-and-numbering',
+  },
+  SERIES_NUMBER_COLLISION: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was consumed, but retrying gives the same result: ' +
+      'the series needs review by BeeL support.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_TOO_LONG: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or shorten ' +
+      'the series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
+  INVOICE_NUMBER_INVALID_CHARACTERS: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued and no number was used. Issue with another series_id, or fix the ' +
+      'series code or format with beel_patch_series while it has no issued invoices.',
+    guardrail: 'series-and-numbering',
+  },
   NUMBERING_REQUIRES_ACTIVATION: { actor: 'request', guardrail: 'series-and-numbering' },
 
   // ── Invoice lifecycle ─────────────────────────────────────────────────────
@@ -148,6 +184,36 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     actor: 'benign',
     remedy: 'Voiding is not repeatable — treat this as a retry that already landed.',
     guardrail: 'void',
+  },
+  VOID_REQUIRES_ISSUED_IN_ERROR: {
+    actor: 'request',
+    remedy:
+      'The invoice was already sent or paid. If it really was issued by mistake, retry ' +
+      'beel_void_invoice with issued_in_error: true; if the operation took place, correct it ' +
+      'with beel_create_corrective_invoice instead.',
+    guardrail: 'void',
+  },
+  INVOICE_HAS_LIVE_CORRECTIVES: {
+    actor: 'request',
+    remedy:
+      'An invoice that was corrected cannot be voided. Issue another corrective with ' +
+      'beel_create_corrective_invoice; retrying the void will not help.',
+    guardrail: 'void',
+  },
+  SIMPLIFIED_NOT_EXCHANGEABLE: {
+    actor: 'request',
+    remedy:
+      'Each simplified invoice can be exchanged once, only after it has been issued and ' +
+      'while it is not voided, exchanged or corrected. Check them with beel_get_invoice and ' +
+      'drop the ones that no longer qualify.',
+    guardrail: 'simplified',
+  },
+  SIMPLIFIED_EXCHANGE_NOT_RECORDABLE: {
+    actor: 'configuration',
+    remedy:
+      'Nothing was issued, and retrying unchanged will not help while VeriFactu cannot record ' +
+      'the exchange. Tell the user; do not work around it with a void and a new invoice.',
+    guardrail: 'simplified',
   },
   INVOICE_STATUS_NOT_SCHEDULABLE: { actor: 'request', guardrail: 'invoice-state-machine' },
   INVOICE_DUPLICATE_EXTERNAL_REFERENCE: {
@@ -176,6 +242,16 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy:
       'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
       'default, which may be non-zero.',
+    guardrail: 'simplified',
+  },
+  // Also answered when issuing a draft saved with an identified recipient, where
+  // the fix is an edit of the draft rather than of the request.
+  SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT: {
+    actor: 'request',
+    remedy:
+      'Nothing was issued. Make it a STANDARD invoice (on a draft, beel_patch_invoice with ' +
+      'type: STANDARD), or remove recipient.nif and recipient.alternative_id to keep it ' +
+      'SIMPLIFIED. BeeL applies this at any amount.',
     guardrail: 'simplified',
   },
   SURCHARGE_REQUIRES_REGIME: { actor: 'request', guardrail: 'surcharge' },
@@ -224,6 +300,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
     remedy: 'Confirm the company id with beel_list_companies.',
   },
   LIVE_CREDENTIAL_REQUIRED: { actor: 'access' },
+  WEBHOOK_ACTIVE_SUBSCRIPTION_LIMIT_REACHED: {
+    actor: 'access',
+    remedy:
+      'Ten subscriptions are already active. Turn one you no longer need off (active: false) ' +
+      'with beel_patch_webhook_subscription, or delete it with beel_delete_webhook_subscription.',
+  },
   RATE_LIMIT_EXCEEDED: {
     actor: 'benign',
     remedy:

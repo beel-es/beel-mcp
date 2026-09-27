@@ -223,11 +223,64 @@ function checkInvoice(body: Record<string, unknown>, out: GuardrailViolation[]):
     );
   }
   const invoiceType = typeof body.type === 'string' ? body.type : undefined;
+  // BeeL's own rule, not the law's: a simplified invoice is for a recipient who
+  // is not identified. Only checkable when the identifier travels in this body;
+  // anything the request does not carry is left to the API.
+  const recipient = body.recipient;
+  if (invoiceType === 'SIMPLIFIED' && isRecord(recipient)) {
+    const identifiers = ['nif', 'alternative_id'].filter((field) => recipient[field] != null);
+    if (identifiers.length > 0) {
+      out.push(
+        apiViolation(
+          'SIMPLIFIED_INVOICE_FORBIDS_IDENTIFIED_RECIPIENT',
+          `body.recipient.${identifiers[0]}`,
+          `the recipient carries ${identifiers.join(' and ')} on a SIMPLIFIED invoice; BeeL issues a simplified invoice only to a recipient who is not identified, at any amount.`,
+          'Set type: STANDARD (F1) and keep the identifier, or drop recipient.nif and recipient.alternative_id to keep it SIMPLIFIED.',
+        ),
+      );
+    }
+  }
   if (Array.isArray(body.lines)) {
     body.lines.forEach((line, i) => {
       if (isRecord(line)) checkLine(line, `body.lines[${i}]`, invoiceType, out);
     });
   }
+}
+
+function checkCorrective(body: Record<string, unknown>, out: GuardrailViolation[]): void {
+  // A TOTAL corrective negates what is still invoiced on the original; the API
+  // derives its lines and refuses any sent with it.
+  if (body.rectification_type === 'TOTAL' && Array.isArray(body.lines) && body.lines.length > 0) {
+    out.push(
+      apiViolation(
+        'RECTIFICATIVA_TOTAL_CON_LINEAS',
+        'body.lines',
+        'lines are sent with rectification_type TOTAL; a TOTAL corrective takes its lines from what is still invoiced on the original.',
+        'Remove lines to rectify the whole invoice, or set rectification_type: PARTIAL and keep only the adjustment lines.',
+      ),
+    );
+  }
+  // circumstance_date dates a cause of article 80 of the VAT Act, which R4 excludes.
+  if (body.rectification_code === 'R4' && body.circumstance_date != null) {
+    out.push(
+      apiViolation(
+        'CORRECTIVE_CIRCUMSTANCE_DATE_NOT_APPLICABLE',
+        'body.circumstance_date',
+        'circumstance_date is sent with rectification_code R4, which covers causes other than article 80 of the VAT Act.',
+        'Remove circumstance_date, or use the code (R1, R2, R3 or R5) whose cause it dates.',
+      ),
+    );
+  }
+  checkInvoice(body, out);
+}
+
+/**
+ * A recurring template names its type `invoice_type`. The contract states that a
+ * SIMPLIFIED template cannot keep lines a simplified invoice does not admit only
+ * for an edit, so only the patch reads it.
+ */
+function checkRecurringPatch(body: Record<string, unknown>, out: GuardrailViolation[]): void {
+  checkInvoice(body.invoice_type === undefined ? body : { ...body, type: body.invoice_type }, out);
 }
 
 // ── Series numbering ────────────────────────────────────────────────────────
@@ -311,10 +364,10 @@ export const CHECKED_OPERATIONS: Record<string, Check> = {
   // Invoices carry lines, and lines are where most of the fiscal detail lives.
   createCompanyInvoice: checkInvoice,
   patchCompanyInvoice: checkInvoice,
-  createCompanyCorrectiveInvoice: checkInvoice,
+  createCompanyCorrectiveInvoice: checkCorrective,
   createCompanyInvoiceBatch: checkInvoice,
   createCompanyRecurringInvoice: checkInvoice,
-  patchCompanyRecurringInvoice: checkInvoice,
+  patchCompanyRecurringInvoice: checkRecurringPatch,
 
   // A company is born with its series, so numbering is validated at creation.
   createCompany: checkCompany,

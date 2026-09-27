@@ -40,7 +40,9 @@
       "rules": [
         "VOI-001",
         "VOI-002",
-        "VOI-003"
+        "VOI-003",
+        "VOI-004",
+        "VOI-005"
       ]
     },
     {
@@ -65,7 +67,15 @@
         "COR-013",
         "COR-014",
         "COR-015",
-        "COR-016"
+        "COR-016",
+        "COR-017",
+        "COR-018",
+        "COR-019",
+        "COR-020",
+        "COR-021",
+        "COR-022",
+        "COR-023",
+        "COR-024"
       ]
     },
     {
@@ -156,10 +166,15 @@
         "TAX-008",
         "TAX-009",
         "TAX-010",
-        "TAX-011",
         "TAX-012",
         "TAX-013",
-        "TAX-014"
+        "TAX-014",
+        "TAX-015",
+        "TAX-016",
+        "TAX-017",
+        "TAX-018",
+        "TAX-019",
+        "TAX-022"
       ]
     },
     {
@@ -233,7 +248,8 @@
         "REC-009",
         "REC-010",
         "REC-011",
-        "REC-012"
+        "REC-012",
+        "REC-013"
       ]
     },
     {
@@ -579,7 +595,7 @@
       "impact": "critical",
       "kind": "aeat",
       "enforced_by": "issuer",
-      "statement": "Void an invoice only when it was issued by mistake: the sale or service it describes never took place, it was a test, or it is an accidental duplicate. An invoice for an operation that did happen is never voided to fix it; it is corrected with a corrective invoice.",
+      "statement": "Void an invoice only when it was issued by mistake: the sale or service it describes never took place, it was a test, or it is an accidental duplicate. An invoice for an operation that did happen is not voided to fix its amounts, VAT or details; it is corrected with a corrective invoice. The one exception is a withholding that should not have been applied: the withholding is not a cause for a corrective (COR-024), so that invoice is voided and issued again without it. The API asks for the confirmation once the invoice was sent or paid (VOI-004) and refuses to void a corrected invoice (VOI-005).",
       "why": "A void removes the invoice's fiscal effect altogether. Using it on a real operation, even to reissue it right after, takes a real sale out of the books; the law provides the corrective invoice for that.",
       "applies_to": {
         "statuses": [
@@ -612,6 +628,11 @@
           "table": "void-or-correct",
           "when": "The invoice should never have been issued: the operation did not take place, it was a test, or it is an accidental duplicate.",
           "then": "Void it. Its number stays used; if a valid invoice is still due, issue it as a new one."
+        },
+        {
+          "table": "void-or-correct",
+          "when": "The operation took place, but the invoice carried an income tax withholding it should not have.",
+          "then": "Void it and issue a new invoice without the withholding. A corrective is not the way: the withholding is not a cause for one."
         }
       ],
       "examples": {
@@ -625,10 +646,13 @@
         }
       },
       "related": [
-        "VOI-002",
         "COR-001",
+        "COR-024",
         "LIF-003",
-        "NUM-002"
+        "NUM-002",
+        "VOI-002",
+        "VOI-004",
+        "VOI-005"
       ],
       "docs": [
         "https://docs.beel.es/verifactu/cancel-and-fix#the-30-second-decision",
@@ -647,7 +671,7 @@
       "impact": "high",
       "kind": "beel",
       "enforced_by": "api",
-      "statement": "An issued invoice is voided only with the void operation, with a reason of 10 to 500 characters. A draft or a scheduled invoice is not voided: it is deleted, and it had no number to lose.",
+      "statement": "An issued invoice is voided only with the void operation, with a reason of 10 to 500 characters, and only when it was issued by mistake (VOI-001, VOI-004). A draft or a scheduled invoice is not voided: it is deleted, and it had no number to lose. An invoice issued to the wrong person is not voided either: it is corrected (COR-017).",
       "why": "The void operation is what records the cancellation and, under VeriFactu, sends it to AEAT; a status change cannot. A second void of the same invoice is refused, so a retried void is safe to treat as done.",
       "applies_to": {
         "operations": [
@@ -679,15 +703,18 @@
           "code": "PUT /v1/companies/{company_id}/invoices/{invoice_id}/status\n\n{ \"status\": \"VOIDED\" }"
         },
         "correct": {
-          "text": "Calling the void operation with the reason.",
+          "text": "Calling the void operation with the reason, confirming it was issued by mistake.",
           "lang": "http",
-          "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/void\n\n{ \"reason\": \"Invoice issued to the wrong customer\" }"
+          "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/void\n\n{ \"reason\": \"Duplicate of invoice F-2026-0142, issued twice by mistake\", \"issued_in_error\": true }"
         }
       },
       "related": [
+        "COR-017",
+        "LIF-001",
         "VOI-001",
         "VOI-003",
-        "LIF-001"
+        "VOI-004",
+        "VOI-005"
       ],
       "docs": [
         "https://docs.beel.es/guides/invoice-lifecycle#voiding-and-correcting"
@@ -768,6 +795,142 @@
       "since": "2026-09-24",
       "url": "https://docs.beel.es/rules/void#voi-003",
       "markdown": "https://docs.beel.es/rules/VOI-003.md"
+    },
+    {
+      "id": "VOI-004",
+      "title": "A sent or paid invoice is voided only confirming it was issued by mistake",
+      "domain": "void",
+      "severity": "MUST",
+      "impact": "high",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Voiding an invoice that has already been sent or paid requires issued_in_error: true: the confirmation that it was issued by mistake, because the operation never took place, it was a test, or it is an accidental duplicate. Without it the void is refused with VOID_REQUIRES_ISSUED_IN_ERROR. An invoice that was neither sent nor paid can be voided without it, though a void is only for those same cases (VOI-001).",
+      "why": "A void removes the invoice from the books as if it had never been issued. Once the customer has received or paid it, that is a sign the operation was real; AEAT reads a void of an undelivered invoice as the clearest case of an invoice that should never have existed. The confirmation makes the issuer state that it was not real, instead of voiding a real sale by habit.",
+      "applies_to": {
+        "statuses": [
+          "SENT",
+          "PAID"
+        ],
+        "operations": [
+          "voidCompanyInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "VOID_REQUIRES_ISSUED_IN_ERROR",
+          "url": "https://docs.beel.es/errors/VOID_REQUIRES_ISSUED_IN_ERROR"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "RD 1007/2023 (RRSIF)",
+          "article": "art. 11.1",
+          "quote": "Procederá la generación de un registro de facturación de anulación cuando se haya emitido erróneamente una factura y sea por lo tanto necesario anular su correspondiente registro de facturación de alta.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-24840#a1-3"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Aclaraciones a dudas de los desarrolladores (v1.3)",
+          "article": "17. Forma de proceder ante errores cometidos al facturar, caso 2.d)",
+          "quote": "Sobre el caso 2.d): un aspecto que puede influir en el uso de este mecanismo es si la factura expedida (con errores) ya se ha entregado o no al cliente. Si NO se hubiera entregado, este hecho favorecería la consideración de que se trata de una factura defectuosa e incorrecta que no debería existir ni llegar al cliente (una expedición \"fallida\") y, por lo tanto, que fuera susceptible de anularse",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "Voiding a paid invoice for work that was done, to issue it again with another amount: without issued_in_error the API answers VOID_REQUIRES_ISSUED_IN_ERROR, and with it the issuer would be declaring something false; the fix is a corrective."
+        },
+        "correct": {
+          "text": "Voiding a paid duplicate charged twice by mistake, confirming it.",
+          "lang": "http",
+          "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/void\n\n{ \"reason\": \"Duplicate of invoice F-2026-0142, issued twice by mistake\", \"issued_in_error\": true }"
+        }
+      },
+      "related": [
+        "VOI-001",
+        "VOI-005",
+        "COR-001"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/cancel-and-fix#anulación-void"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/void#voi-004",
+      "markdown": "https://docs.beel.es/rules/VOI-004.md"
+    },
+    {
+      "id": "VOI-005",
+      "title": "A corrected invoice, or a total corrective, is not voided",
+      "domain": "void",
+      "severity": "MUST_NOT",
+      "impact": "high",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Do not void an invoice that has live corrective invoices (issued and not voided): it was corrected, so the operation took place, and further changes go on another corrective. The void is refused with INVOICE_HAS_LIVE_CORRECTIVES. A TOTAL corrective cannot be voided either (TOTAL_CORRECTIVE_NOT_VOIDABLE): the invoice it rectifies was voided by it and would stay voided with nothing to offset it; if what it rectified was wrong, issue a new invoice for what should have stayed invoiced. A PARTIAL corrective issued by mistake can still be voided.",
+      "why": "Correcting and voiding are exclusive ways of fixing an invoice: once correctives were used, AEAT says a cancellation record does not apply.",
+      "applies_to": {
+        "invoice_types": [
+          "STANDARD",
+          "SIMPLIFIED",
+          "CORRECTIVE"
+        ],
+        "statuses": [
+          "RECTIFIED"
+        ],
+        "operations": [
+          "voidCompanyInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "INVOICE_HAS_LIVE_CORRECTIVES",
+          "url": "https://docs.beel.es/errors/INVOICE_HAS_LIVE_CORRECTIVES"
+        },
+        {
+          "code": "TOTAL_CORRECTIVE_NOT_VOIDABLE",
+          "url": "https://docs.beel.es/errors/TOTAL_CORRECTIVE_NOT_VOIDABLE"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "aeat",
+          "norm": "AEAT, Aclaraciones a dudas de los desarrolladores (v1.3)",
+          "article": "17. Forma de proceder ante errores cometidos al facturar, caso 2.d)",
+          "quote": "Esta forma de actuar (cuando sea posible) no implica la expedición de nuevas facturas que \"contrarresten o compensen\" la factura expedida por error (que son mecanismos contemplados en los procedimientos admitidos de rectificación de facturas y que, si se utilizaran, no procedería hacer un RF de anulación de la factura expedida por error).",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf"
+        }
+      ],
+      "decision": [
+        {
+          "table": "void-or-correct",
+          "when": "The invoice already has corrective invoices.",
+          "then": "It can no longer be voided: issue another corrective against it."
+        }
+      ],
+      "examples": {
+        "incorrect": {
+          "text": "Voiding an invoice after a PARTIAL corrective reduced it: the API answers INVOICE_HAS_LIVE_CORRECTIVES."
+        },
+        "correct": {
+          "text": "Issuing a TOTAL corrective on it instead: it rectifies what is still invoiced, the partial included (COR-023)."
+        }
+      },
+      "related": [
+        "VOI-001",
+        "VOI-004",
+        "COR-023",
+        "COR-007"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/cancel-and-fix"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/void#voi-005",
+      "markdown": "https://docs.beel.es/rules/VOI-005.md"
     },
     {
       "id": "COR-001",
@@ -930,7 +1093,7 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "A corrective states the correction either as the difference, whatever its sign, or as the amounts after the correction together with the amount rectified. In the API, a PARTIAL corrective carries the difference as lines, and a TOTAL corrective rectifies the whole original and takes no lines.",
+      "statement": "A corrective states the correction either as the difference, whatever its sign, or as the amounts after the correction together with the amount rectified. In the API, a PARTIAL corrective carries the difference as lines, and a TOTAL corrective takes no lines: it rectifies what is still invoiced on the original (COR-023), line by line.",
       "why": "The corrective has to meet every requirement of an invoice and show what changed. A PARTIAL without lines states no correction, and a TOTAL with lines is refused.",
       "applies_to": {
         "invoice_types": [
@@ -993,8 +1156,8 @@
       "impact": "low",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "Every corrective record declares whether it rectifies by substitution (S) or by differences (I). Choose it with rectification_type on the request: a TOTAL corrective takes no lines, a PARTIAL one carries the difference, and BeeL. builds the record from it.",
-      "why": "AEAT reads the corrective's amounts differently in each mode, and rejects a record that does not declare it.",
+      "statement": "Every corrective record declares whether it rectifies by substitution (S) or by differences (I). BeeL. records every corrective by differences, whatever its rectification_type: a PARTIAL corrective carries the difference as its lines, and a TOTAL one carries the original's lines with the opposite sign, which is the difference that cancels it. A record by differences carries no rectified base or rectified tax.",
+      "why": "AEAT reads the corrective's amounts differently in each mode: by substitution the breakdown holds the amounts after the correction, by differences it holds the correction itself. Declaring a negated breakdown as a substitution would record twice the intended effect.",
       "applies_to": {
         "invoice_types": [
           "CORRECTIVE"
@@ -1009,6 +1172,13 @@
           "article": "Procedimientos de facturación: ¿Cómo registra el emisor una factura rectificativa?",
           "quote": "Asimismo, se deberá identificar el tipo de factura rectificativa con las claves “S- sustitución” o “I- por diferencias”.",
           "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
+          "article": "Procedimientos de facturación: ¿Cómo registra el emisor una factura rectificativa por diferencias “I”?",
+          "quote": "Para ello se deberá informar en un solo registro de la factura rectificativa con la clave “I”. En este caso no se deben rellenar los campos adicionales “Base rectificada” y “Cuota rectificada”.",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
         }
       ],
       "decision": [],
@@ -1017,7 +1187,7 @@
           "text": "Building your own corrective record and leaving out whether it substitutes or adds a difference."
         },
         "correct": {
-          "text": "Choosing rectification_type on the request and letting BeeL. build the record."
+          "text": "Choosing rectification_type on the request and letting BeeL. build the record by differences."
         }
       },
       "related": [
@@ -1097,15 +1267,31 @@
       "severity": "MUST",
       "impact": "medium",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "Issue a corrective as soon as you learn of the cause, and never later than 4 years after the tax accrued or, for art. 80 LIVA causes, after the circumstance occurred.",
-      "why": "Past that deadline the tax charged can no longer be rectified, and a late corrective does not change it.",
+      "enforced_by": "api",
+      "statement": "Issue a corrective as soon as you learn of the cause, and never later than 4 years after the tax accrued or, for art. 80 LIVA causes, after the circumstance occurred. The API counts from the original's operation date (its operation_date, or its issue_date when it has none) unless you declare circumstance_date for an R1, R2, R3 or R5 corrective; the last day is the anniversary itself. Past it the corrective is refused with CORRECTIVE_OUT_OF_TIME. A refund from a payment integration is a circumstance of the day it is refunded.",
+      "why": "Past that deadline the tax charged can no longer be rectified, and a late corrective does not change it. Counting from the operation when no circumstance is declared is the stricter reading of the two the law allows.",
       "applies_to": {
         "invoice_types": [
           "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_OUT_OF_TIME",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_OUT_OF_TIME"
+        },
+        {
+          "code": "CORRECTIVE_CIRCUMSTANCE_DATE_NOT_APPLICABLE",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_CIRCUMSTANCE_DATE_NOT_APPLICABLE"
+        },
+        {
+          "code": "CORRECTIVE_CIRCUMSTANCE_DATE_OUT_OF_RANGE",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_CIRCUMSTANCE_DATE_OUT_OF_RANGE"
+        }
+      ],
       "legal_basis": [
         {
           "type": "boe",
@@ -1113,20 +1299,30 @@
           "article": "art. 15.3",
           "quote": "La expedición de la factura rectificativa deberá efectuarse tan pronto como el obligado a expedirla tenga constancia de las circunstancias que, conforme a los apartados anteriores, obligan a su expedición, siempre que no hubiesen transcurrido cuatro años a partir del momento en que se devengó el Impuesto o, en su caso, se produjeron las circunstancias a que se refiere el artículo 80 de la Ley del Impuesto.",
           "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
+          "article": "Procedimientos de facturación: tipo de facturas, R4",
+          "quote": "Cuando se haya producido una modificación de la base imponible del IVA por causas distintas a las previstas en el artículo 80 LIVA y no se deba a un error fundado de derecho deberá emitirse una factura rectificativa con serie específica cuya información se registrará con el tipo de factura R4.",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
         }
       ],
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "Correcting in 2026 an invoice whose tax accrued in 2021."
+          "text": "Correcting in 2026, with R4, an invoice whose operation took place in 2021: the API answers CORRECTIVE_OUT_OF_TIME."
         },
         "correct": {
-          "text": "Correcting the invoice the month the customer reports the error."
+          "text": "Correcting in 2026 an invoice of 2021 for a price change agreed in 2024, declaring when it was agreed.",
+          "lang": "json",
+          "code": "{ \"rectification_type\": \"PARTIAL\", \"rectification_code\": \"R1\", \"reason\": \"Price reduction agreed with the customer on 2024-06-01\", \"circumstance_date\": \"2024-06-01\", \"lines\": [{ \"description\": \"Price reduction\", \"quantity\": -1, \"unit_price\": 100, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 21 } }] }"
         }
       },
       "related": [
         "COR-001",
-        "COR-008"
+        "COR-008",
+        "COR-014"
       ],
       "docs": [],
       "facts": [
@@ -1204,7 +1400,7 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "issuer",
-      "statement": "Issue an R3 corrective only when the debt is uncollectable in the legal sense: 1 year since the tax accrued without payment (six months or one year for smaller businesses), the unpaid debt recorded in the VAT books, a court claim or notarial demand, and a recipient who is a business or a base above 50 €. Issue it within the following 6 months, send it to the customer and report it to AEAT; the cases the law excludes are in COR-016.",
+      "statement": "Issue an R3 corrective only when the debt is uncollectable in the legal sense: 1 year since the tax accrued without payment (six months or one year for smaller businesses), the unpaid debt recorded in the VAT books, a court claim or notarial demand, and a recipient who is a business or a base above 50 €. Issue it within the following 6 months, send it to the customer and report it to AEAT; the cases the law excludes are in COR-016 and COR-019. The API checks the six months and the 50 € threshold (COR-020); the rest is yours to meet.",
       "why": "Without these conditions the base cannot be reduced, and the tax the corrective gives back is still owed.",
       "applies_to": {
         "invoice_types": [
@@ -1260,9 +1456,11 @@
       },
       "related": [
         "COR-002",
-        "COR-009",
         "COR-006",
-        "COR-016"
+        "COR-009",
+        "COR-016",
+        "COR-019",
+        "COR-020"
       ],
       "docs": [
         "https://docs.beel.es/verifactu/corrective-invoices#scenario-3--partial-bad-debt-write-off-r3"
@@ -1481,15 +1679,20 @@
       "impact": "low",
       "kind": "law",
       "enforced_by": "issuer",
-      "statement": "Document returned goods or packaging with a corrective. The law lets you net them on the invoice of a later supply instead only when it goes to the same customer and every operation carries the same VAT rate.",
-      "why": "Outside that exception, a return changes the base of the invoice it came from and needs a corrective against it.",
+      "statement": "Document returned goods or packaging with a corrective. The law lets you net them on the invoice of a later supply instead only when it goes to the same customer and every operation carries the same VAT rate. The API accepts negative lines on a standard or simplified invoice for that netting, and for discounts not included in the unit price (art. 6.1.f), as long as the invoice total is not negative: a negative result is a correction and goes on a corrective (CNT-019).",
+      "why": "Outside that exception, a return changes the base of the invoice it came from and needs a corrective against it. An ordinary invoice with a negative total would be a credit note without the link to the invoice it corrects.",
       "applies_to": {
         "invoice_types": [
           "STANDARD",
           "CORRECTIVE"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "NEGATIVE_TOTAL_REQUIRES_RECTIFICATIVE",
+          "url": "https://docs.beel.es/errors/NEGATIVE_TOTAL_REQUIRES_RECTIFICATIVE"
+        }
+      ],
       "legal_basis": [
         {
           "type": "boe",
@@ -1497,6 +1700,13 @@
           "article": "art. 15.2, párrafo segundo",
           "quote": "cuando la modificación de la base imponible sea consecuencia de la devolución de mercancías o de envases y embalajes que se realicen con ocasión de un posterior suministro que tenga el mismo destinatario [...] no será necesaria la expedición de una factura rectificativa, sino que se podrá practicar la rectificación en la factura que se expida por dicho suministro [...] La rectificación se podrá realizar de este modo siempre que el tipo impositivo aplicable a todas las operaciones sea el mismo, con independencia de que su resultado sea positivo o negativo.",
           "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 6.1.f)",
+          "quote": "incluyendo el precio unitario sin Impuesto de dichas operaciones, así como cualquier descuento o rebaja que no esté incluido en dicho precio unitario.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a6"
         }
       ],
       "decision": [],
@@ -1505,7 +1715,7 @@
           "text": "Deducting returned crates from the next invoice to a different customer."
         },
         "correct": {
-          "text": "Issuing an R1 PARTIAL corrective against the invoice the crates were delivered with."
+          "text": "A later supply of 500 € to the same customer at 21 % with a line of −60 € for returned crates at 21 %: total 440 € plus VAT. Or an R1 PARTIAL corrective against the invoice the crates were delivered with."
         }
       },
       "related": [
@@ -1526,8 +1736,8 @@
       "impact": "low",
       "kind": "law",
       "enforced_by": "issuer",
-      "statement": "Do not issue a corrective for anything but a missing requirement, wrongly charged tax or an art. 80 LIVA change. An invoice issued in exchange for earlier simplified invoices is not a corrective.",
-      "why": "Only those causes make an invoice a corrective; a corrective issued for anything else misreports what happened.",
+      "statement": "Do not issue a corrective for anything but a missing requirement, wrongly charged tax or an art. 80 LIVA change. An invoice issued for an operation that never took place is voided and, if needed, replaced by a new invoice; that replacement is never a corrective. Neither is an invoice issued in exchange for earlier simplified invoices, nor one that replaces an invoice only to remove a withholding (COR-024).",
+      "why": "Only those causes make an invoice a corrective; a corrective issued for anything else misreports what happened. An invoice for a sale that never took place does not fail a requirement: it should not exist, so it is voided.",
       "applies_to": {
         "invoice_types": [
           "CORRECTIVE"
@@ -1535,6 +1745,13 @@
       },
       "error_codes": [],
       "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.1 y 15.2",
+          "quote": "Deberá expedirse una factura rectificativa en los casos en que la factura original no cumpla alguno de los requisitos que se establecen en los artículos 6 ó 7 [...] 2. Igualmente, será obligatoria la expedición de una factura rectificativa en los casos en que las cuotas impositivas repercutidas se hubiesen determinado incorrectamente o se hubieran producido las circunstancias que, según lo dispuesto en el artículo 80 de la Ley del Impuesto, dan lugar a la modificación de la base imponible.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
         {
           "type": "boe",
           "norm": "RD 1619/2012 (Reglamento de facturación)",
@@ -1554,6 +1771,7 @@
       },
       "related": [
         "COR-001",
+        "COR-024",
         "SIM-007",
         "VOI-001"
       ],
@@ -1573,8 +1791,8 @@
       "impact": "low",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "The operation date of a corrective is the date the original supply or service took place. BeeL. copies the original invoice's operation_date to the corrective.",
-      "why": "The corrective adjusts the tax of that operation, so AEAT expects it dated like the operation, not like the day it was issued.",
+      "statement": "The operation date of a corrective is the date the original supply or service took place. BeeL. sets it from the original invoice: its operation_date, or its issue_date when the original declared no other operation date. Every corrective carries it, whoever asks for it.",
+      "why": "The corrective adjusts the tax of that operation, so AEAT expects it dated like the operation, not like the day it was issued. An original without operation_date documents an operation of its issue date; leaving the corrective without one would date it on the day of the corrective instead.",
       "applies_to": {
         "invoice_types": [
           "CORRECTIVE"
@@ -1591,6 +1809,20 @@
           "article": "Procedimientos de facturación: R1",
           "quote": "Se incluirá como fecha de operación la fecha en que se realizó la entrega o prestó el servicio, indicada en la factura inicial. En el caso de rectificar varias facturas con una única factura rectificativa se indicará la fecha más reciente.",
           "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
+          "article": "Procedimientos de facturación: fecha de operación de una rectificativa",
+          "quote": "¿Qué fecha de operación debe hacerse constar en una factura rectificativa? La fecha de realización de la operación correspondiente a la factura original que se está rectificando.",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 6.1.i",
+          "quote": "i) La fecha en que se hayan efectuado las operaciones que se documentan o en la que, en su caso, se haya recibido el pago anticipado, siempre que se trate de una fecha distinta a la de expedición de la factura.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a6"
         }
       ],
       "decision": [],
@@ -1599,7 +1831,7 @@
           "text": "Recording the corrective of a March delivery as an operation of the day the corrective was issued."
         },
         "correct": {
-          "text": "Sending operation_date on the original whenever the delivery happened on a different day from its issue, so the corrective inherits it."
+          "text": "An invoice issued on 7 May for a service done that day, without operation_date, is corrected in October: the corrective carries 7 May as its operation date."
         }
       },
       "related": [
@@ -1665,7 +1897,7 @@
       "impact": "low",
       "kind": "law",
       "enforced_by": "issuer",
-      "statement": "Do not reduce the base for insolvency (R2) or bad debt (R3) for the part of a debt secured by a real guarantee, guaranteed by a credit institution or covered by credit or surety insurance, for debts between related parties, or when the recipient is not established in Spain, the Canary Islands, Ceuta or Melilla. Debts owed or guaranteed by public entities are excluded from R2, and an R3 is not issued for operations accrued before the customer was declared insolvent.",
+      "statement": "Do not reduce the base for insolvency (R2) or bad debt (R3) for the part of a debt secured by a real guarantee, guaranteed by a credit institution or covered by credit or surety insurance, or for debts between related parties. Debts owed or guaranteed by public entities are excluded from R2, and an R3 is not issued for operations accrued before the customer was declared insolvent. A recipient not established in Spain is covered by COR-019.",
       "why": "The law excludes these debts from the reduction of the base; a corrective issued for them gives back a tax that is still owed.",
       "applies_to": {
         "invoice_types": [
@@ -1701,13 +1933,525 @@
       },
       "related": [
         "COR-008",
-        "COR-009"
+        "COR-009",
+        "COR-019"
       ],
       "docs": [],
       "facts": [],
       "since": "2026-09-24",
       "url": "https://docs.beel.es/rules/corrective#cor-016",
       "markdown": "https://docs.beel.es/rules/COR-016.md"
+    },
+    {
+      "id": "COR-017",
+      "title": "A corrective keeps the recipient, except to correct the recipient's data",
+      "domain": "corrective",
+      "severity": "MUST",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "A corrective goes to the recipient of the invoice it rectifies, with the data recorded on that invoice, and takes no recipient. The exception is correcting that recipient's own data when the invoice recorded them wrong (name, tax ID or address of the right recipient): send recipient with the corrected data, rectification_type PARTIAL, rectification_code R4 and no lines. That corrective carries the corrected recipient, leaves the amounts unchanged (its lines negate what is still invoiced and repeat it, so each rate nets to zero) and leaves the original RECTIFIED. When the original went to a registered customer, the corrected recipient must be that same customer (CORRECTIVE_RECIPIENT_IS_ANOTHER_PERSON otherwise), and data identical to the recorded ones are refused with CORRECTIVE_RECIPIENT_UNCHANGED. Any other recipient is refused with CORRECTIVE_RECIPIENT_NOT_ACCEPTED. If the invoice was issued to another person altogether, correct it in full with a TOTAL corrective and issue a new invoice to the right customer.",
+      "why": "An invoice with the recipient's data wrong does not meet the invoice requirements, and the law fixes that with a corrective; voiding it and issuing another leaves the defective invoice standing. Changing the person, instead, is not a correction of data: the operation with the first person did not happen, so that invoice is credited and the right one is issued.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_RECIPIENT_NOT_ACCEPTED",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_RECIPIENT_NOT_ACCEPTED"
+        },
+        {
+          "code": "CORRECTIVE_RECIPIENT_IS_ANOTHER_PERSON",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_RECIPIENT_IS_ANOTHER_PERSON"
+        },
+        {
+          "code": "CORRECTIVE_RECIPIENT_UNCHANGED",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_RECIPIENT_UNCHANGED"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.1",
+          "quote": "1. Deberá expedirse una factura rectificativa en los casos en que la factura original no cumpla alguno de los requisitos que se establecen en los artículos 6 ó 7, sin perjuicio de lo establecido en el apartado 6 de este artículo.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 6.1.c) y e)",
+          "quote": "c) Nombre y apellidos, razón o denominación social completa, tanto del obligado a expedir factura como del destinatario de las operaciones. [...] e) Domicilio, tanto del obligado a expedir factura como del destinatario de las operaciones.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a6"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
+          "article": "Procedimientos de facturación: tipo de facturas, R4",
+          "quote": "\"R4\": Factura Rectificativa (Resto). Se indicará tipo de factura R4 en estas situaciones: [...] Cuando se haya consignado erróneamente algún dato no monetario de la factura",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
+        }
+      ],
+      "decision": [
+        {
+          "table": "void-or-correct",
+          "when": "The invoice recorded the right recipient with a wrong name, tax ID or address.",
+          "then": "Issue an R4 PARTIAL corrective with the corrected recipient and no lines: the amounts stay as they are."
+        },
+        {
+          "table": "void-or-correct",
+          "when": "The invoice was issued to another person, not the actual customer.",
+          "then": "Issue a TOTAL corrective on it, then a new invoice to the right customer."
+        }
+      ],
+      "examples": {
+        "incorrect": {
+          "text": "Voiding an invoice whose customer's tax ID was mistyped and issuing it again: the defective invoice stays on file uncorrected."
+        },
+        "correct": {
+          "text": "Correcting the mistyped tax ID with an R4 corrective that carries the corrected recipient.",
+          "lang": "json",
+          "code": "{ \"rectification_type\": \"PARTIAL\", \"rectification_code\": \"R4\", \"reason\": \"The customer's tax ID was mistyped\", \"recipient\": { \"customer_id\": \"8f1e…\" } }"
+        }
+      },
+      "related": [
+        "COR-005",
+        "COR-001",
+        "REC-009",
+        "VOI-002"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/corrective-invoices"
+      ],
+      "facts": [],
+      "since": "2026-09-25",
+      "url": "https://docs.beel.es/rules/corrective#cor-017",
+      "markdown": "https://docs.beel.es/rules/COR-017.md"
+    },
+    {
+      "id": "COR-018",
+      "title": "A corrective can always correct what the original declared",
+      "domain": "corrective",
+      "severity": "MUST",
+      "impact": "high",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "A corrective is judged against the treatment its original already had, not against the rules that BeeL. applies to new invoices. A regime key, exemption reason, withholding rate or surcharge rate that a new invoice can no longer use is accepted in the corrective only if the original carried it on one of its lines; the corrective is then registered as the original was. Anything the original did not carry is judged as on a new invoice. The checks AEAT itself makes on the record still apply, and a corrective, like any invoice, needs at least one NORMAL line.",
+      "why": "The law makes the corrective mandatory whenever the original was wrong or its amounts change, so refusing it would leave the original with no way to be corrected. What a new invoice may no longer use is exactly what a corrective has to reverse.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ]
+      },
+      "error_codes": [],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.1",
+          "quote": "Deberá expedirse una factura rectificativa en los casos en que la factura original no cumpla alguno de los requisitos que se establecen en los artículos 6 ó 7, sin perjuicio de lo establecido en el apartado 6 de este artículo.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.2",
+          "quote": "Igualmente, será obligatoria la expedición de una factura rectificativa en los casos en que las cuotas impositivas repercutidas se hubiesen determinado incorrectamente o se hubieran producido las circunstancias que, según lo dispuesto en el artículo 80 de la Ley del Impuesto, dan lugar a la modificación de la base imponible.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "A partial corrective of an invoice issued under regime key 01 without withholding adds a line under key 03 with a 15 % withholding: it is judged as a new invoice and rejected."
+        },
+        "correct": {
+          "text": "The full corrective of an old invoice carries the same regime key, exemption reason and withholding rate, negated, and is registered with the same breakdown the original had."
+        }
+      },
+      "related": [
+        "COR-014",
+        "TAX-016",
+        "TAX-018",
+        "TAX-019"
+      ],
+      "docs": [],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-018",
+      "markdown": "https://docs.beel.es/rules/COR-018.md"
+    },
+    {
+      "id": "COR-019",
+      "title": "Insolvency and bad-debt correctives need a recipient established in Spain",
+      "domain": "corrective",
+      "severity": "MUST_NOT",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "Do not issue an R2 (insolvency) or R3 (bad debt) corrective when the recipient is not established in Spain, the Canary Islands, Ceuta or Melilla. The exception is an insolvency declared by a court of another EU member state under Regulation (EU) 2015/848, which may reduce the base as an insolvency: an R2 accepts a recipient of another member state, an R3 does not. The API reads where the recipient is established from its address, or from the country of its identifier when there is no address (a Spanish NIF is Spain), and refuses the corrective with CORRECTIVE_RECIPIENT_NOT_ESTABLISHED when that is elsewhere or unknown.",
+      "why": "The law does not allow the base to be reduced for these debts, so the VAT the corrective gives back is still owed.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ],
+        "scope": "rectification_code R2 or R3."
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_RECIPIENT_NOT_ESTABLISHED",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_RECIPIENT_NOT_ESTABLISHED"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 80.Cinco.2.ª",
+          "quote": "Cinco. En relación con los supuestos de modificación de la base imponible comprendidos en los apartados tres y cuatro anteriores, se aplicarán las siguientes reglas: [...] 2.ª Tampoco procederá la modificación de la base imponible cuando el destinatario de las operaciones no esté establecido en el territorio de aplicación del Impuesto, ni en Canarias, Ceuta o Melilla. Quedan excluidos de lo dispuesto en el párrafo anterior los supuestos de créditos incobrables como consecuencia de un proceso de insolvencia declarado por un órgano jurisdiccional de otro Estado miembro cuando se trate de procedimientos de insolvencia a los que resulte de aplicación el Reglamento (UE) 2015/848 del Parlamento Europeo y del Consejo, de 20 de mayo de 2015, sobre procedimientos de insolvencia, que podrán dar lugar, en su caso, a la modificación de la base imponible del sujeto pasivo en los términos previstos en el artículo 80.tres de esta ley.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a80"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "An R3 corrective for an unpaid invoice to a customer based in France: the API answers CORRECTIVE_RECIPIENT_NOT_ESTABLISHED."
+        },
+        "correct": {
+          "text": "An R2 corrective for a French customer declared insolvent by a French court, once the conditions of article 80.Tres are met."
+        }
+      },
+      "related": [
+        "COR-009",
+        "COR-008",
+        "COR-016"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/corrective-invoices"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-019",
+      "markdown": "https://docs.beel.es/rules/COR-019.md"
+    },
+    {
+      "id": "COR-020",
+      "title": "A bad-debt corrective waits six months and needs a business recipient under 50 €",
+      "domain": "corrective",
+      "severity": "MUST_NOT",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "Do not issue an R3 corrective before six months have passed since the tax accrued: the API counts them from the original's operation date and refuses an earlier one with CORRECTIVE_BAD_DEBT_TOO_EARLY, giving the first possible day. Six months is the period only for a business whose turnover the year before did not exceed 6,010,121.04 €; otherwise it is one year, and applying it is the issuer's responsibility. When the base of the operation is 50 € or less, the recipient must have acted as a business or professional: declare it with recipient_is_business, or the corrective is refused with CORRECTIVE_BAD_DEBT_BASE_TOO_LOW.",
+      "why": "Before the waiting period, or for a consumer's debt of 50 € or less, the debt is not uncollectable in the legal sense and the base cannot be reduced.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ],
+        "scope": "rectification_code R3."
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_BAD_DEBT_TOO_EARLY",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_BAD_DEBT_TOO_EARLY"
+        },
+        {
+          "code": "CORRECTIVE_BAD_DEBT_BASE_TOO_LOW",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_BAD_DEBT_BASE_TOO_LOW"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 80.Cuatro.A).1.ª",
+          "quote": "1.ª Que haya transcurrido un año desde el devengo del Impuesto repercutido sin que se haya obtenido el cobro de todo o parte del crédito derivado del mismo. [...] Cuando el titular del derecho de crédito cuya base imponible se pretende reducir sea un empresario o profesional cuyo volumen de operaciones, calculado conforme a lo dispuesto en el artículo 121 de esta Ley, no hubiese excedido durante el año natural inmediato anterior de 6.010.121,04 euros, el plazo a que se refiere esta condición 1.ª podrá ser, de seis meses o un año.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a80"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 80.Cuatro.A).3.ª",
+          "quote": "3.ª Que el destinatario de la operación actúe en la condición de empresario o profesional, o, en otro caso, que la base imponible de aquella, Impuesto sobre el Valor Añadido excluido, sea superior a 50 euros.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a80"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "An R3 corrective in March for a service invoiced in January: the API answers CORRECTIVE_BAD_DEBT_TOO_EARLY with the first day it is possible."
+        },
+        "correct": {
+          "text": "An R3 corrective for an unpaid 40 € service to a self-employed customer, declaring that the customer acted as a business.",
+          "lang": "json",
+          "code": "{ \"rectification_type\": \"TOTAL\", \"rectification_code\": \"R3\", \"reason\": \"Unpaid for more than six months; notarial demand sent on 2026-05-04\", \"recipient_is_business\": true }"
+        }
+      },
+      "related": [
+        "COR-008",
+        "COR-019",
+        "COR-006"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/corrective-invoices#scenario-3--partial-bad-debt-write-off-r3"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-020",
+      "markdown": "https://docs.beel.es/rules/COR-020.md"
+    },
+    {
+      "id": "COR-021",
+      "title": "An identical corrective a moment after another is taken as a double submission",
+      "domain": "corrective",
+      "severity": "SHOULD",
+      "impact": "low",
+      "kind": "beel",
+      "enforced_by": "api",
+      "statement": "A corrective identical to another live one of the same invoice (same type, reason code, reason, taxable base and amount payable, disbursements included) created less than two minutes earlier is refused with CORRECTIVE_RECENT_DUPLICATE: it is a double click or a retry. After that window an identical corrective is issued, since two refunds of the same amount are two correctives. To retry a request safely at any time, send an Idempotency-Key. Correctives that come from a payment integration carry their own identity and are not checked this way.",
+      "why": "A double submission would issue a second fiscal document for the same correction. Blocking identical correctives for a whole day, instead, refused legitimate repeated refunds.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_RECENT_DUPLICATE",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_RECENT_DUPLICATE"
+        }
+      ],
+      "legal_basis": [],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "Retrying a corrective after a timeout without an Idempotency-Key, a few seconds later: the API answers CORRECTIVE_RECENT_DUPLICATE with the number of the one already issued."
+        },
+        "correct": {
+          "text": "Retrying with the same Idempotency-Key: the API returns the corrective already issued instead of a new one.",
+          "lang": "http",
+          "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/corrective\nIdempotency-Key: 5f0c2d1e-refund-0042"
+        }
+      },
+      "related": [
+        "COR-023",
+        "LIF-004"
+      ],
+      "docs": [],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-021",
+      "markdown": "https://docs.beel.es/rules/COR-021.md"
+    },
+    {
+      "id": "COR-022",
+      "title": "An invoice whose record AEAT rejected is fixed before it is corrected",
+      "domain": "corrective",
+      "severity": "MUST",
+      "impact": "medium",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "When AEAT rejected the record of the original invoice and it has not been resubmitted, fix it and resubmit it first; a corrective against it is refused with CORRECTIVE_ORIGINAL_RECORD_REJECTED. An original whose record is still being processed, or that was issued outside VeriFactu, can be corrected.",
+      "why": "A rejected record never reaches AEAT's books. A corrective states the difference from the original, so issued first it would be recorded on its own, as a correction of an invoice AEAT does not have.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ],
+        "scope": "VeriFactu enabled for the original invoice."
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_ORIGINAL_RECORD_REJECTED",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_ORIGINAL_RECORD_REJECTED"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "aeat",
+          "norm": "AEAT, Aclaraciones a dudas de los desarrolladores (v1.3)",
+          "article": "17. Aclaraciones, caso 2.a)",
+          "quote": "En el probable caso de que el RF generado de la “factura errónea” fuera rechazado por la AEAT (lo que podría servir para que el usuario se percatara del error cometido), ese RF rechazado no figuraría jamás en los sistemas de la AEAT (aunque constaría un rechazo).",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Aclaraciones a dudas de los desarrolladores (v1.3)",
+          "article": "17. Aclaraciones, caso 2.b)",
+          "quote": "Si el RF generado de la “factura errónea” fuera rechazado por la AEAT (lo que podría servir para que el usuario se percatara del error cometido), habría que [...] corregir la factura original y generar un RF de alta de subsanación, sin registro previo en la AEAT (ya que el RF “original” fue rechazado y no existe en la AEAT).",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "Issuing a corrective for an invoice whose record AEAT rejected for a wrong recipient NIF: the API answers CORRECTIVE_ORIGINAL_RECORD_REJECTED."
+        },
+        "correct": {
+          "text": "Fixing the recipient's data, resubmitting the original's record and, once AEAT accepts it, issuing the corrective if one is still due."
+        }
+      },
+      "related": [
+        "REC-008",
+        "REC-009",
+        "COR-005"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/handling-rejections"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-022",
+      "markdown": "https://docs.beel.es/rules/COR-022.md"
+    },
+    {
+      "id": "COR-023",
+      "title": "A corrective never rectifies more than was invoiced",
+      "domain": "corrective",
+      "severity": "MUST_NOT",
+      "impact": "high",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "A corrective rectifies what is still invoiced: the original invoice plus the correctives already issued against it, voided ones excluded. A TOTAL corrective rectifies that remaining balance, negating every line of the original and of its live correctives, and is refused with CORRECTIVE_NOTHING_LEFT_TO_RECTIFY when previous correctives already left nothing. A PARTIAL corrective may raise any amount, but may not take the taxable base of any rate (tax, rate and equivalence surcharge) below zero: that is refused with CORRECTIVE_EXCEEDS_INVOICED_AMOUNT, which names the rate and how much of it is left. Disbursements (SUPLIDO lines) are capped by their own amount.",
+      "why": "The taxable base of an operation changes by the amount that corresponds to what changed. After a partial credit of 300 on an invoice of 1,000, what is left invoiced is 700; a corrective that negated the 1,000 again would give back 1,300 and a tax that was never charged.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_EXCEEDS_INVOICED_AMOUNT",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_EXCEEDS_INVOICED_AMOUNT"
+        },
+        {
+          "code": "CORRECTIVE_NOTHING_LEFT_TO_RECTIFY",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_NOTHING_LEFT_TO_RECTIFY"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 80.Dos",
+          "quote": "Dos. Cuando por resolución firme, judicial o administrativa o con arreglo a Derecho o a los usos de comercio queden sin efecto total o parcialmente las operaciones gravadas o se altere el precio después del momento en que la operación se haya efectuado, la base imponible se modificará en la cuantía correspondiente.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a80"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.5",
+          "quote": "Cuando lo que se expida sea una factura rectificativa, los datos a los que se refiere el artículo 6.1.f), g) y h) expresarán la rectificación efectuada.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "Rectifying an invoice of 1,000 that already has a −300 PARTIAL corrective with a PARTIAL of −800 at the same rate: it would take the base to −100, and the API answers CORRECTIVE_EXCEEDS_INVOICED_AMOUNT."
+        },
+        "correct": {
+          "text": "Issuing a TOTAL corrective on that invoice: it negates the 1,000 and the −300, rectifies 700 and leaves the invoice at zero.",
+          "lang": "json",
+          "code": "{ \"rectification_type\": \"TOTAL\", \"rectification_code\": \"R1\", \"reason\": \"Order cancelled by agreement with the customer\" }"
+        }
+      },
+      "related": [
+        "COR-003",
+        "COR-001",
+        "COR-007"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/corrective-invoices"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/corrective#cor-023",
+      "markdown": "https://docs.beel.es/rules/COR-023.md"
+    },
+    {
+      "id": "COR-024",
+      "title": "A corrective does not change only the withholding",
+      "domain": "corrective",
+      "severity": "MUST_NOT",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "A PARTIAL corrective whose lines negate operations of the invoice and repeat them unchanged (same description, amount and rate) except for the income tax withholding is refused with CORRECTIVE_WITHHOLDING_ONLY. The withholding is not one of the details an invoice must contain, nor a VAT amount, so correcting it alone is not a cause for a corrective. When an invoice carried a withholding it should not have, void it and issue a new invoice without it. Moving part of the price between a line with withholding and one without it corrects the operations themselves and is accepted.",
+      "why": "Only an invoice that fails a legal requirement, charges the wrong VAT or needs an art. 80 LIVA change is a corrective. A document issued for any other reason and filed as a corrective misreports what happened, and its billing record carries no amount at all, because the record has no withholding.",
+      "applies_to": {
+        "invoice_types": [
+          "CORRECTIVE"
+        ],
+        "operations": [
+          "createCompanyCorrectiveInvoice"
+        ]
+      },
+      "error_codes": [
+        {
+          "code": "CORRECTIVE_WITHHOLDING_ONLY",
+          "url": "https://docs.beel.es/errors/CORRECTIVE_WITHHOLDING_ONLY"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.1 y 15.2",
+          "quote": "Deberá expedirse una factura rectificativa en los casos en que la factura original no cumpla alguno de los requisitos que se establecen en los artículos 6 ó 7 [...] 2. Igualmente, será obligatoria la expedición de una factura rectificativa en los casos en que las cuotas impositivas repercutidas se hubiesen determinado incorrectamente o se hubieran producido las circunstancias que, según lo dispuesto en el artículo 80 de la Ley del Impuesto, dan lugar a la modificación de la base imponible.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 15.6",
+          "quote": "Únicamente tendrán la consideración de facturas rectificativas las que se expidan por alguna de las causas previstas en los apartados 1 y 2.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a15"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "A PARTIAL corrective that negates a line of 1,000 at 21% with 15% withholding and adds it again with no withholding: the API answers CORRECTIVE_WITHHOLDING_ONLY."
+        },
+        "correct": {
+          "text": "Voiding the invoice, confirming it was issued in error, and issuing a new one without the withholding."
+        }
+      },
+      "related": [
+        "COR-001",
+        "COR-013",
+        "VOI-001"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/cancel-and-fix"
+      ],
+      "facts": [],
+      "since": "2026-09-27",
+      "url": "https://docs.beel.es/rules/corrective#cor-024",
+      "markdown": "https://docs.beel.es/rules/COR-024.md"
     },
     {
       "id": "NUM-001",
@@ -1764,7 +2508,7 @@
       "impact": "critical",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "Treat every issued number as consumed for good. A voided invoice, or a test issued in production, keeps its number in the series; the invoice that replaces it gets a new one. BeeL. never gives two invoices of a company the same number: a series whose format could print the numbers of another series of the company is rejected with SERIES_FORMAT_OVERLAPS.",
+      "statement": "Treat every issued number as consumed for good. A voided invoice, or a test issued in production, keeps its number in the series; the invoice that replaces it gets a new one. BeeL. never gives two invoices of a company the same number: a series whose format could print the numbers of another series of the company is rejected with SERIES_FORMAT_OVERLAPS. If AEAT already holds a record with the same number and issue date that is not this invoice, for example one issued with the software you used before, the invoice is not registered: its verifactu.submission_status is REJECTED, and it has to be issued again with a different series or number.",
       "why": "The number identifies the invoice in AEAT's records. A second invoice with the same number would be a duplicate that AEAT does not accept.",
       "applies_to": {
         "statuses": [
@@ -1933,7 +2677,7 @@
       "impact": "high",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "A business that issues both full and simplified invoices in the same calendar year numbers them in separate series. Every new BeeL. series has a document type and accepts only that type, so keep one series for each type; a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED.",
+      "statement": "A business that issues both full and simplified invoices in the same calendar year numbers them in separate series. A BeeL. series numbers only documents of its own type: a simplified invoice in a series of another type, or in an older UNASSIGNED series, is rejected with SERIES_INCOMPATIBLE_DOC_TYPE, when it is created, edited or issued. Without series_id, the company's default series for simplified invoices is used, and it is created on first use if the company has none. A series that has already numbered invoices cannot change its type (SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES), and a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED.",
       "why": "Full and simplified invoices sharing a series would leave neither sequence correlative.",
       "applies_to": {
         "invoice_types": [
@@ -1942,18 +2686,20 @@
         ],
         "operations": [
           "createCompanyInvoice",
+          "patchCompanyInvoice",
           "issueCompanyInvoice",
-          "createCompanySeries"
+          "createCompanySeries",
+          "patchCompanySeries"
         ]
       },
       "error_codes": [
         {
-          "code": "SERIES_DOCUMENT_TYPE_INCOMPATIBLE",
-          "url": "https://docs.beel.es/errors/SERIES_DOCUMENT_TYPE_INCOMPATIBLE"
-        },
-        {
           "code": "SERIES_INCOMPATIBLE_DOC_TYPE",
           "url": "https://docs.beel.es/errors/SERIES_INCOMPATIBLE_DOC_TYPE"
+        },
+        {
+          "code": "SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES",
+          "url": "https://docs.beel.es/errors/SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES"
         },
         {
           "code": "SERIES_UNASSIGNED_TYPE_NOT_ALLOWED",
@@ -1972,10 +2718,10 @@
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "Creating a SIMPLIFIED invoice with the series_id of your standard-invoice series: it is rejected with SERIES_INCOMPATIBLE_DOC_TYPE, and issuing or updating an invoice in such a series with SERIES_DOCUMENT_TYPE_INCOMPATIBLE."
+          "text": "Creating a SIMPLIFIED invoice with the series_id of your standard-invoice series: it is rejected with SERIES_INCOMPATIBLE_DOC_TYPE, and so is issuing or updating an invoice in such a series."
         },
         "correct": {
-          "text": "Keeping a default series for simplified invoices and omitting series_id, so that series is used, or passing a series created for that type. A company whose default is an older UNASSIGNED series and has no default of the type numbers the invoice in it, so create a default series for each type."
+          "text": "Omitting series_id on a simplified invoice: it is numbered in the company's simplified series, created with code S (or the next free code) the first time it is needed."
         }
       },
       "related": [
@@ -1999,7 +2745,7 @@
       "impact": "high",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "Corrective invoices go in a series specific to correctives, never in the series of ordinary invoices. Without a series_id, BeeL. numbers a corrective in the company's default corrective series; a typed series of another type is rejected, and a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED. A company with an older UNASSIGNED default and no corrective default numbers correctives in that series, so keep a default series for correctives.",
+      "statement": "Corrective invoices go in a series specific to correctives, never in the series of the invoice they correct nor in an older UNASSIGNED series. Without a series_id, BeeL. numbers a corrective in the company's default corrective series, which is created on first use (code R, or the next free code whose numbers cannot repeat another series') if the company has none. An explicit series of another type is rejected with SERIES_INCOMPATIBLE_DOC_TYPE; a series that has already numbered invoices cannot change its type (SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES); a new series of type UNASSIGNED is rejected with SERIES_UNASSIGNED_TYPE_NOT_ALLOWED.",
       "why": "The law requires correctives to be told apart from ordinary invoices by their series.",
       "applies_to": {
         "invoice_types": [
@@ -2007,17 +2753,18 @@
         ],
         "operations": [
           "createCompanyCorrectiveInvoice",
-          "createCompanySeries"
+          "createCompanySeries",
+          "patchCompanySeries"
         ]
       },
       "error_codes": [
         {
-          "code": "SERIES_DOCUMENT_TYPE_INCOMPATIBLE",
-          "url": "https://docs.beel.es/errors/SERIES_DOCUMENT_TYPE_INCOMPATIBLE"
-        },
-        {
           "code": "SERIES_INCOMPATIBLE_DOC_TYPE",
           "url": "https://docs.beel.es/errors/SERIES_INCOMPATIBLE_DOC_TYPE"
+        },
+        {
+          "code": "SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES",
+          "url": "https://docs.beel.es/errors/SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES"
         },
         {
           "code": "SERIES_UNASSIGNED_TYPE_NOT_ALLOWED",
@@ -2039,7 +2786,7 @@
           "text": "Passing the series_id of your ordinary series when creating a corrective invoice."
         },
         "correct": {
-          "text": "Keeping a default corrective series and omitting series_id on the corrective, so that series numbers it.",
+          "text": "Omitting series_id on the corrective: it goes in the company's corrective series, created the first time it is needed.",
           "lang": "http",
           "code": "POST /v1/companies/{company_id}/invoices/{invoice_id}/corrective\n\n{ \"rectification_type\": \"TOTAL\", \"rectification_code\": \"R1\", \"reason\": \"Invoice issued with the wrong VAT rate\" }"
         }
@@ -2064,7 +2811,7 @@
       "impact": "medium",
       "kind": "beel",
       "enforced_by": "api",
-      "statement": "Once a series has issued an invoice, its code, format, reset policy and initial number are fixed. Design the series before its first invoice; to number differently, create a new series.",
+      "statement": "Once a series has issued an invoice, its code, format, reset policy, initial number and document type are fixed. Design the series before its first invoice; to number differently, or another type, create a new series.",
       "why": "Changing how an issued series is numbered would rewrite numbers already registered with AEAT or break the sequence.",
       "applies_to": {
         "operations": [
@@ -2087,6 +2834,10 @@
         {
           "code": "SERIES_INITIAL_NUMBER_LOCKED_HAS_INVOICES",
           "url": "https://docs.beel.es/errors/SERIES_INITIAL_NUMBER_LOCKED_HAS_INVOICES"
+        },
+        {
+          "code": "SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES",
+          "url": "https://docs.beel.es/errors/SERIES_DOCUMENT_TYPE_LOCKED_HAS_INVOICES"
         },
         {
           "code": "SERIES_NUMBERING_FROZEN",
@@ -2424,7 +3175,7 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "Every invoice carries the NIF the issuer operates with. BeeL. takes it from the issuing company's profile, and VeriFactu cannot be enabled for a company without it.",
+      "statement": "Every invoice carries the NIF the issuer operates with. BeeL. takes it from the issuing company's profile: without it no invoice is created or issued (COMPANY_NIF_MISSING), whatever the path (API, dashboard, recurring invoice, payment integration), and VeriFactu cannot be enabled for the company.",
       "why": "The issuer's NIF is what AEAT files the invoice and its record under.",
       "applies_to": {
         "invoice_types": [
@@ -2433,7 +3184,9 @@
           "CORRECTIVE"
         ],
         "operations": [
-          "updateCompanyVeriFactuConfiguration"
+          "updateCompanyVeriFactuConfiguration",
+          "createCompanyInvoice",
+          "issueCompanyInvoice"
         ]
       },
       "error_codes": [
@@ -2930,11 +3683,16 @@
       "severity": "MUST",
       "impact": "medium",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "Invoices for operations under the special cash-basis regime carry the mention «régimen especial del criterio de caja», on any document of the invoice.",
+      "enforced_by": "api",
+      "statement": "Invoices for operations under the special cash-basis regime carry the mention «régimen especial del criterio de caja», on any document of the invoice. BeeL. prints it on the invoice's PDF, once, after the exemptions, when a line carries regime key 07; a document you render yourself has to carry it too.",
       "why": "The mention tells the recipient that the VAT accrues on payment, which changes when it can deduct it.",
       "applies_to": {
-        "scope": "Operations under the special cash-basis VAT regime (regime key 07)."
+        "invoice_types": [
+          "STANDARD",
+          "SIMPLIFIED",
+          "CORRECTIVE"
+        ],
+        "scope": "IVA lines with regime key 07 (cash basis)."
       },
       "error_codes": [],
       "legal_basis": [
@@ -2956,7 +3714,7 @@
         }
       },
       "related": [
-        "TAX-011",
+        "TAX-016",
         "CNT-014",
         "CNT-015"
       ],
@@ -3026,11 +3784,16 @@
       "severity": "MUST",
       "impact": "low",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "Invoices under the special regime for travel agencies carry the mention «régimen especial de las agencias de viajes».",
+      "enforced_by": "api",
+      "statement": "Invoices for operations under the special regime for travel agencies carry the mention «régimen especial de las agencias de viajes», on any document of the invoice. BeeL. prints it on the invoice's PDF, once, after the exemptions, when a line carries regime key 05; a document you render yourself has to carry it too.",
       "why": "The mention tells the customer that the VAT is charged on the agency's margin, not on the full price.",
       "applies_to": {
-        "scope": "Operations under the special regime for travel agencies."
+        "invoice_types": [
+          "STANDARD",
+          "SIMPLIFIED",
+          "CORRECTIVE"
+        ],
+        "scope": "IVA lines with regime key 05 (travel agencies)."
       },
       "error_codes": [],
       "legal_basis": [
@@ -3194,14 +3957,14 @@
     },
     {
       "id": "CNT-019",
-      "title": "An invoice never totals zero, and only a corrective totals less",
+      "title": "Only a corrective invoice totals less than zero",
       "domain": "contents",
       "severity": "MUST_NOT",
       "impact": "critical",
       "kind": "beel",
       "enforced_by": "api",
-      "statement": "Do not create an invoice whose lines add up to zero, and do not use a standard or simplified invoice with a negative total as a credit note. A refund or a reduction is a corrective invoice against the original.",
-      "why": "An invoice of zero documents nothing, and a negative ordinary invoice is a correction without the link to the invoice it corrects.",
+      "statement": "Do not use a standard or simplified invoice with a negative total as a credit note. A refund or a reduction is a corrective invoice against the original. An invoice that totals zero is valid.",
+      "why": "A negative ordinary invoice is a correction without the link to the invoice it corrects.",
       "applies_to": {
         "invoice_types": [
           "STANDARD",
@@ -3213,10 +3976,6 @@
         ]
       },
       "error_codes": [
-        {
-          "code": "INVOICE_ZERO_AMOUNT",
-          "url": "https://docs.beel.es/errors/INVOICE_ZERO_AMOUNT"
-        },
         {
           "code": "NEGATIVE_TOTAL_REQUIRES_RECTIFICATIVE",
           "url": "https://docs.beel.es/errors/NEGATIVE_TOTAL_REQUIRES_RECTIFICATIVE"
@@ -3320,7 +4079,7 @@
       "impact": "high",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "Identify a recipient without a Spanish NIF with an alternative_id of the type that fits (EU VAT number, passport, official ID, residence certificate, other document or not registered) and its country, never together with a nif. With country ES, only a passport or the not-registered type is accepted. An EU VAT number (NIF_IVA) is accepted only with the country of another EU Member State and in that State's VAT number format: its country prefix (EL for Greece) followed by the national number, in capital letters and without spaces, as in FR40303265045. A Spanish NIF is never sent as an EU VAT number; a customer from outside the EU is identified with another type.",
+      "statement": "Identify a recipient without a Spanish NIF with an alternative_id of the type that fits (EU VAT number, passport, official ID, residence certificate, other document or not registered) and its country, never together with a nif. The country can be omitted only for a passport or the not-registered type, which then take ES. With country ES, only a passport or the not-registered type is accepted. An EU VAT number (NIF_IVA) is accepted only with the country of another EU Member State and in that State's VAT number format: its country prefix (EL for Greece) followed by the national number, in capital letters and without spaces, as in FR40303265045. A Spanish NIF is never sent as an EU VAT number; a customer from outside the EU is identified with another type. A corrective invoice other than R5 carries the recipient of the invoice it corrects and is held to the same rule: if that recipient does not meet it, first correct its data with an R4 corrective that carries the corrected recipient.",
       "why": "AEAT identifies each recipient either by NIF or by this identifier, never both, and rejects combinations its validations do not allow, including an EU VAT number that is not from a Member State or does not have that State's structure.",
       "applies_to": {
         "invoice_types": [
@@ -3330,6 +4089,7 @@
         "operations": [
           "createCompanyInvoice",
           "issueCompanyInvoice",
+          "createCompanyCorrectiveInvoice",
           "createCompanyCustomer",
           "patchCompanyCustomer",
           "createCompanyRecurringInvoice"
@@ -3355,6 +4115,10 @@
         {
           "code": "ALTERNATIVE_ID_VAT_INVALID_FORMAT",
           "url": "https://docs.beel.es/errors/ALTERNATIVE_ID_VAT_INVALID_FORMAT"
+        },
+        {
+          "code": "ALTERNATIVE_ID_COUNTRY_REQUIRED",
+          "url": "https://docs.beel.es/errors/ALTERNATIVE_ID_COUNTRY_REQUIRED"
         }
       ],
       "legal_basis": [
@@ -3402,6 +4166,7 @@
       },
       "related": [
         "CNT-005",
+        "COR-017",
         "TAX-004",
         "TAX-006"
       ],
@@ -3723,15 +4488,18 @@
       "impact": "high",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "Do not document on a simplified invoice the operations of art. 4.4, such as intra-EU supplies of goods exempt under art. 25 LIVA. AEAT's validations also keep reverse-charge lines off simplified invoices, and, as BeeL.'s own rule, the API refuses equivalence surcharge and IRPF withholding on them.",
-      "why": "These operations need an identified recipient, whether to exempt, to shift the tax to the customer or to withhold.",
+      "statement": "Do not document on a simplified invoice the operations of art. 4.4: intra-EU supplies of goods exempt under art. 25 LIVA and operations not located in Spain (NO_SUJETA_LOCALIZACION), whether the customer is a business in another Member State or anyone outside the EU. The API checks it when the invoice is created, when a draft is edited (also when only its type changes) and when it is issued. A corrective of a simplified invoice (R5), checked when it is created and issued, may correct such an operation that the simplified invoice already carried, but cannot add a new one. AEAT's validations also keep reverse-charge lines off simplified invoices, and, as BeeL.'s own rule, the API refuses equivalence surcharge and IRPF withholding on them. The corrective of a simplified invoice (R5) follows the same rules: no reverse charge, no equivalence surcharge and no IRPF withholding.",
+      "why": "These operations are excluded from the simplified invoice by the law, and they need an identified recipient, whether to exempt, to shift the tax to the customer or to withhold.",
       "applies_to": {
         "invoice_types": [
-          "SIMPLIFIED"
+          "SIMPLIFIED",
+          "CORRECTIVE"
         ],
         "operations": [
           "createCompanyInvoice",
-          "patchCompanyInvoice"
+          "patchCompanyInvoice",
+          "createCompanyCorrectiveInvoice",
+          "issueCompanyInvoice"
         ]
       },
       "error_codes": [
@@ -3756,9 +4524,16 @@
         {
           "type": "boe",
           "norm": "RD 1619/2012 (Reglamento de facturación)",
-          "article": "art. 4.4",
-          "quote": "No podrá expedirse factura simplificada por las siguientes operaciones: a) Las entregas de bienes destinados a otro Estado miembro a que se refiere el artículo 25 de la Ley del Impuesto.",
+          "article": "art. 4.4.a) y d)",
+          "quote": "No podrá expedirse factura simplificada por las siguientes operaciones: a) Las entregas de bienes destinados a otro Estado miembro a que se refiere el artículo 25 de la Ley del Impuesto. [...] d) Las entregas de bienes o prestaciones de servicios a que se refiere el artículo 2.3.b) b').",
           "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a4"
+        },
+        {
+          "type": "boe",
+          "norm": "RD 1619/2012 (Reglamento de facturación)",
+          "article": "art. 2.3.b) b')",
+          "quote": "El proveedor o prestador esté establecido en el territorio de aplicación del Impuesto [...] y dicha entrega o prestación, conforme a las reglas de localización aplicables a las mismas, no se entienda realizada en el territorio de aplicación del Impuesto, en los siguientes supuestos: a'') Cuando la operación esté sujeta en otro Estado miembro, el sujeto pasivo del Impuesto sea el destinatario para quien se realice la operación [...] b'') Cuando la operación se entienda realizada fuera de la Comunidad.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a2"
         },
         {
           "type": "aeat",
@@ -3766,22 +4541,30 @@
           "article": "3.1.3.15.4 CalificacionOperacion",
           "quote": "Si CalificacionOperacion es “S2”, TipoFactura solo puede ser “F1”, “F3”, “R1”, “R2”, “R3” y “R4”.",
           "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
+          "article": "R5",
+          "quote": "La rectificación de una factura simplificada se registrará con la clave R5 cualquiera que sea el motivo de la misma.",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
         }
       ],
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A simplified invoice for goods shipped to a company in France under the intra-EU exemption: the API answers SIMPLIFICADA_FORBIDS_CROSS_BORDER."
+          "text": "A simplified invoice for a service to a consumer in the United States, with its line NO_SUJETA_LOCALIZACION: the API answers SIMPLIFICADA_FORBIDS_CROSS_BORDER, also if a standard draft with that line is switched to SIMPLIFIED and issued."
         },
         "correct": {
-          "text": "A standard invoice identifying the French company by its VAT number."
+          "text": "A standard invoice identifying the customer, with the line NO_SUJETA_LOCALIZACION."
         }
       },
       "related": [
         "SIM-006",
         "TAX-004",
         "TAX-003",
-        "SUR-001"
+        "SUR-001",
+        "TAX-006"
       ],
       "docs": [
         "https://docs.beel.es/verifactu/simplified-vs-standard#operations-where-f2-is-not-allowed",
@@ -3927,7 +4710,8 @@
         "operations": [
           "createCompanyInvoice",
           "patchCompanyInvoice",
-          "issueCompanyInvoice"
+          "issueCompanyInvoice",
+          "patchCompanyRecurringInvoice"
         ]
       },
       "error_codes": [
@@ -3966,22 +4750,37 @@
       "domain": "simplified",
       "severity": "MUST",
       "impact": "medium",
-      "kind": "aeat",
-      "enforced_by": "integrator",
-      "statement": "An invoice issued in exchange for earlier simplified invoices is not a corrective. AEAT registers it as F3, identifying the invoices it replaces, or as F1 once the simplified invoice has been credited. In BeeL., credit the simplified invoice with an R5 TOTAL corrective, then issue the standard invoice.",
-      "why": "The exchange documents the same sale again with the customer identified, so the simplified invoice has to be replaced or credited for the sale not to count twice.",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "An invoice issued in exchange for earlier simplified invoices is not a corrective. Issue it with the exchange operation: it issues a standard invoice with the lines of the simplified invoices and the identified recipient, lists them in replaced_invoice_ids, and leaves each simplified invoice VOIDED with void_cause EXCHANGED, in the same act. AEAT registers it as F3, identifying the invoices it replaces. Only issued simplified invoices that were not voided, exchanged or corrected can be exchanged (EXCHANGE_REQUIRES_SIMPLIFIED, SIMPLIFIED_NOT_EXCHANGEABLE), and the exchange invoice is not voided afterwards (EXCHANGE_INVOICE_NOT_VOIDABLE). Do not cancel the simplified invoice with an R5 corrective to issue a new invoice: nothing is being rectified, so it is not a corrective.",
+      "why": "The exchange documents the same sale again with the customer identified. It replaces the simplified invoice instead of crediting it, so the sale counts once; a corrective would state a rectification that did not happen.",
       "applies_to": {
         "invoice_types": [
           "SIMPLIFIED",
-          "CORRECTIVE",
           "STANDARD"
         ],
         "operations": [
-          "createCompanyCorrectiveInvoice",
-          "createCompanyInvoice"
+          "createCompanySimplifiedExchange"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "EXCHANGE_REQUIRES_SIMPLIFIED",
+          "url": "https://docs.beel.es/errors/EXCHANGE_REQUIRES_SIMPLIFIED"
+        },
+        {
+          "code": "SIMPLIFIED_NOT_EXCHANGEABLE",
+          "url": "https://docs.beel.es/errors/SIMPLIFIED_NOT_EXCHANGEABLE"
+        },
+        {
+          "code": "EXCHANGE_INVOICE_NOT_VOIDABLE",
+          "url": "https://docs.beel.es/errors/EXCHANGE_INVOICE_NOT_VOIDABLE"
+        },
+        {
+          "code": "SIMPLIFIED_EXCHANGE_NOT_RECORDABLE",
+          "url": "https://docs.beel.es/errors/SIMPLIFIED_EXCHANGE_NOT_RECORDABLE"
+        }
+      ],
       "legal_basis": [
         {
           "type": "boe",
@@ -3994,14 +4793,7 @@
           "type": "aeat",
           "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
           "article": "Procedimientos de facturación: factura en sustitución de simplificadas",
-          "quote": "Se deberá informar en el bloque “Tipo Factura” con la clave “F3: factura emitida en sustitución de facturas simplificadas facturadas y declaradas” [...] IMPORTANTE: En el caso de que se realice un abono de la factura simplificada (mediante el envío de un registro negativo con clave “F2”), la factura emitida en sustitución de esta tendrá que informarse con la clave “F1”.",
-          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
-        },
-        {
-          "type": "aeat",
-          "norm": "AEAT, Preguntas frecuentes SIF y VERI*FACTU",
-          "article": "Procedimientos de facturación: factura en sustitución de simplificadas",
-          "quote": "IMPORTANTE: En el caso de que se realice un abono de la factura simplificada (mediante el envío de un registro negativo con clave “F2”), la factura emitida en sustitución de esta tendrá que informarse con la clave “F1”.",
+          "quote": "Se deberá informar en el bloque “Tipo Factura” con la clave “F3: factura emitida en sustitución de facturas simplificadas facturadas y declaradas” y en el bloque de “Datos sustituidas” se identificarán las facturas simplificadas sustituidas con el número, serie y fecha de expedición.",
           "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/procedimientos-facturacion.html"
         }
       ],
@@ -4009,17 +4801,17 @@
         {
           "table": "void-or-correct",
           "when": "The customer asks for a full invoice with their details in place of a simplified one already issued.",
-          "then": "Issue an R5 TOTAL corrective on the simplified invoice, then a new standard invoice with the customer's data."
+          "then": "Exchange the simplified invoice for a full one with the exchange operation; do not correct it."
         }
       ],
       "examples": {
         "incorrect": {
-          "text": "Issuing a standard invoice for the same sale without crediting the simplified invoice or linking it to it: the sale is registered twice."
+          "text": "Cancelling the simplified invoice with an R5 TOTAL corrective and issuing a new standard invoice: it states a rectification that did not happen."
         },
         "correct": {
-          "text": "Cancelling the simplified invoice with an R5 TOTAL corrective, then issuing the standard invoice.",
-          "lang": "json",
-          "code": "{ \"rectification_type\": \"TOTAL\", \"rectification_code\": \"R5\", \"reason\": \"Customer asked for an invoice with its details\" }"
+          "text": "Exchanging the simplified invoice for a standard invoice to the customer.",
+          "lang": "http",
+          "code": "POST /v1/companies/{company_id}/invoices/simplified-exchanges\n\n{ \"simplified_invoice_ids\": [\"550e8400-e29b-41d4-a716-446655440010\"], \"recipient\": { \"customer_id\": \"8f1e2a3b-4c5d-6e7f-8091-a2b3c4d5e6f7\" } }"
         }
       },
       "related": [
@@ -4246,8 +5038,8 @@
       "severity": "MUST",
       "impact": "high",
       "kind": "law",
-      "enforced_by": "issuer",
-      "statement": "When the recipient is the one liable for the VAT, as in the cases of art. 84.Uno.2.º LIVA, the line does not charge VAT: classify it as reverse charge with the exemption_reason of its case. Deciding that an operation falls under reverse charge is the issuer's call.",
+      "enforced_by": "api",
+      "statement": "When the recipient is the one liable for the VAT, the line does not charge VAT: classify it as reverse charge with the exemption_reason of its case of art. 84.Uno.2.º LIVA, ISP_ART_84_2_A to ISP_ART_84_2_F. The invoice carries the mention «inversión del sujeto pasivo». Case g) (silver, platinum and palladium, mobile phones, consoles, laptops and tablets) must be documented in a special series and is rejected with REVERSE_CHARGE_CASE_NOT_SUPPORTED. Deciding that an operation falls under reverse charge is the issuer's call.",
       "why": "Charging VAT on a reverse-charge operation makes both parties declare it: the issuer collects a tax it does not owe and the recipient self-assesses it again.",
       "applies_to": {
         "invoice_types": [
@@ -4256,7 +5048,12 @@
         ],
         "scope": "Operations where the recipient is the taxpayer (inversión del sujeto pasivo)."
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "REVERSE_CHARGE_CASE_NOT_SUPPORTED",
+          "url": "https://docs.beel.es/errors/REVERSE_CHARGE_CASE_NOT_SUPPORTED"
+        }
+      ],
       "legal_basis": [
         {
           "type": "boe",
@@ -4268,9 +5065,100 @@
         {
           "type": "boe",
           "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º b)",
+          "quote": "b) Cuando se trate de entregas de oro sin elaborar o de productos semielaborados de oro, de ley igual o superior a 325 milésimas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "c) Cuando se trate de:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Entregas de desechos nuevos de la industria, desperdicios y desechos de fundición, residuos y demás materiales de recuperación constituidos por metales férricos y no férricos, sus aleaciones, escorias, cenizas y residuos de la industria que contengan metales o sus aleaciones.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Las operaciones de selección, corte, fragmentación y prensado que se efectúen sobre los productos citados en el guion anterior.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Entregas de desechos, desperdicios o recortes de plástico.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Entregas de desperdicios o desechos de papel, cartón o vidrio.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Entregas de desperdicios o artículos inservibles de trapos, cordeles, cuerdas o cordajes.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "– Entregas de productos semielaborados resultantes de la transformación, elaboración o fundición de los metales no férricos referidos en el primer guion, con excepción de los compuestos por níquel. En particular, se considerarán productos semielaborados los lingotes, bloques, placas, barras, grano, granalla y alambrón.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º c)",
+          "quote": "En todo caso, se considerarán comprendidas en los párrafos anteriores las entregas de los materiales definidos en el anexo de esta ley.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º d)",
+          "quote": "d) Cuando se trate de prestaciones de servicios que tengan por objeto derechos de emisión, reducciones certificadas de emisiones y unidades de reducción de emisiones de gases de efecto invernadero",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º e)",
+          "quote": "e) Cuando se trate de las siguientes entregas de bienes inmuebles:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
           "article": "art. 84.Uno.2.º f)",
           "quote": "Cuando se trate de ejecuciones de obra, con o sin aportación de materiales, así como las cesiones de personal para su realización, consecuencia de contratos directamente formalizados entre el promotor y el contratista que tengan por objeto la urbanización de terrenos o la construcción o rehabilitación de edificaciones.",
           "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 84.Uno.2.º g)",
+          "quote": "Las entregas de dichos bienes, en los casos en que sean sujetos pasivos del Impuesto sus destinatarios conforme a lo establecido en este número 2.°, deberán documentarse en una factura mediante serie especial.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a84"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 1619/2012, Reglamento de facturación",
+          "article": "art. 6.1 m)",
+          "quote": "m) En el caso de que el sujeto pasivo del Impuesto sea el adquirente o el destinatario de la operación, la mención «inversión del sujeto pasivo».",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a6"
         }
       ],
       "decision": [],
@@ -4616,7 +5504,7 @@
       "impact": "medium",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "An amount you paid in the customer's name and on their behalf is not part of your taxable base: send it as a SUPLIDO line, which carries no VAT, surcharge or IRPF.",
+      "statement": "An amount you paid in the customer's name and on their behalf is not part of your taxable base: send it as a SUPLIDO line, which carries no VAT, surcharge or IRPF. It is not part of the billing record either. An invoice with nothing but SUPLIDO lines is not an invoice and is rejected with INVOICE_REQUIRES_AT_LEAST_ONE_NORMAL_LINE: put the disbursement on the invoice of the operation it belongs to.",
       "why": "Taxing a disbursement charges VAT on money that was never your income; AEAT only accepts it in the total as a non-subject or zero-rated amount.",
       "applies_to": {
         "scope": "Amounts paid on behalf of the customer (suplidos)."
@@ -4633,6 +5521,10 @@
         {
           "code": "LINE_SUPLIDO_MUST_HAVE_NO_IRPF",
           "url": "https://docs.beel.es/errors/LINE_SUPLIDO_MUST_HAVE_NO_IRPF"
+        },
+        {
+          "code": "INVOICE_REQUIRES_AT_LEAST_ONE_NORMAL_LINE",
+          "url": "https://docs.beel.es/errors/INVOICE_REQUIRES_AT_LEAST_ONE_NORMAL_LINE"
         }
       ],
       "legal_basis": [
@@ -4642,6 +5534,20 @@
           "article": "Registros de facturación: alta (suplidos)",
           "quote": "los importes suplidos al igual que ocurre con el recargo financiero, no son importes \"propios\" del registro de facturación, y no tienen que incluirse entre las menciones del “registro de facturación de alta”. No obstante, en el caso de que se incluyeran como mayor importe en el concepto “Importe total factura” (lo cual, no es obligatorio), deberán consignarse como importe no sujeto al IVA o cantidades a tipo cero (0%).",
           "url": "https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/registros-facturacion-alta.html"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Aclaraciones a dudas de los desarrolladores (v1.3)",
+          "article": "22",
+          "quote": "NO procede hacer una factura que solo contenga gastos suplidos, porque eso NO sería una factura, así que nunca debería existir como tal.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 78.Tres.3.º",
+          "quote": "Las sumas pagadas en nombre y por cuenta del cliente en virtud de mandato expreso del mismo. El sujeto pasivo vendrá obligado a justificar la cuantía efectiva de tales gastos y no podrá proceder a la deducción del impuesto que eventualmente los hubiera gravado.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a78"
         }
       ],
       "decision": [],
@@ -4719,7 +5625,7 @@
       "impact": "medium",
       "kind": "beel",
       "enforced_by": "integrator",
-      "statement": "When your customer has to withhold IRPF from your invoice, set irpf_rate on each line, one of 0, 1, 2, 7, 15, 19 or 24. A line without it takes the company's default_irpf_rate, if one is set. BeeL. shows the withholding and takes it off the amount payable; a simplified invoice never carries it.",
+      "statement": "When your customer has to withhold IRPF from your invoice, set irpf_rate on each line, one of 0, 1, 2, 2.8, 6, 7, 7.6, 9.5, 15, 19 or 24. A line without it takes the company's default_irpf_rate, if one is set. BeeL. shows the withholding and takes it off the amount payable; a simplified invoice never carries it.",
       "why": "Without the withholding on the invoice the customer pays the full amount, and one of you ends up correcting it with the tax authority.",
       "applies_to": {
         "invoice_types": [
@@ -4764,7 +5670,11 @@
             0,
             1,
             2,
+            2.8,
+            6,
             7,
+            7.6,
+            9.5,
             15,
             19,
             24
@@ -4775,50 +5685,6 @@
       "since": "2026-09-24",
       "url": "https://docs.beel.es/rules/taxes#tax-010",
       "markdown": "https://docs.beel.es/rules/TAX-010.md"
-    },
-    {
-      "id": "TAX-011",
-      "title": "Cash-basis lines stay domestic, subject and not reverse charge",
-      "domain": "taxes",
-      "severity": "MUST_NOT",
-      "impact": "low",
-      "kind": "aeat",
-      "enforced_by": "aeat",
-      "statement": "A line under the cash-basis regime (07) cannot be reverse charge nor non-subject, and cannot use the exemptions of articles 21 to 25 LIVA (exports and intra-EU supplies).",
-      "why": "AEAT's validations reject a record that puts these operations under regime key 07.",
-      "applies_to": {
-        "scope": "Lines under the cash-basis regime (regime key 07)."
-      },
-      "error_codes": [],
-      "legal_basis": [
-        {
-          "type": "aeat",
-          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
-          "article": "3.1.3.15.6.5 ClaveRegimen 07",
-          "quote": "Si ClaveRegimen = “07”: ✓ CalificacionOperacion no puede ser “S2”, “N1”, “N2”. ✓ OperacionExenta no puede ser “E2”, “E3”, “E4” y “E5”.",
-          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
-        }
-      ],
-      "decision": [],
-      "examples": {
-        "incorrect": {
-          "text": "A cash-basis business puts an intra-EU supply of goods (EXENTA_ART_25) under regime key 07."
-        },
-        "correct": {
-          "text": "Only domestic, subject operations go under 07; the intra-EU supply goes under its own regime and exemption."
-        }
-      },
-      "related": [
-        "CNT-013",
-        "TAX-004"
-      ],
-      "docs": [
-        "https://docs.beel.es/verifactu/regime-keys#07--cash-basis-iva-criterio-de-caja"
-      ],
-      "facts": [],
-      "since": "2026-09-24",
-      "url": "https://docs.beel.es/rules/taxes#tax-011",
-      "markdown": "https://docs.beel.es/rules/TAX-011.md"
     },
     {
       "id": "TAX-012",
@@ -4913,19 +5779,20 @@
     },
     {
       "id": "TAX-014",
-      "title": "Only the VAT rates AEAT accepts",
+      "title": "Only the VAT rates AEAT accepts on the operation date",
       "domain": "taxes",
       "severity": "MUST",
       "impact": "high",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "A subject, non-exempt IVA line uses one of the VAT rates AEAT's validations accept. The API rejects any other rate.",
-      "why": "AEAT rejects a record whose rate is not one of its accepted values.",
+      "statement": "A subject, non-exempt IVA line uses one of the VAT rates AEAT's validations accept on the operation date, or on the issue date when the invoice has no operation_date. The temporary rates are only accepted on operations of their period: 5 % from 1 July 2022 to 30 September 2024, and 2 % and 7.5 % from 1 October to 31 December 2024. GET /v1/tax-types publishes each rate with its period. The API rejects any other rate, and a rate outside its period, before the invoice is numbered.",
+      "why": "AEAT rejects a record whose rate is not one of its accepted values for that date, after the invoice already has its number.",
       "applies_to": {
         "operations": [
           "createCompanyInvoice",
           "patchCompanyInvoice",
-          "createCompanyCorrectiveInvoice"
+          "createCompanyCorrectiveInvoice",
+          "issueCompanyInvoice"
         ],
         "scope": "Subject, non-exempt lines taxed with IVA."
       },
@@ -4933,6 +5800,10 @@
         {
           "code": "INVALID_PERCENTAGE",
           "url": "https://docs.beel.es/errors/INVALID_PERCENTAGE"
+        },
+        {
+          "code": "VAT_RATE_NOT_ACCEPTED_ON_DATE",
+          "url": "https://docs.beel.es/errors/VAT_RATE_NOT_ACCEPTED_ON_DATE"
         }
       ],
       "legal_basis": [
@@ -4942,17 +5813,38 @@
           "article": "3.1.3.15.1 TipoImpositivo",
           "quote": "Solo se permiten TipoImpositivo = 0; 2; 4; 5; 7,5; 10 y 21 (valores que indican el tanto por ciento).",
           "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.1 TipoImpositivo",
+          "quote": "Si FechaOperacion (FechaExpedicionFactura de la agrupación IDFactura si no se informa FechaOperacion) ≥ 1 de julio de 2022 y ≤ 30 de septiembre de 2024 se admitirá TipoImpositivo = 5.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.1 TipoImpositivo",
+          "quote": "Si FechaOperacion (FechaExpedicionFactura de la agrupación IDFactura si no se informa FechaOperacion) ≥ 1 de octubre de 2024 y ≤ 31 de diciembre de 2024 se admitirá el TipoImpositivo = 7,5.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.1 TipoImpositivo",
+          "quote": "Si FechaOperacion (FechaExpedicionFactura de la agrupación IDFactura si no se informa FechaOperacion) ≥ 1 de octubre de 2024 y ≤ 31 de diciembre de 2024 se admitirá el TipoImpositivo = 2",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
         }
       ],
       "decision": [],
       "examples": {
         "incorrect": {
-          "text": "A line at 16 %: the API answers INVALID_PERCENTAGE."
+          "text": "A line at 5 % issued today without operation_date: the API answers VAT_RATE_NOT_ACCEPTED_ON_DATE. A line at 16 % answers INVALID_PERCENTAGE."
         },
         "correct": {
-          "text": "A line at 21 %.",
+          "text": "A line at 5 % for a supply of March 2024, with its operation_date.",
           "lang": "json",
-          "code": "{ \"description\": \"Supply\", \"quantity\": 1, \"unit_price\": 100, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 21 } }"
+          "code": "{ \"operation_date\": \"2024-03-12\", \"lines\": [{ \"description\": \"Electricity, February 2024\", \"quantity\": 1, \"unit_price\": 100, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 5 } }] }"
         }
       },
       "related": [
@@ -4968,6 +5860,690 @@
       "markdown": "https://docs.beel.es/rules/TAX-014.md"
     },
     {
+      "id": "TAX-015",
+      "title": "Regime key 08 means not subject to the line's tax",
+      "domain": "taxes",
+      "severity": "MUST",
+      "impact": "high",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Regime key 08 is for an operation subject to another indirect tax: IPSI or IGIC on an IVA line, IPSI or IVA on an IGIC line. For the line's own tax it is not subject, so the line goes at 0 % with exemption_reason: NO_SUJETA_LOCALIZACION. It is not the general regime of IGIC: an ordinary IGIC sale uses regime key 01.",
+      "why": "AEAT only accepts regime key 08 with the non-subject classification N2 and rejects the record otherwise, after the invoice already has its number.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice"
+        ],
+        "scope": "IVA and IGIC lines with regime key 08."
+      },
+      "error_codes": [
+        {
+          "code": "REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.6 ClaveRegimen 08",
+          "quote": "Si ClaveRegimen = “08”, CalificacionOperacion tiene que ser “N2” y siempre debe ir relleno.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden HAC/1177/2024",
+          "article": "anexo, lista L8B",
+          "quote": "Operaciones sujetas al IPSI/ IVA (Impuesto sobre la Producción, los Servicios y la Importación/ Impuesto sobre el Valor Añadido).",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2024-22138"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "An IGIC line at 7 % with regime key 08 for an ordinary sale in the Canary Islands: the API answers REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED.",
+          "lang": "json",
+          "code": "{ \"description\": \"Sale\", \"quantity\": 1, \"unit_price\": 100, \"main_tax\": { \"type\": \"IGIC\", \"percentage\": 7, \"regime_key\": \"08\" } }"
+        },
+        "correct": {
+          "text": "The same sale under regime key 01. An IVA business invoicing a service located in the Canary Islands uses 08 with the non-subject reason.",
+          "lang": "json",
+          "code": "{ \"description\": \"Service located in the Canary Islands\", \"quantity\": 1, \"unit_price\": 100, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 0, \"regime_key\": \"08\" }, \"exemption_reason\": \"NO_SUJETA_LOCALIZACION\" }"
+        }
+      },
+      "related": [
+        "TAX-006",
+        "TAX-017"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/regime-keys"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-015",
+      "markdown": "https://docs.beel.es/rules/TAX-015.md"
+    },
+    {
+      "id": "TAX-016",
+      "title": "Regime keys 03, 06 and 14 are not accepted",
+      "domain": "taxes",
+      "severity": "MUST_NOT",
+      "impact": "low",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Regime keys 03 (used goods, art and antiques), 06 (group of entities, advanced level) and 14 (VAT pending accrual in public-works certifications) are rejected on a new invoice. An invoice under 03 must not show the VAT amount separately, while the invoice always states it; AEAT requires with 06 the cost-based taxable base, and with 14 an operation date after the issue date and a public-administration recipient, data the invoice does not carry. GET /v1/tax-types does not offer them, and the tax configuration does not accept them as the default regime key. Keys 05 (travel agencies) and 07 (cash basis) are accepted: the invoice PDF carries the mention of their regime (CNT-015, CNT-013). The corrective of an invoice that already carried 03 keeps it.",
+      "why": "An invoice under the used-goods regime with the VAT amount shown separately does not meet the invoicing regulation; a record under 06 or 14 without its data is rejected by AEAT after the invoice already has its number.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice",
+          "updateTaxConfiguration",
+          "updateCompanyTaxConfiguration"
+        ],
+        "scope": "IVA and IGIC lines with regime key 03, 06 or 14."
+      },
+      "error_codes": [
+        {
+          "code": "REGIME_KEY_NOT_SUPPORTED",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_NOT_SUPPORTED"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Real Decreto 1619/2012, Reglamento de facturación",
+          "article": "art. 6.1 o)",
+          "quote": "o) En caso de aplicación del régimen especial de los bienes usados, objetos de arte, antigüedades y objetos de colección, la mención «régimen especial de los bienes usados», «régimen especial de los objetos de arte» o «régimen especial de las antigüedades y objetos de colección».",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a6"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 1619/2012, Reglamento de facturación",
+          "article": "art. 16.2 c)",
+          "quote": "c) En las facturas que expidan los sujetos pasivos revendedores por las entregas sometidas al régimen especial no podrán consignar separadamente la cuota del Impuesto sobre el Valor Añadido repercutida, y esta deberá entenderse comprendida en el precio total de la operación.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696#a16"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.4 ClaveRegimen 06",
+          "quote": "Si ClaveRegimen es igual a “06”: ✓ Se validará que TipoFactura sea distinto de “F2”, “F3”, “R5”. ✓ Campo BaseImponibleACoste deberá estar cumplimentado.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.9 ClaveRegimen 14",
+          "quote": "FechaOperacion, campo de cumplimentación obligatoria y posterior a fecha de expedición.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "A line with regime key 03 or 14: the API answers REGIME_KEY_NOT_SUPPORTED."
+        },
+        "correct": {
+          "text": "Invoice the operation under the key that fits it, such as 01."
+        }
+      },
+      "related": [
+        "DAT-003",
+        "TAX-017",
+        "COR-018",
+        "CNT-013",
+        "CNT-015"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/regime-keys"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-016",
+      "markdown": "https://docs.beel.es/rules/TAX-016.md"
+    },
+    {
+      "id": "TAX-017",
+      "title": "Special regime keys carry the classification AEAT requires",
+      "domain": "taxes",
+      "severity": "MUST",
+      "impact": "medium",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Under regime key 04 (investment gold) it is reverse charge or exempt. Under 10 (collections on behalf of third parties) it is non-subject with NO_SUJETA_ART_7_9, on a standard invoice whose recipient is identified by NIF. Under 11 (business premises rental) an IVA line is subject at 21 %.",
+      "why": "AEAT rejects a record whose classification, rate, invoice type or recipient does not match what its regime key allows, after the invoice already has its number.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice"
+        ],
+        "scope": "IVA and IGIC lines with regime key 04, 10 or 11."
+      },
+      "error_codes": [
+        {
+          "code": "REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED"
+        },
+        {
+          "code": "REGIME_KEY_REQUIRES_VAT_RATE",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_REQUIRES_VAT_RATE"
+        },
+        {
+          "code": "REGIME_KEY_REQUIRES_STANDARD_INVOICE",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_REQUIRES_STANDARD_INVOICE"
+        },
+        {
+          "code": "REGIME_KEY_REQUIRES_RECIPIENT_NIF",
+          "url": "https://docs.beel.es/errors/REGIME_KEY_REQUIRES_RECIPIENT_NIF"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.3 ClaveRegimen 04",
+          "quote": "si clave de ClaveRegimen es igual a “04”, CalificacionOperacion solo puede ser “S2”, o bien OperacionExenta.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.7 ClaveRegimen 10",
+          "quote": "✓ CalificacionOperacion tiene que ser “N1” y siempre debe ir relleno. ✓ TipoFactura tiene que ser “F1”. ✓ Todos los destinatarios tienen que estar identificado mediante NIF.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.6.8 ClaveRegimen 11",
+          "quote": "cuando ClaveRegimen sea “11”, únicamente se admitirá el TipoImpositivo = 21.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "A business premises rental at 10 % under regime key 11: the API answers REGIME_KEY_REQUIRES_VAT_RATE."
+        },
+        "correct": {
+          "text": "The rental at 21 % under regime key 11.",
+          "lang": "json",
+          "code": "{ \"description\": \"Office rent, October\", \"quantity\": 1, \"unit_price\": 900, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 21, \"regime_key\": \"11\" } }"
+        }
+      },
+      "related": [
+        "TAX-015",
+        "CNT-014",
+        "TAX-016"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/regime-keys"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-017",
+      "markdown": "https://docs.beel.es/rules/TAX-017.md"
+    },
+    {
+      "id": "TAX-018",
+      "title": "An issued invoice does not use the intra-EU acquisition exemption",
+      "domain": "taxes",
+      "severity": "MUST_NOT",
+      "impact": "low",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "Article 26 LIVA exempts intra-EU acquisitions of goods: an operation of the buyer, which the seller's invoice does not document. A line of an issued invoice with EXENTA_ART_26 is rejected with EXEMPTION_NOT_FOR_ISSUED_INVOICE. A supply of goods to another member state goes with EXENTA_ART_25.",
+      "why": "Declaring on a sale the exemption of a purchase gives AEAT an exemption cause that does not match the operation invoiced.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice"
+        ],
+        "scope": "Lines with exemption_reason EXENTA_ART_26."
+      },
+      "error_codes": [
+        {
+          "code": "EXEMPTION_NOT_FOR_ISSUED_INVOICE",
+          "url": "https://docs.beel.es/errors/EXEMPTION_NOT_FOR_ISSUED_INVOICE"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 37/1992 del IVA",
+          "article": "art. 26",
+          "quote": "Artículo 26. Exenciones en las adquisiciones intracomunitarias de bienes.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a26"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "A supply of goods to a French company marked EXENTA_ART_26: the API answers EXEMPTION_NOT_FOR_ISSUED_INVOICE."
+        },
+        "correct": {
+          "text": "The intra-EU supply goes with the exemption of article 25.",
+          "lang": "json",
+          "code": "{ \"description\": \"Machine parts\", \"quantity\": 10, \"unit_price\": 120, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 0 }, \"exemption_reason\": \"EXENTA_ART_25\" }"
+        }
+      },
+      "related": [
+        "TAX-005"
+      ],
+      "docs": [
+        "https://docs.beel.es/verifactu/tax-classification"
+      ],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-018",
+      "markdown": "https://docs.beel.es/rules/TAX-018.md"
+    },
+    {
+      "id": "TAX-019",
+      "title": "An issuer that is not an individual never bears the IRPF rates of individuals",
+      "domain": "taxes",
+      "severity": "MUST_NOT",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "Only individuals pay IRPF, so no entity bears its rates for individuals (1, 2, 7 and 15 %, and 6, 2.8 and 7.6 % in Ceuta and Melilla). Public (A) and private (B) limited companies, general (C) and limited (D) partnerships, cooperatives (F), associations (G), public bodies (Q), religious institutions (R) and temporary business associations (U) are legal persons and pay Corporate Income Tax; the permanent establishment of a non-resident entity (W) bears the Corporate Income Tax withholding regime. Their income bears withholding only when it is one of those the Corporate Income Tax regulation lists (rent of urban property, image rights, director fees, capital income…), at 19 %, or 24 % on image rights; any other income, such as a provision of services, bears none, and an exempt entity bears none on its exempt income. So their invoice lines, products, recurring templates and default configuration accept irpf_rate 0, 19 or 24 (and 9.5, see below), and a line created without irpf_rate never inherits a default they cannot bear: it gets 0. A non-resident entity (N) bears the Non-Residents Income Tax withholding: 24 %, or 19 % if it resides in the European Union or the European Economic Area, or 0 when the income is exempt or a tax treaty says so; it accepts 0, 19 or 24, and which one depends on facts the NIF does not show, so none is suggested. The State, the Autonomous Communities and the local entities (S and P) are fully exempt and their income bears no withholding: only 0. Any other rate is rejected with IRPF_RATE_NOT_FOR_CORPORATE_ISSUER. Other issuers are not restricted: whether an individual's income bears 15 %, 7 %, 2 % or 1 % depends on the activity and its years, and E, H, J and V depend on facts the NIF does not show. Corrective invoices are not checked either: they correct by differences what the original carried. In Ceuta and Melilla the 19 % on rents of urban property there is halved, so a company or a permanent establishment can also use 9.5 (see TAX-022).",
+      "why": "The customer withholds and pays the Treasury what the invoice says; an entity's invoice at 15 % makes it withhold at a rate that does not exist for that income, or withhold where nothing had to be withheld.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice",
+          "createCompanyRecurringInvoiceDerivation",
+          "patchCompanyRecurringInvoice",
+          "updateTaxConfiguration",
+          "updateCompanyTaxConfiguration",
+          "createProduct",
+          "updateProduct",
+          "patchProduct",
+          "createProductsBulk",
+          "createCompanyProduct",
+          "patchCompanyProduct",
+          "createCompanyProductsBulk"
+        ],
+        "scope": "Invoices other than corrective ones, recurring templates, products and the default tax configuration of an issuer whose NIF starts with A, B, C, D, F, G, N, P, Q, R, S, U or W."
+      },
+      "error_codes": [
+        {
+          "code": "IRPF_RATE_NOT_FOR_CORPORATE_ISSUER",
+          "url": "https://docs.beel.es/errors/IRPF_RATE_NOT_FOR_CORPORATE_ISSUER"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 35/2006 del IRPF",
+          "article": "art. 8.1",
+          "quote": "1. Son contribuyentes por este impuesto:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2006-20764#a8"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 35/2006 del IRPF",
+          "article": "art. 8.1 a)",
+          "quote": "a) Las personas físicas que tengan su residencia habitual en territorio español.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2006-20764#a8"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "F. Sociedades cooperativas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "G. Asociaciones.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "P. Corporaciones Locales.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "Q. Organismos públicos.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "R. Congregaciones e instituciones religiosas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "S. Órganos de la Administración del Estado y de las Comunidades Autónomas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 4",
+          "quote": "Para las personas jurídicas y entidades sin personalidad jurídica que carezcan de la nacionalidad española, el número de identificación fiscal comenzará con la letra N, que indicará su carácter de entidad extranjera.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a4"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 5.2",
+          "quote": "2. Para los establecimientos permanentes de entidades no residentes en territorio español, el número de identificación fiscal comenzará con la letra W, que indicará su carácter de establecimiento permanente de entidad no residente en territorio español.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a5"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 27/2014 del Impuesto sobre Sociedades",
+          "article": "art. 9.1 a)",
+          "quote": "1. Estarán totalmente exentos del Impuesto:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2014-12328#a9"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 27/2014 del Impuesto sobre Sociedades",
+          "article": "art. 9.1 a)",
+          "quote": "a) El Estado, las Comunidades Autónomas y las entidades locales.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2014-12328#a9"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 61",
+          "quote": "No existirá obligación de retener ni de ingresar a cuenta respecto de:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a61"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 61 o)",
+          "quote": "o) Las rentas obtenidas por las entidades exentas a que se refiere el apartado 1 del artículo 9 de la Ley del Impuesto.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a61"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto Legislativo 5/2004, texto refundido de la Ley del Impuesto sobre la Renta de no Residentes",
+          "article": "art. 23.1",
+          "quote": "1. Los establecimientos permanentes estarán sometidos al régimen de retenciones del Impuesto sobre Sociedades por las rentas que perciban",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2004-4527#a23"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto Legislativo 5/2004, texto refundido de la Ley del Impuesto sobre la Renta de no Residentes",
+          "article": "art. 5 a)",
+          "quote": "a) Las personas físicas y entidades no residentes en territorio español conforme al artículo 6 que obtengan rentas en él, salvo que sean contribuyentes por el Impuesto sobre la Renta de las Personas Físicas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2004-4527#a5"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto Legislativo 5/2004, texto refundido de la Ley del Impuesto sobre la Renta de no Residentes",
+          "article": "art. 31.2",
+          "quote": "2. Los sujetos obligados a retener deberán retener o ingresar a cuenta una cantidad equivalente a la que resulte de aplicar las disposiciones previstas en esta Ley para determinar la deuda tributaria correspondiente a los contribuyentes por este impuesto sin establecimiento permanente",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2004-4527#a31"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto Legislativo 5/2004, texto refundido de la Ley del Impuesto sobre la Renta de no Residentes",
+          "article": "art. 25.1 a)",
+          "quote": "a) Con carácter general el 24 por 100. No obstante, el tipo de gravamen será el 19 por ciento cuando se trate de contribuyentes residentes en otro Estado miembro de la Unión Europea o del Espacio Económico Europeo",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2004-4527#a25"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto Legislativo 5/2004, texto refundido de la Ley del Impuesto sobre la Renta de no Residentes",
+          "article": "art. 31.4 a)",
+          "quote": "a) Las rentas que estén exentas en virtud de lo dispuesto en el artículo 14 o en un convenio para evitar la doble imposición que resulte aplicable",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2004-4527#a31"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 27/2014 del Impuesto sobre Sociedades",
+          "article": "art. 7.1 a)",
+          "quote": "a) Las personas jurídicas, excluidas las sociedades civiles que no tengan objeto mercantil.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2014-12328#a7"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 27/2014 del Impuesto sobre Sociedades",
+          "article": "art. 7.1 d)",
+          "quote": "d) Las uniones temporales de empresas, reguladas en la Ley 18/1982, de 26 de mayo, sobre régimen fiscal de las agrupaciones y uniones temporales de Empresas y de las Sociedades de desarrollo industrial regional.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2014-12328#a7"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "A. Sociedades anónimas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "B. Sociedades de responsabilidad limitada.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "C. Sociedades colectivas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "D. Sociedades comanditarias.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Orden EHA/451/2008",
+          "article": "art. 3",
+          "quote": "U. Uniones Temporales de Empresas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2008-3580#a3"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 60.1",
+          "quote": "1. Deberá practicarse retención, en concepto de pago a cuenta del Impuesto sobre Sociedades correspondiente al perceptor, respecto de:",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a60"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 60.1 c)",
+          "quote": "c) Las contraprestaciones obtenidas como consecuencia de la atribución de cargos de administrador o consejero en otras sociedades.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a60"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 60.1 d)",
+          "quote": "d) Las rentas procedentes de la cesión del derecho a la explotación de la imagen o del consentimiento o autorización para su utilización, aun cuando constituyan ingresos derivados de explotaciones económicas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a60"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 60.1 e)",
+          "quote": "e) Las rentas procedentes del arrendamiento o subarrendamiento de inmuebles urbanos, aun cuando constituyan ingresos derivados de explotaciones económicas.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a60"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 66 a)",
+          "quote": "a) Con carácter general, el 19 por ciento. Cuando se trate de rentas procedentes del arrendamiento o subarrendamiento de inmuebles urbanos situados en Ceuta, Melilla o sus dependencias, obtenidas por entidades domiciliadas en dichos territorios o que operen en ellos mediante establecimiento o sucursal, dicho porcentaje se dividirá por dos.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a66"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 66 b)",
+          "quote": "b) En el caso de rentas procedentes de la cesión del derecho a la explotación de la imagen o del consentimiento o autorización para su utilización, el 24 por ciento.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a66"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 27/2014 del Impuesto sobre Sociedades",
+          "article": "art. 128.6",
+          "quote": "a) Con carácter general, el 19 por ciento.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2014-12328#a128"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 439/2007, Reglamento del IRPF",
+          "article": "art. 95.1",
+          "quote": "1. Cuando los rendimientos sean contraprestación de una actividad profesional, se aplicará el tipo de retención del 15 por ciento sobre los ingresos íntegros satisfechos.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2007-6820#a95"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 439/2007, Reglamento del IRPF",
+          "article": "art. 101.2",
+          "quote": "No obstante, el porcentaje de retención e ingreso a cuenta sobre los rendimientos procedentes de la propiedad intelectual, cualquiera que sea su calificación, será del 15 por ciento",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2007-6820#a101"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 1065/2007, Reglamento General de gestión e inspección tributaria",
+          "article": "art. 19.1",
+          "quote": "1. Para las personas físicas de nacionalidad española, el número de identificación fiscal será el número de su documento nacional de identidad seguido del correspondiente código o carácter de verificación",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2007-15984#a19"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "An SL (NIF B…) or an association (NIF G…) invoices a consultancy service with irpf_rate: 15: the API answers IRPF_RATE_NOT_FOR_CORPORATE_ISSUER."
+        },
+        "correct": {
+          "text": "The same SL invoices the rent of an office in Madrid: rent of urban property bears withholding, at 19 %.",
+          "lang": "json",
+          "code": "{ \"description\": \"Office rent, October\", \"quantity\": 1, \"unit_price\": 900, \"main_tax\": { \"type\": \"IVA\", \"percentage\": 21, \"regime_key\": \"11\" }, \"irpf_rate\": 19 }"
+        }
+      },
+      "related": [
+        "TAX-017",
+        "TAX-022"
+      ],
+      "docs": [],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-019",
+      "markdown": "https://docs.beel.es/rules/TAX-019.md"
+    },
+    {
+      "id": "TAX-022",
+      "title": "Reduced withholding rates of Ceuta and Melilla derive from their base rate",
+      "domain": "taxes",
+      "severity": "MUST",
+      "impact": "medium",
+      "kind": "law",
+      "enforced_by": "api",
+      "statement": "Income with the Ceuta and Melilla deduction bears a reduced withholding, and the law gives the reduction, not the figure: under IRPF, the professional rates of 15 % and 7 % and the 19 % on rents of urban property located there are reduced by 60 %, giving 6 %, 2.8 % and 7.6 %; under Corporate Income Tax, the 19 % on those rents is halved, giving 9.5 %. Each reduced rate is accepted wherever its base rate is, with the reduction of the tax the issuer pays: an individual or an entity whose income is attributed to its members can use 6, 2.8 and 7.6; a company that pays Corporate Income Tax, or a permanent establishment of a non-resident entity, can use 9.5, and an individual sending 9.5 gets IRPF_RATE_ONLY_FOR_CORPORATE_ISSUER. Whether the issuer has the right to the reduction depends on where the income is obtained, which the NIF does not show: the issuer chooses it. The agricultural rates (1 % and 2 %) and the image-rights rate (24 %) have no reduction in the law, so no reduced rate derives from them.",
+      "why": "Without the reduced rates an issuer entitled to the Ceuta and Melilla reduction cannot invoice the withholding the law sets, and its customer would withhold more than it must.",
+      "applies_to": {
+        "operations": [
+          "createCompanyInvoice",
+          "patchCompanyInvoice",
+          "issueCompanyInvoice",
+          "createCompanyRecurringInvoice",
+          "createCompanyRecurringInvoiceDerivation",
+          "patchCompanyRecurringInvoice",
+          "updateTaxConfiguration",
+          "updateCompanyTaxConfiguration"
+        ],
+        "scope": "Lines, recurring templates and default tax configuration with an irpf_rate of 6, 2.8, 7.6 or 9.5."
+      },
+      "error_codes": [
+        {
+          "code": "IRPF_RATE_ONLY_FOR_CORPORATE_ISSUER",
+          "url": "https://docs.beel.es/errors/IRPF_RATE_ONLY_FOR_CORPORATE_ISSUER"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "boe",
+          "norm": "Ley 35/2006 del IRPF",
+          "article": "art. 101.5 a)",
+          "quote": "Estos porcentajes se reducirán en un 60 por ciento cuando los rendimientos tengan derecho a la deducción en la cuota prevista en el artículo 68.4 de esta Ley.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2006-20764#a101"
+        },
+        {
+          "type": "boe",
+          "norm": "Ley 35/2006 del IRPF",
+          "article": "art. 101.8",
+          "quote": "Este porcentaje se reducirá en un 60 por ciento cuando el inmueble esté situado en Ceuta o Melilla en los términos previstos en el artículo 68.4 de esta Ley.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2006-20764#a101"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 439/2007, Reglamento del IRPF",
+          "article": "art. 95.1",
+          "quote": "Estos porcentajes se reducirán en un 60 por ciento cuando los rendimientos tengan derecho a la deducción en la cuota prevista en el artículo 68.4 de la Ley del Impuesto.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2007-6820#a95"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 439/2007, Reglamento del IRPF",
+          "article": "art. 100",
+          "quote": "Este porcentaje se reducirá en el 60 por ciento cuando el inmueble urbano esté situado en Ceuta o Melilla, en los términos previstos en el artículo 68.4 de la Ley del Impuesto.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2007-6820#a100"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto 634/2015, Reglamento del Impuesto sobre Sociedades",
+          "article": "art. 66 a)",
+          "quote": "Cuando se trate de rentas procedentes del arrendamiento o subarrendamiento de inmuebles urbanos situados en Ceuta, Melilla o sus dependencias, obtenidas por entidades domiciliadas en dichos territorios o que operen en ellos mediante establecimiento o sucursal, dicho porcentaje se dividirá por dos.",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-7771#a66"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "An individual rents an office in Melilla and invoices it with irpf_rate: 9.5: that is the Corporate Income Tax rate, and the API answers IRPF_RATE_ONLY_FOR_CORPORATE_ISSUER."
+        },
+        "correct": {
+          "text": "The same individual invoices the rent with 7.6 % withholding: 19 % reduced by 60 %.",
+          "lang": "json",
+          "code": "{ \"description\": \"Office rent in Melilla, October\", \"quantity\": 1, \"unit_price\": 900, \"main_tax\": { \"type\": \"IPSI\", \"percentage\": 4, \"regime_key\": \"01\" }, \"irpf_rate\": 7.6 }"
+        }
+      },
+      "related": [
+        "TAX-019"
+      ],
+      "docs": [],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/taxes#tax-022",
+      "markdown": "https://docs.beel.es/rules/TAX-022.md"
+    },
+    {
       "id": "SUR-001",
       "title": "The surcharge rate matches the VAT rate of its line",
       "domain": "surcharge",
@@ -4975,7 +6551,7 @@
       "impact": "medium",
       "kind": "law",
       "enforced_by": "api",
-      "statement": "A line sold to a retailer under the surcharge regime carries the surcharge rate the law pairs with that line's VAT rate, under regime key 18. BeeL. sets regime 18 on an IVA line that carries a surcharge and the general regime 01 on an IVA line under 18 that carries none. Add the surcharge only when the buyer has told you they are under the regime.",
+      "statement": "A line sold to a retailer under the surcharge regime carries the surcharge rate the law pairs with that line's VAT rate, under regime key 18: 5.2 or 1.75 (tobacco products) with 21 %, 1.4 with 10 %, 0.5 with 4 %, and the temporary pairs only on operations of their period: 0.5 with 5 % up to 31 December 2022, 0.62 with 5 % from 1 January 2023 to 30 September 2024, and 1 with 7.5 % and 0.26 with 2 % from 1 October to 31 December 2024. GET /v1/tax-types publishes every pair with its period. The former 0.625 is no longer accepted; an invoice issued with it is declared at 0.62. A draft saved with 0.625 is not issued as it stands: the API answers SURCHARGE_RATE_REQUIRES_RECALCULATION, and updating the draft recalculates the line at 0.62. BeeL. sets regime 18 on an IVA line that carries a surcharge and the general regime 01 on an IVA line under 18 that carries none. Add the surcharge only when the buyer has told you they are under the regime.",
       "why": "A surcharge that does not match the VAT rate charges the wrong tax, and AEAT does not accept the pair in the record. A surcharge under any other regime key is rejected.",
       "applies_to": {
         "invoice_types": [
@@ -4996,6 +6572,14 @@
         {
           "code": "REGIME_REQUIRES_SURCHARGE",
           "url": "https://docs.beel.es/errors/REGIME_REQUIRES_SURCHARGE"
+        },
+        {
+          "code": "SURCHARGE_RATE_NOT_ACCEPTED_ON_DATE",
+          "url": "https://docs.beel.es/errors/SURCHARGE_RATE_NOT_ACCEPTED_ON_DATE"
+        },
+        {
+          "code": "SURCHARGE_RATE_REQUIRES_RECALCULATION",
+          "url": "https://docs.beel.es/errors/SURCHARGE_RATE_REQUIRES_RECALCULATION"
         }
       ],
       "legal_basis": [
@@ -5003,7 +6587,7 @@
           "type": "boe",
           "norm": "Ley 37/1992 del IVA",
           "article": "art. 161",
-          "quote": "Los tipos del recargo de equivalencia serán los siguientes: 1.º Con carácter general, el 5,2 por ciento. 2.º Para las entregas de bienes a las que resulte aplicable el tipo impositivo establecido en el artículo 91, apartado uno de esta Ley, el 1,4 por ciento. 3.º Para las entregas de bienes a las que sea aplicable el tipo impositivo previsto en el artículo 91, apartado dos de esta Ley, el 0,50 por ciento.",
+          "quote": "Los tipos del recargo de equivalencia serán los siguientes: 1.º Con carácter general, el 5,2 por ciento. 2.º Para las entregas de bienes a las que resulte aplicable el tipo impositivo establecido en el artículo 91, apartado uno de esta Ley, el 1,4 por ciento. 3.º Para las entregas de bienes a las que sea aplicable el tipo impositivo previsto en el artículo 91, apartado dos de esta Ley, el 0,50 por ciento. 4.º Para las entregas de bienes objeto del Impuesto Especial sobre las Labores del Tabaco, el 1,75 por ciento.",
           "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740#a161"
         },
         {
@@ -5012,6 +6596,48 @@
           "article": "3.1.3.15.3 TipoRecargoEquivalencia",
           "quote": "Si TipoImpositivo es 21 sólo se admitirán TipoRecargoEquivalencia = 5,2 ó 1,75. - Si TipoImpositivo es 10 sólo se admitirá TipoRecargoEquivalencia = 1,4.",
           "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.3 TipoRecargoEquivalencia",
+          "quote": "Si FechaOperacion (FechaExpedicionFactura de la agrupación IDFactura si no se informa FechaOperacion) es mayor o igual que 1 de enero de 2023 y menor o igual que 30 de septiembre de 2024, solo se admitirá TipoRecargoEquivalencia = 0,62.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.3 TipoRecargoEquivalencia",
+          "quote": "Si FechaOperacion (FechaExpedicionFactura de la agrupación IDFactura si no se informa FechaOperacion) es igual o inferior al 31 de diciembre de 2022, solo se admitirá TipoRecargoEquivalencia = 0,5.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.3 TipoRecargoEquivalencia",
+          "quote": "Si TipoImpositivo es 7,5 sólo se admitirá TipoRecargoEquivalencia = 1.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.3 TipoRecargoEquivalencia",
+          "quote": "Si TipoImpositivo es 2 sólo se admitirá TipoRecargoEquivalencia = 0,26.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "boe",
+          "norm": "Real Decreto-ley 1/2023",
+          "article": "disposición adicional decimosexta",
+          "quote": "Con efectos desde el 1 de enero de 2023, el tipo del recargo de equivalencia aplicable en el Impuesto sobre el Valor Añadido a las operaciones a que se refieren el apartado 2 del artículo 1 y el párrafo cuarto del apartado 1 del artículo 72 del Real Decreto-ley 20/2022, de 27 de diciembre, de medidas de respuesta a las consecuencias económicas y sociales de la Guerra de Ucrania y de apoyo a la reconstrucción de la isla de La Palma y a otras situaciones de vulnerabilidad, será del 0,62 por ciento",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-625#da-16"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Nota informativa sobre los nuevos tipos de recargo de equivalencia en el IVA",
+          "article": "Suministro inmediato de información",
+          "quote": "En el caso de que se haya emitido una factura con recargo del 0,625%, independientemente de la factura rectificativa que proceda (emitida por sustitución o por diferencias), se podrá remitir un único registro de facturación con el tipo de recargo del 0,62%.",
+          "url": "https://sede.agenciatributaria.gob.es/Sede/iva/novedades-iva/novedades-normativa-2023/nota-informativa-nuevos-tipos-recargo-iva.html"
         }
       ],
       "decision": [],
@@ -5193,24 +6819,29 @@
     },
     {
       "id": "DAT-003",
-      "title": "The operation date is never after the issue date",
+      "title": "The operation date is never after the issue date nor over twenty years old",
       "domain": "dates",
       "severity": "MUST_NOT",
       "impact": "medium",
       "kind": "aeat",
       "enforced_by": "api",
-      "statement": "operation_date is the day the operation took place or the advance payment was received, so it cannot be later than the issue date. To bill before delivering, invoice the advance payment with the day you received it.",
-      "why": "AEAT does not accept an operation dated in the future except in two special regimes; an invoice dated before the operation it documents is not consistent.",
+      "statement": "operation_date is the day the operation took place or the advance payment was received, so it cannot be later than the issue date. It cannot be more than twenty years before the issue date either. To bill before delivering, invoice the advance payment with the day you received it.",
+      "why": "AEAT does not accept an operation dated in the future except in two special regimes, nor one dated more than twenty years back; an invoice dated before the operation it documents is not consistent.",
       "applies_to": {
         "operations": [
           "createCompanyInvoice",
-          "patchCompanyInvoice"
+          "patchCompanyInvoice",
+          "issueCompanyInvoice"
         ]
       },
       "error_codes": [
         {
           "code": "OPERATION_DATE_AFTER_ISSUE_DATE",
           "url": "https://docs.beel.es/errors/OPERATION_DATE_AFTER_ISSUE_DATE"
+        },
+        {
+          "code": "OPERATION_DATE_TOO_OLD",
+          "url": "https://docs.beel.es/errors/OPERATION_DATE_TOO_OLD"
         }
       ],
       "legal_basis": [
@@ -5219,6 +6850,13 @@
           "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
           "article": "3.1.3.7 FechaOperacion",
           "quote": "el campo FechaOperacion solo podrá ser superior a la fecha actual, si ClaveRegimen= \"14\" o \"15”.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.7 FechaOperacion",
+          "quote": "La FechaOperacion no debe ser inferior a la fecha actual menos veinte años y no debe ser superior al año siguiente de la fecha actual.",
           "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
         }
       ],
@@ -5782,7 +7420,7 @@
       "related": [
         "DAT-006",
         "CNT-013",
-        "TAX-011"
+        "TAX-016"
       ],
       "docs": [],
       "facts": [
@@ -5857,16 +7495,22 @@
       "impact": "critical",
       "kind": "beel",
       "enforced_by": "integrator",
-      "statement": "Do not render or send a document of an invoice under VeriFactu before its QR data exists. Wait for the invoice.pdf.generated webhook, or read the invoice until verifactu.qr_url is present.",
+      "statement": "Do not render or send a document of an invoice under VeriFactu before its QR data exists. Wait for the invoice.pdf.generated webhook, or read the invoice until verifactu.qr_url is present. The API applies the same rule to its own PDF: it is painted once, with the QR, and never modified afterwards — voiding or correcting the invoice does not change it. Asking for the PDF of an invoice whose record ended without QR data answers INVOICE_NOT_REGISTERED_NO_PDF; an email requested before the PDF exists is accepted with 202 and sent when the PDF is stored, or recorded as failed if the record ends without QR data.",
       "why": "A document rendered without the QR data cannot carry the QR the invoice needs.",
       "applies_to": {
         "scope": "Invoices of a company under VeriFactu.",
         "operations": [
           "issueCompanyInvoice",
-          "getCompanyInvoicePdf"
+          "getCompanyInvoicePdf",
+          "sendCompanyInvoice"
         ]
       },
-      "error_codes": [],
+      "error_codes": [
+        {
+          "code": "INVOICE_NOT_REGISTERED_NO_PDF",
+          "url": "https://docs.beel.es/errors/INVOICE_NOT_REGISTERED_NO_PDF"
+        }
+      ],
       "legal_basis": [],
       "decision": [],
       "examples": {
@@ -6750,8 +8394,8 @@
       "impact": "medium",
       "kind": "aeat",
       "enforced_by": "integrator",
-      "statement": "When AEAT accepts a record but reports an error (ACCEPTED with an error_code), check the data it flagged, usually the recipient's NIF and name. If it was wrong, issue a corrective invoice with the right data; if it was right, nothing else is needed.",
-      "why": "A record accepted with errors stays in AEAT with those errors until a later document fixes them.",
+      "statement": "When AEAT accepts a record but reports an error (ACCEPTED with an error_code), check the data it flagged, usually the recipient's tax ID and name. If it was right, nothing else is needed. If it was wrong, fix it in the customer's data and correct the invoice already recorded with an R4 corrective that carries the corrected recipient (COR-017); the following invoices take the fixed data.",
+      "why": "A record accepted with errors stays in AEAT with those errors until a later document fixes them, and for a recipient's data that document is a corrective.",
       "applies_to": {
         "scope": "Invoices ACCEPTED with an error_code."
       },
@@ -6771,12 +8415,12 @@
           "text": "Reading ACCEPTED and ignoring the error_code next to it."
         },
         "correct": {
-          "text": "Reading error_message, confirming the customer's NIF was mistyped, and issuing an R4 corrective with the right one."
+          "text": "Reading error_message, confirming the customer's tax ID was mistyped, fixing it in the customer's data and issuing the R4 corrective of the recipient's data for the invoice already recorded."
         }
       },
       "related": [
         "REC-008",
-        "COR-001"
+        "COR-017"
       ],
       "docs": [
         "https://docs.beel.es/verifactu/handling-rejections#accepted-with-errors"
@@ -6952,6 +8596,100 @@
       "since": "2026-09-24",
       "url": "https://docs.beel.es/rules/records#rec-012",
       "markdown": "https://docs.beel.es/rules/REC-012.md"
+    },
+    {
+      "id": "REC-013",
+      "title": "An invoice AEAT would reject is not numbered",
+      "domain": "records",
+      "severity": "MUST",
+      "impact": "high",
+      "kind": "aeat",
+      "enforced_by": "api",
+      "statement": "Before an invoice recorded with VeriFactu takes its number, BeeL. builds the billing record it will send and checks it against AEAT's validations: the invoice type, the recipient, the correction, the tax breakdown (at most 12 groups, rates with two decimals, the rate and surcharge accepted on the operation date, what each regime key admits) and the operation date. If AEAT would reject the record, the invoice is not issued and the number is not used: the API answers 422 with the specific code, or VERIFACTU_RECORD_NOT_DECLARABLE with the AEAT section in its message when there is no specific one. The record that is checked is exactly the one that is sent.",
+      "why": "AEAT rejects a record after the invoice already has its number, and a gap in the numbering cannot be repaired.",
+      "applies_to": {
+        "operations": [
+          "issueCompanyInvoice",
+          "createCompanyCorrectiveInvoice"
+        ],
+        "scope": "Invoices recorded with VeriFactu."
+      },
+      "error_codes": [
+        {
+          "code": "VERIFACTU_RECORD_NOT_DECLARABLE",
+          "url": "https://docs.beel.es/errors/VERIFACTU_RECORD_NOT_DECLARABLE"
+        },
+        {
+          "code": "INVOICE_TAX_BREAKDOWN_TOO_LONG",
+          "url": "https://docs.beel.es/errors/INVOICE_TAX_BREAKDOWN_TOO_LONG"
+        },
+        {
+          "code": "INVOICE_TAX_RATE_TOO_MANY_DECIMALS",
+          "url": "https://docs.beel.es/errors/INVOICE_TAX_RATE_TOO_MANY_DECIMALS"
+        },
+        {
+          "code": "EXEMPTION_INCOMPATIBLE_WITH_REGIME",
+          "url": "https://docs.beel.es/errors/EXEMPTION_INCOMPATIBLE_WITH_REGIME"
+        },
+        {
+          "code": "VAT_RATE_NOT_ACCEPTED_ON_DATE",
+          "url": "https://docs.beel.es/errors/VAT_RATE_NOT_ACCEPTED_ON_DATE"
+        },
+        {
+          "code": "SURCHARGE_RATE_NOT_ACCEPTED_ON_DATE",
+          "url": "https://docs.beel.es/errors/SURCHARGE_RATE_NOT_ACCEPTED_ON_DATE"
+        },
+        {
+          "code": "OPERATION_DATE_TOO_OLD",
+          "url": "https://docs.beel.es/errors/OPERATION_DATE_TOO_OLD"
+        },
+        {
+          "code": "INVOICE_REQUIRES_AT_LEAST_ONE_NORMAL_LINE",
+          "url": "https://docs.beel.es/errors/INVOICE_REQUIRES_AT_LEAST_ONE_NORMAL_LINE"
+        }
+      ],
+      "legal_basis": [
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.13 Agrupación Destinatarios",
+          "quote": "Si TipoFactura es “F2” o “R5”, la agrupación Destinatarios no puede estar cumplimentada.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.4 CalificacionOperacion",
+          "quote": "Si CalificacionOperacion es “S2”, TipoFactura solo puede ser “F1”, “F3”, “R1”, “R2”, “R3” y “R4”.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        },
+        {
+          "type": "aeat",
+          "norm": "AEAT, Validaciones y errores VERI*FACTU (v1.2.2)",
+          "article": "3.1.3.15.5 OperacionExenta",
+          "quote": "Si Impuesto = “01” (IVA), “03” (IGIC) o no se cumplimenta (considerándose “01” - IVA), y ClaveRegimen es igual a “01”, no pueden marcarse los valores de OperacionExenta “E2” y “E3”.",
+          "url": "https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf"
+        }
+      ],
+      "decision": [],
+      "examples": {
+        "incorrect": {
+          "text": "Issuing a draft saved before a rule existed, with an exemption under article 21 and regime key 01: the API answers EXEMPTION_INCOMPATIBLE_WITH_REGIME and the draft keeps no number."
+        },
+        "correct": {
+          "text": "Fixing the draft (regime key 02 for an export) and issuing it again."
+        }
+      },
+      "related": [
+        "REC-001",
+        "TAX-014",
+        "TAX-017"
+      ],
+      "docs": [],
+      "facts": [],
+      "since": "2026-09-26",
+      "url": "https://docs.beel.es/rules/records#rec-013",
+      "markdown": "https://docs.beel.es/rules/REC-013.md"
     },
     {
       "id": "CON-001",
