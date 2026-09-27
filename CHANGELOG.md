@@ -3,6 +3,13 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.8.0](https://github.com/beel-es/beel-mcp/compare/v0.7.0...v0.8.0) (2026-09-27)
+
+
+### Novedades
+
+* read docs by section and fiscal rules in batches ([#112](https://github.com/beel-es/beel-mcp/issues/112)) ([c38d46f](https://github.com/beel-es/beel-mcp/commit/c38d46f46ad26425ed924fc66659099bd750c383))
+
 ## [0.7.0](https://github.com/beel-es/beel-mcp/compare/v0.6.0...v0.7.0) (2026-09-27)
 
 
