@@ -5,6 +5,7 @@ import { buildApiTools } from '../src/tools/api-tools.js';
 import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
 import { DOCS_SEARCH } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST } from '../src/tools/rules-tools.js';
+import { SCHEMA_GET } from '../src/tools/schema-tools.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = {
@@ -153,6 +154,15 @@ describe('CallTool dispatch', () => {
     expect(textOf(bad)).toContain('beel_rules_list');
   });
 
+  it('dispatches the schema tool, and answers an unknown name as an error', async () => {
+    const found = await callTool(SCHEMA_GET, { name: 'TaxInfo' });
+    expect(found.isError).toBeFalsy();
+    expect(textOf(found)).toContain('interface TaxInfo {');
+    const missing = await callTool(SCHEMA_GET, { name: 'NoSuchSchema' });
+    expect(missing.isError).toBe(true);
+    expect(textOf(missing)).toContain('List schema names with query');
+  });
+
   it('logs one structured line per call, with no arguments in it', async () => {
     const lines: string[] = [];
     vi.stubGlobal('console', { ...console, error: (line: string) => lines.push(line) });
@@ -177,6 +187,7 @@ describe('hand-written tool names', () => {
     'beel_docs_list',
     RULES_LIST,
     RULES_GET,
+    SCHEMA_GET,
   ];
 
   it('follow the beel_ convention', () => {

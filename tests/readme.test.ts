@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { docsTools } from '../src/tools/docs-tools.js';
 import { rulesTools } from '../src/tools/rules-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 import { prompts } from '../src/prompts/workflows.js';
 
@@ -22,7 +23,7 @@ describe('the README counts match reality', () => {
   });
 
   it('states the real number of synthetic tools', () => {
-    const count = docsTools.length + rulesTools.length + workflowTools.length;
+    const count = docsTools.length + rulesTools.length + schemaTools.length + workflowTools.length;
     expect(readme, `README should say ${count} synthetic tools`).toContain(
       `**${count} synthetic tools**`,
     );

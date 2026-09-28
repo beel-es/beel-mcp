@@ -5,6 +5,9 @@ import { filterRules } from '../src/rules/render.js';
 import { loadSpec } from '../src/spec/load.js';
 import { RULES_GET, RULES_LIST, executeRulesTool } from '../src/tools/rules-tools.js';
 import { jsonText } from '../src/tools/tool-result.js';
+import { declareOperation, declareSchema, schemaNames } from '../src/spec/declarations.js';
+import { buildApiTools } from '../src/tools/api-tools.js';
+import { SCHEMA_GET, executeSchemaTool } from '../src/tools/schema-tools.js';
 import { getSetupStatus, type OperationCaller } from '../src/tools/workflow-tools.js';
 
 /**
@@ -28,6 +31,16 @@ const LIST_FRAME_BUDGET = 400;
 const SETUP_COMPANY_BUDGET = 1_500;
 /** Compact JSON against indented JSON, on the contract's invoice example. */
 const COMPACT_JSON_RATIO = 0.8;
+/**
+ * CreateInvoiceRequest with its inline line type: 27 fields, each a name, a type
+ * and at most one sentence, about 90 characters on average today. The SDK's
+ * generated type for the same schema runs to about 14,600 characters.
+ */
+const CREATE_INVOICE_BUDGET = 3_000;
+/** The five schemas an invoice body is written from, read in one call. */
+const INVOICE_BODY_BATCH_BUDGET = 6_000;
+/** Any one schema or operation of the contract; the largest today is about 4,400. */
+const DECLARATION_BUDGET = 6_000;
 
 const snapshot = snapshotCatalog();
 
@@ -126,5 +139,39 @@ describe('beel_get_setup_status', () => {
     const caller: OperationCaller = async (operationId) => responses[operationId];
     const status = await getSetupStatus(config, {}, caller);
     expect(jsonText(status).length).toBeLessThan(SETUP_COMPANY_BUDGET);
+  });
+});
+
+describe(`${SCHEMA_GET} answers a field-level question in a few KB`, () => {
+  it(`declares CreateInvoiceRequest and its line type in under ${CREATE_INVOICE_BUDGET}`, async () => {
+    const text = await executeSchemaTool(SCHEMA_GET, { name: 'CreateInvoiceRequest' });
+    expect(text).toContain('lines: Array<{');
+    expect(text.length).toBeLessThan(CREATE_INVOICE_BUDGET);
+  });
+
+  it(`declares the five schemas of an invoice body in under ${INVOICE_BODY_BATCH_BUDGET}`, async () => {
+    const names = [
+      'CreateInvoiceRequest',
+      'Recipient',
+      'AlternativeIdentifier',
+      'Address',
+      'TaxInfo',
+    ];
+    const text = await executeSchemaTool(SCHEMA_GET, { names });
+    for (const name of names) expect(text).toContain(`interface ${name} `);
+    expect(text.length).toBeLessThan(INVOICE_BODY_BATCH_BUDGET);
+  });
+
+  it(`keeps every schema and operation of the contract under ${DECLARATION_BUDGET}`, () => {
+    const doc = loadSpec();
+    const over = [
+      ...schemaNames(doc).map((name) => [name, declareSchema(doc, name)!.text] as const),
+      ...buildApiTools().tools.map(
+        (t) => [t.tool.name, declareOperation(doc, t.operation, t.tool.name).text] as const,
+      ),
+    ]
+      .filter(([, text]) => text.length > DECLARATION_BUDGET)
+      .map(([name, text]) => `${name}: ${text.length}`);
+    expect(over).toEqual([]);
   });
 });

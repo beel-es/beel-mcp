@@ -20,11 +20,11 @@ npm run tools:list  # every tool the server exposes, with its scopes
 
 ## Where things live
 
-- `src/spec/` — loads the OpenAPI contract (`openapi/public-api.yaml`) and derives the operation manifest. The contract is synced from the API, never edited by hand.
+- `src/spec/` — loads the OpenAPI contract (`openapi/public-api.yaml`) and derives the operation manifest, and the compact schema declarations `beel_schema_get` serves (`declarations.ts`). The contract is synced from the API, never edited by hand.
 - `src/policy/` — which operations become tools (`tool-policy.ts`) and which scopes they need (`scopes.ts`). Least privilege: never add a scope no tool uses.
 - `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the API usage guides as markdown (`rules/`), and the error catalogue (`catalog.ts`).
 - `src/rules/` — the fiscal rules catalogue, read from `docs.beel.es/api/rules.json`. `snapshot.json` is only its offline fallback, written by `npm run sync:rules`; never edit it, and never re-type a rule anywhere else.
-- `src/tools/` — API tools, docs tools, workflow tools; `src/prompts/` — the workflow prompts.
+- `src/tools/` — API tools, docs tools, rules tools, the schema tool, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
 - `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.
 - `src/mcpapp/` — the invoice viewer MCP App and its CSP contract.
@@ -49,7 +49,8 @@ than the size of any one result. So:
   two that answer it in halves; a result has a stated ceiling (`MAX_PAGE_CHARS`,
   `LIST_LIMIT`, `CONCISE_STATEMENT_CHARS`) and never grows without one.
 - **Batch parameters.** A read that agents repeat takes a list (`ids` in
-  `beel_rules_get`, `sections` in `beel_docs_get`), capped by a named constant.
+  `beel_rules_get`, `sections` in `beel_docs_get`, `names` in `beel_schema_get`),
+  capped by a named constant.
 - **Explicit truncation.** A cut result says it was cut, how many items it left out
   and the argument that returns them. A filtered checklist is not cut by default:
   an agent that cannot tell it saw part of a list treats it as all of it.

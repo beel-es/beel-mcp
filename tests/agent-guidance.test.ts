@@ -7,6 +7,7 @@ import { buildApiTools } from '../src/tools/api-tools.js';
 import { DOCS_GET, DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
 import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
 
 /**
  * Everything the agent reads before it picks a tool. The rule of these texts:
@@ -16,7 +17,7 @@ import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
  * from its neighbours, and its first sentence is enough to choose it.
  */
 
-const SYNTHETIC: Tool[] = [...docsTools, ...rulesTools, ...workflowTools];
+const SYNTHETIC: Tool[] = [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools];
 const API: Tool[] = buildApiTools().tools.map((t) => t.tool);
 
 /** Up to the first full stop followed by a space or the end; "e.g." and "BeeL." are not one. */
@@ -85,11 +86,16 @@ describe('the server instructions', () => {
     );
   });
 
-  it('ask for batched reads: sections in one docs call, ids in one rules call', () => {
+  it('ask for batched reads: sections, rules and schemas, each in one call', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/sections of one page in one beel_docs_get/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/rules in one beel_rules_get/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/schemas in one beel_schema_get/);
+  });
+
+  it('send field-level shapes to beel_schema_get rather than an SDK type file', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(
-      /several sections of one page in one beel_docs_get \(sections\)/,
+      /field-level shapes from beel_schema_get, not an SDK's type file/,
     );
-    expect(SERVER_INSTRUCTIONS).toMatch(/several rules in one beel_rules_get \(ids\)/);
   });
 
   it('stay short enough to be read whole', () => {

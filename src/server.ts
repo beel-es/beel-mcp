@@ -14,6 +14,7 @@ import { ApiError } from './api/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { executeRulesTool, isRulesTool, rulesTools } from './tools/rules-tools.js';
+import { executeSchemaTool, isSchemaTool, schemaTools } from './tools/schema-tools.js';
 import { getSetupStatus, workflowTools } from './tools/workflow-tools.js';
 import { listGuardrailResources, readGuardrailResource } from './resources/guardrails.js';
 import { enrichToolResult, jsonText } from './tools/tool-result.js';
@@ -116,8 +117,8 @@ async function readResource(uri: string): Promise<{ contents: Array<Record<strin
 }
 
 /**
- * Run one of the hand-written tools: the documentation readers and the setup
- * report. Their schemas are advertised exactly like the derived ones, so their
+ * Run one of the hand-written tools: the documentation and rules readers, the
+ * schema declarations and the setup report. Their schemas are advertised exactly like the derived ones, so their
  * arguments — and, where they declare an outputSchema, their output — go
  * through the same validator.
  */
@@ -129,6 +130,7 @@ async function runSyntheticTool(
   assertValidArguments(tool, args);
   if (isDocsTool(tool.name)) return textResult(await executeDocsTool(tool.name, args));
   if (isRulesTool(tool.name)) return textResult(await executeRulesTool(tool.name, args));
+  if (isSchemaTool(tool.name)) return textResult(await executeSchemaTool(tool.name, args));
 
   const status = await getSetupStatus(getConfig(), args);
   // The output schema is advertised to the client, which may validate against
@@ -252,9 +254,10 @@ export const SERVER_INSTRUCTIONS = [
   '',
   `To write integration code, read beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (each ` +
     'invoicing case with its typed SDK call); take the company id, series ids and tax ' +
-    'defaults from beel_get_setup_status.',
-  'Every call re-reads the conversation, so batch reads: several sections of one page in one ' +
-    'beel_docs_get (sections), several rules in one beel_rules_get (ids).',
+    'defaults from beel_get_setup_status, and field-level shapes from beel_schema_get, ' +
+    "not an SDK's type file.",
+  'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
+    'schemas in one beel_schema_get.',
   '',
   'When your answer relies on a rule, cite its id with its link (e.g. COR-024, ' +
     'https://docs.beel.es/rules/corrective#cor-024); when it relies on a docs page, link it.',
@@ -277,11 +280,17 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...apiTools.map((t) => t.tool), ...docsTools, ...rulesTools, ...workflowTools],
+    tools: [
+      ...apiTools.map((t) => t.tool),
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+      ...workflowTools,
+    ],
   }));
 
   const syntheticByName = new Map<string, Tool>(
-    [...docsTools, ...rulesTools, ...workflowTools].map((t) => [t.name, t]),
+    [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => [t.name, t]),
   );
   const callTool = createCallToolHandler(apiByName, syntheticByName, getConfig);
 
@@ -305,7 +314,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     writeStderr(
-      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + workflowTools.length} synthetic tools, ` +
+      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + schemaTools.length + workflowTools.length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }
