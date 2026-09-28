@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer, INTEGRATION_GUIDE_PATH, SERVER_INSTRUCTIONS } from '../src/server.js';
+import {
+  createServer,
+  INTEGRATION_GUIDE_PATH,
+  SDK_PACKAGE,
+  SERVER_INSTRUCTIONS,
+} from '../src/server.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { DOCS_GET, DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
@@ -84,6 +89,17 @@ describe('the server instructions', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(
       new RegExp(`series ids and tax\\s+defaults from ${SETUP_STATUS}`),
     );
+  });
+
+  it('send Node/TypeScript integrations to the official SDK, not hand-written HTTP calls', () => {
+    expect(SDK_PACKAGE).toBe('@beel_es/sdk');
+    expect(SERVER_INSTRUCTIONS).toContain(
+      `in Node/TypeScript install the official SDK (npm install ${SDK_PACKAGE}) ` +
+        'instead of hand-writing HTTP calls',
+    );
+    // The SDK clause comes with the guide, whose snippets are written against it.
+    const line = SERVER_INSTRUCTIONS.split('\n').find((l) => l.includes(SDK_PACKAGE))!;
+    expect(line).toContain(INTEGRATION_GUIDE_PATH);
   });
 
   it('ask for batched reads: sections, rules and schemas, each in one call', () => {

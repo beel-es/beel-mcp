@@ -225,6 +225,13 @@ function createCallToolHandler(
 export const INTEGRATION_GUIDE_PATH = '/guides/order-to-invoice';
 
 /**
+ * The official SDK for Node and TypeScript, which the guide's snippets call.
+ * Named so that an agent in such a project installs it rather than rebuilding
+ * its HTTP layer (auth, idempotency, errors) by hand.
+ */
+export const SDK_PACKAGE = '@beel_es/sdk';
+
+/**
  * What the client puts in the agent's context: the ONE place for guidance that
  * applies to every tool — which tool family to reach for, in what order, when
  * not to, and how to cite. Tool descriptions only say what each tool does and
@@ -232,29 +239,29 @@ export const INTEGRATION_GUIDE_PATH = '/guides/order-to-invoice';
  */
 export const SERVER_INSTRUCTIONS = [
   'BeeL is a Spanish invoicing API with VeriFactu built in. These tools call its public API ' +
-    '(one tool per operation) and read its documentation and fiscal rules.',
+    'and read its documentation and fiscal rules.',
   '',
   'Which tools, in this order:',
   '1. Designing a flow, or before proposing code or a call that creates or changes a fiscal ' +
     'document (issue, void, correct, simplified exchange, series and numbering, refunds, dates, ' +
     'PDF or QR): start with beel_rules_list filtered, by domain for that flow or with ' +
-    'enforced_by "integrator", the checklist of what the API does not check and the integration ' +
-    'must implement. Answer from that list; do not read every rule first. Open with beel_rules_get ' +
+    'enforced_by "integrator", the checklist of what the API leaves to your code. Answer from that list; do not read every rule first. Open with beel_rules_get ' +
     'only the rules your answer relies on, all in one call with ids.',
   '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get with the page ' +
-    'and section of the result that answers, not the whole page. Not for which fiscal rule ' +
-    'applies; that is step 1.',
+    'and section of the result that answers, not the whole page. Which fiscal rule applies ' +
+    'is step 1.',
   '3. To act: the API tool for the operation. Use a test key (beel_sk_test_) unless the user ' +
     'asks for Live. Send an Idempotency-Key on every create, issue, correct or void, and reuse ' +
     'it only to retry the same request.',
   '4. A 4xx with a fiscal error.code: beel_rules_get with that error_code, fix the request, ' +
     'and send it again with a new Idempotency-Key.',
   'Skip the rules for questions that do not touch them (listing, reading, auth, pagination). ' +
-    'The beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
+    'beel://guardrails/* resources hold the same rules plus API usage guides.',
   '',
-  `To write integration code, read beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (each ` +
-    'invoicing case with its typed SDK call); take the company id, series ids and tax ' +
-    'defaults from beel_get_setup_status, and field-level shapes from beel_schema_get, ' +
+  `To write integration code, follow beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (one SDK ` +
+    `call per invoicing case); in Node/TypeScript install the official SDK (npm install ` +
+    `${SDK_PACKAGE}) instead of hand-writing HTTP calls. Take the company id, series ids and ` +
+    'tax defaults from beel_get_setup_status, and field-level shapes from beel_schema_get, ' +
     "not an SDK's type file.",
   'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
     'schemas in one beel_schema_get.',
