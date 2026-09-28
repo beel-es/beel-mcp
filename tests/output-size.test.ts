@@ -40,13 +40,14 @@ const SDK_REPORT_BUDGET = 2_000;
 /** Compact JSON against indented JSON, on the contract's invoice example. */
 const COMPACT_JSON_RATIO = 0.8;
 /**
- * CreateInvoiceRequest with its inline line type: 27 fields, each a name, a type
- * and at most one sentence, about 90 characters on average today. The SDK's
- * generated type for the same schema runs to about 14,600 characters.
+ * CreateInvoiceRequest with its inline line type: 27 fields, each a name, a type,
+ * its first sentence and the sentences that say what is required or rejected
+ * (at most MAX_FIELD_CONSTRAINT_CHARS); about 4,400 characters today. The SDK's
+ * generated type for the same schema runs to about 14,600.
  */
-const CREATE_INVOICE_BUDGET = 3_000;
-/** The five schemas an invoice body is written from, read in one call. */
-const INVOICE_BODY_BATCH_BUDGET = 6_000;
+const CREATE_INVOICE_BUDGET = 5_000;
+/** The five schemas an invoice body is written from, read in one call: about 7,500 today. */
+const INVOICE_BODY_BATCH_BUDGET = 9_000;
 /** Any one schema or operation of the contract; the largest today is about 4,400. */
 const DECLARATION_BUDGET = 6_000;
 

@@ -24,8 +24,22 @@ import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { resolveRef } from './refs.js';
 
-/** Longest description a field carries: its first sentence, cut at this length. */
+/** Longest description a schema heading carries: its first sentence, cut at this length. */
 export const MAX_FIELD_DESCRIPTION_CHARS = 120;
+/**
+ * Longest description a field carries. Its first sentence, then each later
+ * sentence that states a requirement or a rejection, while they fit: the part of
+ * a description that decides whether a call is accepted is rarely the first
+ * sentence ("Mandatory on NORMAL lines", "CORRECTIVE is not accepted here").
+ */
+export const MAX_FIELD_CONSTRAINT_CHARS = 280;
+/** A sentence that says what is required or refused. */
+const CONSTRAINT_WORDS =
+  /\b(mandatory|required|must|not accepted|not allowed|rejected|refused|forbidden)\b/i;
+/** An error code, which only a rejection names. */
+const ERROR_CODE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/;
+/** Says a field is needed, not that it is not. */
+const REQUIREMENT = /\b(mandatory|required)\b/i;
 /**
  * Most values a named enum may have and still be written out where it is used.
  * Past it the enum is referenced by name, like an object: a regime key or an
@@ -102,16 +116,88 @@ function isInlinable(node: SpecNode): boolean {
   return values === undefined || values.length <= MAX_INLINE_ENUM_VALUES;
 }
 
+/** A description on one line, without Markdown emphasis. */
+function flatten(text: string): string {
+  return text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Abbreviations whose full stop ends no sentence ("e.g.", "art. 78", "arts. 6"). */
+const ABBREVIATION = /\b(e\.g|i\.e|arts?|etc|vs|approx|No)$/i;
+
+/**
+ * The sentences of a description, in order. A full stop ends one unless it
+ * closes an {@link ABBREVIATION}; a colon that opens a list does too, and the
+ * list is dropped with it.
+ */
+function sentences(text: string): string[] {
+  const flat = flatten(text);
+  const out: string[] = [];
+  let start = 0;
+  for (const match of flat.matchAll(/[.!?](?=\s|$)|:(?=\s+[-*]\s)/g)) {
+    if (ABBREVIATION.test(flat.slice(0, match.index))) continue;
+    out.push(flat.slice(start, match.index + 1).trim());
+    if (match[0] === ':') return out;
+    start = match.index + 1;
+  }
+  const rest = flat.slice(start).trim();
+  return rest ? [...out, rest] : out;
+}
+
+function cut(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 /** The first sentence of a description, on one line, without Markdown emphasis. */
 export function firstSentence(text: unknown, max = MAX_FIELD_DESCRIPTION_CHARS): string {
   if (typeof text !== 'string') return '';
-  const flat = text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
-  // A full stop ends it unless it closes "e.g." or "i.e."; a colon that opens a list does too.
-  const end = [...flat.matchAll(/[.!?](?=\s|$)|:(?=\s+[-*]\s)/g)].find(
-    (match) => !/\b(e\.g|i\.e)$/.test(flat.slice(0, match.index)),
-  );
-  const sentence = end ? flat.slice(0, end.index + 1) : flat;
-  return sentence.length <= max ? sentence : `${sentence.slice(0, max - 1).trimEnd()}…`;
+  return cut(sentences(text)[0] ?? '', max);
+}
+
+/**
+ * Where a sentence may be cut and still say something true: after a semicolon
+ * or a colon, before a dash, or before a clause joined by "and", "but" or
+ * "which". Never at a bare comma, which may sit inside a list ("one of `a`,
+ * `b` or `c`") whose first item alone would say the opposite.
+ */
+const CLAUSE_BOUNDARY = /(?<=[;:])\s|\s(?=—\s)|(?<=,)\s(?=(?:and|but|which)\s)/;
+
+/**
+ * The longest run of a sentence's leading clauses that fits in `room`, closed
+ * with a full stop, or `undefined` when not even the first clause does.
+ */
+function leadingClauses(sentence: string, room: number): string | undefined {
+  const clauses = sentence.split(CLAUSE_BOUNDARY);
+  let best: string | undefined;
+  for (let n = 1; n <= clauses.length; n++) {
+    const text = clauses
+      .slice(0, n)
+      .join(' ')
+      .replace(/[\s,;:.—]*$/, '.');
+    if (text.length > room) break;
+    best = text;
+  }
+  return best;
+}
+
+/**
+ * What a field's comment says: its first sentence, then every later sentence
+ * that states a requirement or a rejection, in order, within
+ * {@link MAX_FIELD_CONSTRAINT_CHARS}. A constraint too long to fit keeps its
+ * leading clauses, which is where the rule and the error code usually are.
+ */
+export function fieldDescription(text: unknown): string {
+  if (typeof text !== 'string') return '';
+  const [first = '', ...rest] = sentences(text);
+  let out = cut(first, MAX_FIELD_DESCRIPTION_CHARS);
+  for (const sentence of rest) {
+    if (!CONSTRAINT_WORDS.test(sentence) && !ERROR_CODE.test(sentence)) continue;
+    const room = MAX_FIELD_CONSTRAINT_CHARS - out.length - 1;
+    const kept = sentence.length <= room ? sentence : leadingClauses(sentence, room);
+    // One that does not fit is skipped, not the end: a shorter one after it may still.
+    if (!kept) continue;
+    out = `${out} ${kept}`;
+  }
+  return out;
 }
 
 /** Format, integer-ness, default and deprecation: what a type annotation cannot say. */
@@ -135,16 +221,22 @@ function allHints(node: SpecNode): string[] {
   return [...new Set([...own, ...nested])];
 }
 
-/** The trailing `// …` of a field: its hints, then the first sentence of its description. */
-function fieldComment(doc: SpecNode, node: SpecNode): string {
-  let description = firstSentence(node.description);
+/**
+ * The trailing `// …` of a field: its hints, then what its description says
+ * (see {@link fieldDescription}). An optional field whose description says it
+ * is mandatory or required in some case is marked `conditionally required`: the
+ * schema cannot say it, and the agent must not read `?` as "never needed".
+ */
+function fieldComment(doc: SpecNode, node: SpecNode, optional = false): string {
+  let description = fieldDescription(node.description);
   if (!description) {
     // A bare reference carries no description of its own; the schema it names does.
     const target = shapeRef(node);
     const named = target ? schemaNamed(doc, target) : undefined;
     description = firstSentence(named?.description);
   }
-  const annotations = allHints(node).join(', ');
+  const conditional = optional && REQUIREMENT.test(description) ? ['conditionally required'] : [];
+  const annotations = [...conditional, ...allHints(node)].join(', ');
   const parts = [annotations, description].filter(Boolean);
   return parts.length === 0 ? '' : ` // ${parts.join(' — ')}`;
 }
@@ -232,7 +324,7 @@ function objectBlock(doc: SpecNode, node: SpecNode, refs: References, indent: st
     const field = isRecord(value) ? value : {};
     const type = typeOf(doc, field, refs, inner);
     const optional = required.has(key) ? '' : '?';
-    return `${inner}${key}${optional}: ${type};${fieldComment(doc, field)}`;
+    return `${inner}${key}${optional}: ${type};${fieldComment(doc, field, optional === '?')}`;
   });
   return lines.length === 0 ? '{}' : `{\n${lines.join('\n')}\n${indent}}`;
 }

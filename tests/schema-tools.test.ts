@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_FIELD_CONSTRAINT_CHARS,
   MAX_FIELD_DESCRIPTION_CHARS,
+  fieldDescription,
   MAX_INLINE_ENUM_VALUES,
   declareOperation,
   declareSchema,
@@ -62,13 +64,55 @@ describe('firstSentence', () => {
   });
 });
 
+describe('fieldDescription', () => {
+  it('keeps the sentences that say what is required or rejected, after the first', () => {
+    const text = fieldDescription(
+      'Invoice type to create. Some background. `CORRECTIVE` is **not** accepted here. More prose.',
+    );
+    expect(text).toBe('Invoice type to create. `CORRECTIVE` is not accepted here.');
+  });
+
+  it('keeps a sentence that names an error code', () => {
+    expect(fieldDescription('A rate. A wrong one answers `422 SURCHARGE_REQUIRES_REGIME`.')).toBe(
+      'A rate. A wrong one answers `422 SURCHARGE_REQUIRES_REGIME`.',
+    );
+  });
+
+  it('does not end a sentence at "art." or "e.g."', () => {
+    const text = fieldDescription(
+      'A line. Forbidden on SUPLIDO lines (art. 78 LIVA), e.g. a disbursement. Other text.',
+    );
+    expect(text).toBe('A line. Forbidden on SUPLIDO lines (art. 78 LIVA), e.g. a disbursement.');
+  });
+
+  it(`stays within ${MAX_FIELD_CONSTRAINT_CHARS} characters, cutting a long rule at a clause`, () => {
+    const long =
+      `Main tax. It is never defaulted: omitting it is rejected with \`LINE_MAIN_TAX_REQUIRED\`, ` +
+      `and ${'is never filled in from a setting '.repeat(10)}.`;
+    const text = fieldDescription(long);
+    expect(text.length).toBeLessThanOrEqual(MAX_FIELD_CONSTRAINT_CHARS);
+    expect(text).toBe(
+      'Main tax. It is never defaulted: omitting it is rejected with `LINE_MAIN_TAX_REQUIRED`.',
+    );
+  });
+
+  it('never cuts inside a list, where its first item alone would say the opposite', () => {
+    const text = fieldDescription(
+      'A total. ' +
+        `${'x'.repeat(150)} Each line must carry exactly one of \`unit_price\`, \`total\` or \`gross\` ` +
+        'and nothing else, otherwise it is rejected with `LINE_UNIT_PRICE_XOR_DECLARED_TOTAL`.',
+    );
+    expect(text).not.toMatch(/exactly one of `unit_price`\./);
+  });
+});
+
 describe('declarations', () => {
   it('write an object as an interface: required, optional, format, enum inline', () => {
     const text = declared('CreateInvoiceRequest');
     expect(text).toMatch(/^interface CreateInvoiceRequest \{$/m);
     expect(text).toMatch(/^ {2}type: "STANDARD" \| "CORRECTIVE" \| "SIMPLIFIED" \| "PROFORMA";/m);
     expect(text).toMatch(/^ {2}series_id\?: string; \/\/ uuid — /m);
-    expect(text).toMatch(/^ {2}due_date\?: string; \/\/ date — Payment due date\.$/m);
+    expect(text).toMatch(/^ {2}due_date\?: string; \/\/ date — Payment due date\. /m);
     expect(text).toMatch(/^ {2}recipient: Recipient;/m);
   });
 
@@ -95,6 +139,16 @@ describe('declarations', () => {
     expect(recipient.text).toMatch(/^ {2}alternative_id\?: AlternativeIdentifier;/m);
     expect(recipient.text).not.toContain('interface AlternativeIdentifier');
     expect(recipient.references).toEqual(['AlternativeIdentifier', 'Address']);
+  });
+
+  it('keep the requirement that is not the first sentence, and mark the field', () => {
+    const text = declared('CreateInvoiceRequest');
+    expect(text).toMatch(/^ {2}type: [^\n]*`CORRECTIVE` is not accepted here/m);
+    expect(text).toMatch(
+      /^ {4}main_tax\?: TaxInfo; \/\/ conditionally required — [^\n]*Mandatory on `NORMAL` lines\.[^\n]*`422 LINE_MAIN_TAX_REQUIRED`/m,
+    );
+    // Required in the schema: no mark, the missing `?` says it.
+    expect(text).not.toMatch(/^ {2}recipient: [^\n]*conditionally required/m);
   });
 
   it('inline a named scalar or short enum, and name a long enum', () => {
@@ -251,7 +305,7 @@ describe(`${SCHEMA_GET}`, () => {
   });
 
   it('stops before the output limit and names what it left out', () => {
-    const { text } = declareAll(['CreateInvoiceRequest', 'TaxInfo', 'Address'], schemas, 3_000);
+    const { text } = declareAll(['CreateInvoiceRequest', 'TaxInfo', 'Address'], schemas, 4_900);
     expect(text).toContain('interface CreateInvoiceRequest');
     expect(text).toContain('interface TaxInfo');
     expect(text).toContain(
