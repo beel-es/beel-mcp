@@ -48,6 +48,8 @@ export function explainError(err: ExplainableError): string {
 
   if (entry?.actor === 'benign') {
     lines.push('', 'This is not necessarily a failure — the operation may have already succeeded.');
+  } else if (entry?.actor === 'throttled') {
+    lines.push('', 'The request was not applied. Wait before sending the same call again.');
   } else if (entry?.actor === 'access' || entry?.actor === 'configuration') {
     lines.push('', 'Retrying this call unchanged will not help.');
   }

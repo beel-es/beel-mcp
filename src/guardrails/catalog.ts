@@ -33,6 +33,11 @@ export type Actor =
   | 'configuration'
   /** Nothing is wrong — the operation already happened, or is in flight. */
   | 'benign'
+  /**
+   * The request was refused before it ran (a rate limit): it was NOT applied,
+   * so the same call can be sent again once the wait is over.
+   */
+  | 'throttled'
   /** Access or quota; retrying the same call unchanged will not help. */
   | 'access';
 
@@ -240,8 +245,8 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   SIMPLIFICADA_FORBIDS_IRPF: {
     actor: 'request',
     remedy:
-      'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
-      'default, which may be non-zero.',
+      'On an F2 (SIMPLIFIED) line, omit irpf_rate or send 0; any other rate is rejected, ' +
+      'never coerced to 0.',
     guardrail: 'simplified',
   },
   // Also answered when issuing a draft saved with an identified recipient, where
@@ -311,10 +316,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'with beel_patch_webhook_subscription, or delete it with beel_delete_webhook_subscription.',
   },
   RATE_LIMIT_EXCEEDED: {
-    actor: 'benign',
+    actor: 'throttled',
     remedy:
       'This server already retries 429s honouring Retry-After, so reaching you means the ' +
-      'limit is sustained rather than momentary. Slow down instead of retrying harder.',
+      'limit is sustained rather than momentary. Wait, then send the call again at a slower pace.',
   },
 };
 

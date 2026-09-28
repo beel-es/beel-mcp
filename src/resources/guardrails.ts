@@ -5,7 +5,7 @@ import {
   findGuardrail,
   guardrailUri,
 } from '../guardrails/rules.js';
-import { ERROR_CATALOG, catalogCodes, docsUrlForCode } from '../guardrails/catalog.js';
+import { ERROR_CATALOG, catalogCodes, docsUrlForCode, type Actor } from '../guardrails/catalog.js';
 import { BEEL_DEFAULTS } from '../shared/defaults.js';
 import { loadRules } from '../rules/fetch.js';
 import type { Rule, RuleDomain, RulesCatalog } from '../rules/catalog.js';
@@ -136,10 +136,12 @@ function domainBody(catalog: RulesCatalog, domain: RuleDomain): string {
 }
 
 function errorsBody(): string {
-  const byActor: Record<string, string[]> = {
+  // Typed by Actor, so a new actor without a heading fails to compile.
+  const byActor: Record<Actor, string[]> = {
     request: ['## Fix the request and retry', ''],
     configuration: ['## Account configuration — a human must change something', ''],
     access: ['## Access or quota — retrying unchanged will not help', ''],
+    throttled: ['## Throttled — not applied; wait, then send the same call again', ''],
     benign: ['## Not a failure — the operation already happened, or is in flight', ''],
   };
 
