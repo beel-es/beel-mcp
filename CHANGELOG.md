@@ -3,6 +3,13 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.9.0](https://github.com/beel-es/beel-mcp/compare/v0.8.0...v0.9.0) (2026-09-28)
+
+
+### Novedades
+
+* fewer calls and smaller results for agents building an integration ([#114](https://github.com/beel-es/beel-mcp/issues/114)) ([e816046](https://github.com/beel-es/beel-mcp/commit/e8160461b895ff5378dc4be99d17f89158d44d54))
+
 ## [0.8.0](https://github.com/beel-es/beel-mcp/compare/v0.7.0...v0.8.0) (2026-09-27)
 
 
