@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getSetupStatus,
   isWorkflowTool,
@@ -9,6 +9,8 @@ import type { OperationCaller } from '../src/tools/workflow-tools.js';
 import { assertValidOutput } from '../src/tools/validate-args.js';
 import { ApiError } from '../src/api/client.js';
 import type { ResolvedConfig } from '../src/config.js';
+import { clearSdksCache, snapshotSdkCatalog } from '../src/sdks/fetch.js';
+import { sdkReport } from '../src/sdks/report.js';
 
 const config: ResolvedConfig = {
   apiKey: 'beel_sk_test_x',
@@ -18,6 +20,15 @@ const config: ResolvedConfig = {
 };
 
 const setupTool = workflowTools.find((t) => t.name === SETUP_STATUS)!;
+
+// The SDK catalogue is read from the docs site; offline, the bundled copy answers.
+beforeEach(() => {
+  clearSdksCache();
+  vi.stubGlobal('fetch', async () => {
+    throw new Error('offline');
+  });
+});
+afterEach(() => vi.unstubAllGlobals());
 
 /** A fake API caller that answers each operationId from a fixture map. */
 function fakeCaller(
@@ -359,5 +370,32 @@ describe('listing entries and fan-out', () => {
     expect(status.companies).toHaveLength(12);
     // Four companies, one sub-call each at any instant.
     expect(peak).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the official SDKs', () => {
+  it('are reported from the catalogue, next to the account', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    assertValidOutput(setupTool, status);
+    const expected = sdkReport(snapshotSdkCatalog());
+    expect(status.sdks).toEqual(expected.sdks);
+    expect(status.sdk_guidance).toEqual(expected.sdk_guidance);
+  });
+
+  it('are reported even when the credential cannot be read', async () => {
+    const failing = new Map<string, unknown>([['getMyIdentity', new Error('boom')]]);
+    const status = await getSetupStatus(config, {}, fakeCaller({}, failing));
+    assertValidOutput(setupTool, status);
+    expect(status.account.error).toContain('boom');
+    expect(status.sdks.length).toBeGreaterThan(0);
+  });
+
+  it('come from the catalogue it is given', async () => {
+    const catalog = structuredClone(snapshotSdkCatalog());
+    catalog.directive = 'Use the SDK.';
+    catalog.sdks = catalog.sdks.slice(0, 1);
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY), async () => catalog);
+    expect(status.sdk_guidance.directive).toBe('Use the SDK.');
+    expect(status.sdks.map((sdk) => sdk.id)).toEqual([catalog.sdks[0]!.id]);
   });
 });

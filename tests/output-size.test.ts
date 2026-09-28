@@ -9,6 +9,8 @@ import { declareOperation, declareSchema, schemaNames } from '../src/spec/declar
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { SCHEMA_GET, executeSchemaTool } from '../src/tools/schema-tools.js';
 import { getSetupStatus, type OperationCaller } from '../src/tools/workflow-tools.js';
+import { snapshotSdkCatalog } from '../src/sdks/fetch.js';
+import { sdkReport } from '../src/sdks/report.js';
 
 /**
  * Size budgets for the results an agent reads most while it builds.
@@ -29,6 +31,12 @@ const LIST_LINE_BUDGET = 220;
 const LIST_FRAME_BUDGET = 400;
 /** One fully configured company in the setup report, as compact JSON. */
 const SETUP_COMPANY_BUDGET = 1_500;
+/**
+ * The SDKs and the catalogue's two sentences, as compact JSON: about 1,300
+ * characters for three SDKs today, each an id, a status, a few marker files, an
+ * install command, links and, when not recommended, a one-sentence note.
+ */
+const SDK_REPORT_BUDGET = 2_000;
 /** Compact JSON against indented JSON, on the contract's invoice example. */
 const COMPACT_JSON_RATIO = 0.8;
 /**
@@ -138,7 +146,9 @@ describe('beel_get_setup_status', () => {
     };
     const caller: OperationCaller = async (operationId) => responses[operationId];
     const status = await getSetupStatus(config, {}, caller);
-    expect(jsonText(status).length).toBeLessThan(SETUP_COMPANY_BUDGET);
+    // The SDKs have a budget of their own, below.
+    const { sdks: _sdks, sdk_guidance: _guidance, ...account } = status;
+    expect(jsonText(account).length).toBeLessThan(SETUP_COMPANY_BUDGET);
   });
 });
 
@@ -173,5 +183,11 @@ describe(`${SCHEMA_GET} answers a field-level question in a few KB`, () => {
       .filter(([, text]) => text.length > DECLARATION_BUDGET)
       .map(([name, text]) => `${name}: ${text.length}`);
     expect(over).toEqual([]);
+  });
+});
+
+describe('the official SDKs in the setup report', () => {
+  it(`take under ${SDK_REPORT_BUDGET} characters`, () => {
+    expect(jsonText(sdkReport(snapshotSdkCatalog())).length).toBeLessThan(SDK_REPORT_BUDGET);
   });
 });

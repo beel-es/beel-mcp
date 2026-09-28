@@ -47,6 +47,7 @@ checked out first; see `sync-spec.yml`.
 | `src/spec/` | Reading the OpenAPI document and projecting it to JSON Schema |
 | `src/policy/` | Which operations become tools, their annotations, and OAuth scopes |
 | `src/rules/` | The fiscal rules catalogue, read from `docs.beel.es/api/rules.json`; `snapshot.json` is its generated offline fallback |
+| `src/sdks/` | The catalogue of official SDKs, read from `docs.beel.es/api/sdks.json` and reported by `beel_get_setup_status`; `snapshot.json` is its generated offline fallback |
 | `src/guardrails/rules/*.md` | API usage guides surfaced to agents (not fiscal rules) — Markdown, with its own front matter |
 | `src/guardrails/validate.ts` | The invariants actually enforced before a call |
 | `src/guardrails/catalog.ts` | Error code → what it means and what to do about it |
@@ -64,6 +65,7 @@ checked out first; see `sync-spec.yml`.
 | `bundle-spec.mjs` | `npm run sync:spec`. Re-bundles the vendored contract from its source |
 | `spec-lock.mjs` | Records and verifies the provenance of that contract |
 | `sync-rules.mjs` | `npm run sync:rules`. Refreshes `src/rules/snapshot.json`, the fallback copy of the fiscal rules catalogue, from `docs.beel.es/api/rules.json` (or a docs URL passed as the argument). Never edit the snapshot by hand |
+| `sync-sdks.mjs` | `npm run sync:sdks`. Refreshes `src/sdks/snapshot.json`, the fallback copy of the official SDK catalogue, from `docs.beel.es/api/sdks.json` (or a docs URL passed as the argument). Never edit the snapshot by hand |
 | `server-manifest.mjs` | Keeps `server.json` in step with the package version |
 | `build-mcpapp.mjs` | Bundles the invoice viewer into `dist/mcpapp/invoice-pdf.html` |
 | `gen-tools-catalog.mts` | `npm run tools:catalog`. Emits the tool reference as MDX for the documentation site at docs.beel.es. Nothing here consumes it; it is copied over by hand after a contract sync |

@@ -82,20 +82,21 @@ describe('the server instructions', () => {
     expect(INTEGRATION_GUIDE_PATH).toBe('/guides/order-to-invoice');
     expect(SERVER_INSTRUCTIONS).toContain(`beel_docs_get page "${INTEGRATION_GUIDE_PATH}"`);
     expect(SERVER_INSTRUCTIONS).toMatch(
-      new RegExp(`${SETUP_STATUS} lists the SDKs, the company id,\\s+series ids and tax defaults`),
+      /It also gives the company id, series ids and\s+tax defaults; beel_schema_get/,
     );
   });
 
-  it("send integration code to the official SDK of the project's language, from the setup report", () => {
+  it('send integration code to the SDK the setup report recommends, not hand-written HTTP', () => {
     const line = SERVER_INSTRUCTIONS.split('\n').find((l) =>
       l.startsWith('To write integration code'),
     )!;
     expect(line).toContain(
-      "with the official SDK for the project's language if there is one, not hand-written HTTP calls",
+      `with the SDK ${SETUP_STATUS} recommends for the project's stack, if any, not hand-written HTTP calls`,
     );
-    expect(line).toContain(`${SETUP_STATUS} lists the SDKs`);
-    // Stack-agnostic: which SDK exists for which language is data, not prose.
-    expect(SERVER_INSTRUCTIONS).not.toMatch(/npm install|pip install|@beel_es\/|Node\/TypeScript/);
+    // Stack-agnostic: which SDK exists for which stack is the catalogue's data, not prose.
+    expect(SERVER_INSTRUCTIONS).not.toMatch(
+      /npm install|pip install|@beel_es\/|Node\/TypeScript|Python|Java\b/,
+    );
   });
 
   it('ask for batched reads: sections, rules and schemas, each in one call', () => {

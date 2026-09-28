@@ -117,6 +117,7 @@ export const HTTP_DEFAULTS = {
 export const CACHE_TTL_MS = {
   docs: 15 * 60 * 1000,
   rules: 15 * 60 * 1000,
+  sdks: 15 * 60 * 1000,
   scopeDiscovery: 15 * 60 * 1000,
 } as const;
 
@@ -131,6 +132,20 @@ export const RULES_SOURCE = {
   timeoutMs: 5_000,
   /** The catalogue is a few hundred kilobytes; anything far past that is not it. */
   maxBytes: 4 * 1024 * 1024,
+  /** After a failed fetch, serve the fallback this long before trying again. */
+  retryAfterFailureMs: 60 * 1000,
+} as const;
+
+/**
+ * The catalogue of official SDKs the docs site publishes: which SDK for which
+ * stack, its install command, its status and its guides. Read like the rules
+ * catalogue, relative to the docs base URL.
+ */
+export const SDKS_SOURCE = {
+  path: '/api/sdks.json',
+  timeoutMs: 5_000,
+  /** The catalogue is a few kilobytes; anything far past that is not it. */
+  maxBytes: 256 * 1024,
   /** After a failed fetch, serve the fallback this long before trying again. */
   retryAfterFailureMs: 60 * 1000,
 } as const;

@@ -14,6 +14,9 @@ import {
   stringItems,
 } from '../shared/guards.js';
 import { pLimit } from '../shared/fetch.js';
+import { loadSdks } from '../sdks/fetch.js';
+import { SDK_REPORT_SCHEMA, sdkReport, type SdkReport } from '../sdks/report.js';
+import type { SdkCatalog } from '../sdks/catalog.js';
 
 /**
  * Synthetic workflow tools that are NOT derived from the OpenAPI spec. They call
@@ -52,8 +55,9 @@ export const workflowTools: Tool[] = [
       'company its company_id and NIF, whether it can issue Live and exactly what is missing ' +
       '(issuing-readiness blockers, default series, VeriFactu, payment connection), its default ' +
       'series per document type (id and code), its VeriFactu status and its tax defaults, and ' +
-      'the single recommended next action. A section that could not be read carries an `error` ' +
-      'and never a default, so an unknown is never reported as ready.',
+      'the single recommended next action; also the official SDKs by stack. A section that ' +
+      'could not be read carries an `error` and never a default, so an unknown is never ' +
+      'reported as ready.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,8 +192,9 @@ export const workflowTools: Tool[] = [
           type: 'string',
           description: 'Single recommended next action across the whole account.',
         },
+        ...SDK_REPORT_SCHEMA,
       },
-      required: ['environment', 'account', 'companies', 'next_action'],
+      required: ['environment', 'account', 'companies', 'next_action', 'sdks', 'sdk_guidance'],
     },
     annotations: { title: 'Setup status', readOnlyHint: true, openWorldHint: true },
   },
@@ -474,7 +479,10 @@ async function reportForCompany(
   return { ...partial, next_action: nextActionFor(partial) };
 }
 
-export interface SetupStatus {
+/** The account half of the report; the SDKs are added to it on every path. */
+type AccountStatus = Omit<SetupStatus, keyof SdkReport>;
+
+export interface SetupStatus extends SdkReport {
   /**
    * The environment this session acts on. Computed in exactly one place (see
    * policy/scopes.ts) and surfaced here so the agent can tell whether it is
@@ -507,15 +515,35 @@ async function listCompanies(
   return { ok: true, value: entries };
 }
 
+/** Reads the SDK catalogue; tests inject one. */
+export type SdkCatalogReader = () => Promise<SdkCatalog>;
+
+const readSdkCatalog: SdkCatalogReader = async () => (await loadSdks()).catalog;
+
 /**
- * Aggregate identity, companies and per-company readiness into a compact checklist.
- * `caller` defaults to the spec-derived API caller; tests inject a fake.
+ * Aggregate identity, companies and per-company readiness into a compact
+ * checklist, with the official SDKs. The SDKs do not depend on the credential,
+ * so they are reported even when identity cannot be read, and their catalogue
+ * never fails (it falls back to the bundled copy). `caller` defaults to the
+ * spec-derived API caller and `sdks` to the published catalogue; tests inject
+ * both.
  */
 export async function getSetupStatus(
   config: ResolvedConfig,
   args: Record<string, unknown>,
   caller?: OperationCaller,
+  sdks: SdkCatalogReader = readSdkCatalog,
 ): Promise<SetupStatus> {
+  const [status, catalog] = await Promise.all([accountStatus(config, args, caller), sdks()]);
+  return { ...status, ...sdkReport(catalog) };
+}
+
+/** Identity, companies and per-company readiness. */
+async function accountStatus(
+  config: ResolvedConfig,
+  args: Record<string, unknown>,
+  caller?: OperationCaller,
+): Promise<AccountStatus> {
   const call = caller ?? defaultCaller(config);
   const filterId = readString(args, 'company_id');
 
@@ -545,7 +573,7 @@ async function companiesReport(
   config: ResolvedConfig,
   account: SetupStatus['account'],
   filterId: string | undefined,
-): Promise<SetupStatus> {
+): Promise<AccountStatus> {
   const accountId = account.account_id!;
   const listing = await listCompanies(call, accountId);
   if (!listing.ok) {

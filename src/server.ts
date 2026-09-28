@@ -252,9 +252,9 @@ export const SERVER_INSTRUCTIONS = [
     'beel://guardrails/* resources hold the same rules plus API usage guides.',
   '',
   `To write integration code, follow beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (one SDK ` +
-    "call per invoicing case) with the official SDK for the project's language if there is " +
-    'one, not hand-written HTTP calls. beel_get_setup_status lists the SDKs, the company id, ' +
-    "series ids and tax defaults; beel_schema_get gives field-level shapes, not an SDK's type file.",
+    "call per invoicing case) with the SDK beel_get_setup_status recommends for the project's " +
+    'stack, if any, not hand-written HTTP calls. It also gives the company id, series ids and ' +
+    "tax defaults; beel_schema_get gives field-level shapes, not an SDK's type file.",
   'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
     'schemas in one beel_schema_get.',
   '',

@@ -24,6 +24,8 @@ npm run tools:list  # every tool the server exposes, with its scopes
 - `src/policy/` — which operations become tools (`tool-policy.ts`) and which scopes they need (`scopes.ts`). Least privilege: never add a scope no tool uses.
 - `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the API usage guides as markdown (`rules/`), and the error catalogue (`catalog.ts`).
 - `src/rules/` — the fiscal rules catalogue, read from `docs.beel.es/api/rules.json`. `snapshot.json` is only its offline fallback, written by `npm run sync:rules`; never edit it, and never re-type a rule anywhere else.
+- `src/sdks/` — the catalogue of official SDKs, read from `docs.beel.es/api/sdks.json` and reported by `beel_get_setup_status`. `snapshot.json` is its offline fallback, written by `npm run sync:sdks`; which SDK serves which stack is never written in prose here.
+- `src/docs/catalogue.ts` — the loader both catalogues share: live, then stale, then the snapshot.
 - `src/tools/` — API tools, docs tools, rules tools, the schema tool, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
 - `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.
