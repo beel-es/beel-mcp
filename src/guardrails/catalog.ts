@@ -279,13 +279,17 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   // ── Idempotency ───────────────────────────────────────────────────────────
   IDEMPOTENCY_KEY_PROCESSING: {
     actor: 'benign',
-    remedy: 'Wait briefly and retry with the SAME key. A new key would create a second invoice.',
+    remedy:
+      'The same request is still being processed. Wait briefly and repeat the call unchanged; ' +
+      'a changed request or a new key would create a second invoice.',
   },
   IDEMPOTENCY_KEY_MISMATCH: {
     actor: 'request',
     remedy:
-      'Use a new key for a genuinely different request. If the body was not meant to change, ' +
-      'check what already exists before retrying — you are about to duplicate an invoice.',
+      'This idempotency_key was used in the last 24 hours for a different request. To retry ' +
+      'that request, send it unchanged; for a new operation, pass a new key or omit ' +
+      'idempotency_key so one is derived. If the body was not meant to change, check what ' +
+      'already exists first.',
   },
 
   // ── Access and quota ──────────────────────────────────────────────────────

@@ -68,8 +68,8 @@ export const SDK_REPORT_SCHEMA = {
   sdks: {
     type: 'array',
     description:
-      "The official SDKs. Match the project's files against detect, then install the one " +
-      'whose status is recommended; a note says why another is not.',
+      "The official SDKs from the docs catalogue; detect lists the files that mark a project's " +
+      'stack. sdk_guidance says when to use one.',
     items: {
       type: 'object',
       properties: {

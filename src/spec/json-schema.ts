@@ -185,6 +185,14 @@ class SchemaProjector {
  * become top-level properties; a JSON request body is nested under `body` so its
  * full structure (line items, enums, regime keys…) reaches the model intact.
  */
+/**
+ * The one line an agent reads about `idempotency_key`. When to use it is said
+ * once, in the server instructions; this only says what it is for.
+ */
+export const IDEMPOTENCY_KEY_DESCRIPTION =
+  'Only for a deliberate second operation identical to one already sent: a key unique to it, ' +
+  'e.g. an order id. Omitted, the key is derived from the request.';
+
 export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
   const projector = new SchemaProjector(doc);
   const properties: Record<string, object> = {};
@@ -223,12 +231,7 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
       type: 'string',
       pattern: '^[a-zA-Z0-9_-]+$',
       maxLength: 255,
-      description:
-        'Optional idempotency key for this operation. Omit it and one is derived from the ' +
-        'request itself, which makes a blind retry safe but also collapses a SECOND, ' +
-        'deliberately identical operation into the first for 24 hours. Set it — to an order ' +
-        'id, or anything unique per intended operation — whenever you mean to create ' +
-        'something that may look identical to what you just created.',
+      description: IDEMPOTENCY_KEY_DESCRIPTION,
     };
   }
 

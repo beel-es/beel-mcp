@@ -236,25 +236,25 @@ export const SERVER_INSTRUCTIONS = [
   '',
   'Which tools, in this order:',
   '1. Designing a flow, or before proposing code or a call that creates or changes a fiscal ' +
-    'document (issue, void, correct, simplified exchange, series and numbering, refunds, dates, ' +
-    'PDF or QR): start with beel_rules_list filtered, by domain for that flow or with ' +
+    'document (issue, void, correct, exchange, series, refunds, dates, PDF or QR): start with beel_rules_list filtered, by domain for that flow or with ' +
     'enforced_by "integrator", the checklist of what the API leaves to your code. Answer from that list; do not read every rule first. Open with beel_rules_get ' +
     'only the rules your answer relies on, all in one call with ids.',
   '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get with the page ' +
     'and section of the result that answers, not the whole page. Which fiscal rule applies ' +
     'is step 1.',
-  '3. To act: the API tool for the operation. Use a test key (beel_sk_test_) unless the user ' +
-    'asks for Live. Send an Idempotency-Key on every create, issue, correct or void, and reuse ' +
-    'it only to retry the same request.',
+  '3. To act: the API tool for the operation. Before a write, check environment in ' +
+    'beel_get_setup_status: in live (PROD) an invoice is a real fiscal document, so confirm ' +
+    'with the user. Each write tool derives its Idempotency-Key from the request, so repeating ' +
+    'a call never duplicates it; pass idempotency_key only for a deliberate identical second ' +
+    'operation.',
   '4. A 4xx with a fiscal error.code: beel_rules_get with that error_code, fix the request, ' +
-    'and send it again with a new Idempotency-Key.',
+    'and send it again.',
   'Skip the rules for questions that do not touch them (listing, reading, auth, pagination). ' +
     'beel://guardrails/* resources hold the same rules plus API usage guides.',
   '',
-  `To write integration code, follow beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (one SDK ` +
-    "call per invoicing case) with the SDK beel_get_setup_status recommends for the project's " +
-    'stack, if any, not hand-written HTTP calls. It also gives the company id, series ids and ' +
-    "tax defaults; beel_schema_get gives field-level shapes, not an SDK's type file.",
+  `To write integration code, follow beel_docs_get page "${INTEGRATION_GUIDE_PATH}" with the ` +
+    'SDK beel_get_setup_status recommends (sdk_guidance); it also gives the company id, series ' +
+    "ids and tax defaults. beel_schema_get gives field-level shapes, not an SDK's type file.",
   'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
     'schemas in one beel_schema_get.',
   '',

@@ -61,7 +61,12 @@ describe('the server instructions', () => {
 
   it('hold the general rules: when not to, test key, idempotency, integrator rules, citing', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/Skip the rules for questions/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/beel_sk_test_/);
+    // The key is fixed by the environment or the OAuth grant; what an agent can act on is
+    // the environment the setup report states, mapped to the contract's PROD.
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /check environment in\s+beel_get_setup_status: in live \(PROD\) an invoice is a real fiscal document, so confirm\s+with the user/,
+    );
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/Use a test key|beel_sk_test_/);
     expect(SERVER_INSTRUCTIONS).toMatch(/Idempotency-Key/);
     expect(SERVER_INSTRUCTIONS).toMatch(/enforced_by "integrator"/);
     expect(SERVER_INSTRUCTIONS).toMatch(/cite its id with its link/);
@@ -82,20 +87,19 @@ describe('the server instructions', () => {
     expect(INTEGRATION_GUIDE_PATH).toBe('/guides/order-to-invoice');
     expect(SERVER_INSTRUCTIONS).toContain(`beel_docs_get page "${INTEGRATION_GUIDE_PATH}"`);
     expect(SERVER_INSTRUCTIONS).toMatch(
-      /It also gives the company id, series ids and\s+tax defaults; beel_schema_get/,
+      /it also gives the company id, series\s+ids and tax defaults/,
     );
   });
 
-  it('send integration code to the SDK the setup report recommends, not hand-written HTTP', () => {
+  it('point integration code at the SDK the setup report recommends, and no further', () => {
     const line = SERVER_INSTRUCTIONS.split('\n').find((l) =>
       l.startsWith('To write integration code'),
     )!;
-    expect(line).toContain(
-      `with the SDK ${SETUP_STATUS} recommends for the project's stack, if any, not hand-written HTTP calls`,
-    );
-    // Stack-agnostic: which SDK exists for which stack is the catalogue's data, not prose.
+    expect(line).toContain(`with the SDK ${SETUP_STATUS} recommends (sdk_guidance)`);
+    // When and why to use an SDK is the catalogue's directive, reported verbatim by the
+    // setup status; the instructions only point at it. Which SDK exists is data, not prose.
     expect(SERVER_INSTRUCTIONS).not.toMatch(
-      /npm install|pip install|@beel_es\/|Node\/TypeScript|Python|Java\b/,
+      /hand-written HTTP|npm install|pip install|@beel_es\/|Node\/TypeScript|Python|Java\b/,
     );
   });
 
