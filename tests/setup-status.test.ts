@@ -112,7 +112,7 @@ describe('beel_get_setup_status', () => {
       missing: ['F1'],
       defaults: [{ document_type: 'F2', series_id: 'ser-2', code: 'R' }],
     });
-    expect(co.verifactu).toEqual({ enabled: false, apply_by_default: false });
+    expect(co.verifactu).toEqual({ enabled: false });
     expect(co.next_action).toContain('beel_set_default_series');
     expect(status.next_action).toContain('B1');
   });
@@ -171,7 +171,7 @@ describe('what an integration needs to start', () => {
     expect(co.default_series.defaults).toEqual([
       { document_type: 'STANDARD', series_id: 'ser-1', code: 'F' },
     ]);
-    expect(co.verifactu).toEqual({ enabled: true, apply_by_default: true, status: 'ACTIVE' });
+    expect(co.verifactu).toEqual({ enabled: true, status: 'ACTIVE' });
     // Under the API's own field names, and only those a line is built from.
     expect(co.tax_defaults).toEqual({
       default_main_tax: { type: 'IVA', percentage: 21, regime_key: '01' },
@@ -183,14 +183,17 @@ describe('what an integration needs to start', () => {
     });
   });
 
-  it('reports apply_by_default only when the API sends it', async () => {
-    const caller = fakeCaller({
-      ...HEALTHY,
-      getCompanyVeriFactuConfiguration: { enabled: true, status: 'ACTIVE' },
-    });
-    const status = await getSetupStatus(config, {}, caller);
-    assertValidOutput(setupTool, status);
-    expect(status.companies[0]!.verifactu).toEqual({ enabled: true, status: 'ACTIVE' });
+  it('does not report the retired apply_by_default, even when a response still carries it', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    expect(status.companies[0]!.verifactu).not.toHaveProperty('apply_by_default');
+    const verifactu = (
+      setupTool.outputSchema as {
+        properties: {
+          companies: { items: { properties: Record<string, { properties: object }> } };
+        };
+      }
+    ).properties.companies.items.properties.verifactu!;
+    expect(Object.keys(verifactu.properties)).not.toContain('apply_by_default');
   });
 
   it('asks for the tax configuration of each company by its id', async () => {
@@ -397,5 +400,51 @@ describe('the official SDKs', () => {
     const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY), async () => catalog);
     expect(status.sdk_guidance.directive).toBe('Use the SDK.');
     expect(status.sdks.map((sdk) => sdk.id)).toEqual([catalog.sdks[0]!.id]);
+  });
+});
+
+describe('readiness is worded from the environment', () => {
+  it('says test (TEST) in a test session, and never Live', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    expect(status.companies[0]!.next_action).toBe(
+      'This company can issue in test (TEST). Create a first invoice with beel_create_invoice.',
+    );
+    expect(status.next_action).toMatch(/^Every company can issue in test \(TEST\)\./);
+    expect(JSON.stringify(status)).not.toMatch(/issue Live/);
+  });
+
+  it('asks for confirmation in a live session, where every invoice is a real fiscal document', async () => {
+    const status = await getSetupStatus({ ...config, env: 'live' }, {}, fakeCaller(HEALTHY));
+    expect(status.environment).toBe('live');
+    expect(status.companies[0]!.next_action).toMatch(
+      /can issue in live \(PROD\)\. Every invoice there is a real fiscal document: confirm with the user/,
+    );
+  });
+});
+
+describe('a payment connection is not needed to issue', () => {
+  it('stays out of missing and next_action, and is still reported', async () => {
+    const caller = fakeCaller({ ...HEALTHY, listCompanyPaymentConnections: { connections: [] } });
+    const status = await getSetupStatus(config, {}, caller);
+    assertValidOutput(setupTool, status);
+    const co = status.companies[0]!;
+    expect(co.payment_connection).toEqual({ count: 0, active: false });
+    expect(co.missing).toEqual([]);
+    expect(co.next_action).not.toMatch(/payment/i);
+    expect(status.next_action).not.toMatch(/payment/i);
+  });
+});
+
+describe('the tax defaults are described as the contract applies them', () => {
+  it('says the main tax is only a prefill and the IRPF default does apply (TAX-010)', () => {
+    const description = (
+      setupTool.outputSchema as {
+        properties: {
+          companies: { items: { properties: Record<string, { description?: string }> } };
+        };
+      }
+    ).properties.companies.items.properties.tax_defaults!.description!;
+    expect(description).toMatch(/default_main_tax is a prefill the API never applies/);
+    expect(description).toMatch(/A line without irpf_rate takes default_irpf_rate \(TAX-010\)/);
   });
 });
