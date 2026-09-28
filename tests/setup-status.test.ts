@@ -21,6 +21,18 @@ const config: ResolvedConfig = {
 
 const setupTool = workflowTools.find((t) => t.name === SETUP_STATUS)!;
 
+/** The advertised output schema of one company in the report. */
+function companySchemaProperties(): Record<string, { description?: string; properties?: object }> {
+  const schema = setupTool.outputSchema as unknown as {
+    properties: {
+      companies: {
+        items: { properties: Record<string, { description?: string; properties?: object }> };
+      };
+    };
+  };
+  return schema.properties.companies.items.properties;
+}
+
 // The SDK catalogue is read from the docs site; offline, the bundled copy answers.
 beforeEach(() => {
   clearSdksCache();
@@ -186,14 +198,8 @@ describe('what an integration needs to start', () => {
   it('does not report the retired apply_by_default, even when a response still carries it', async () => {
     const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
     expect(status.companies[0]!.verifactu).not.toHaveProperty('apply_by_default');
-    const verifactu = (
-      setupTool.outputSchema as {
-        properties: {
-          companies: { items: { properties: Record<string, { properties: object }> } };
-        };
-      }
-    ).properties.companies.items.properties.verifactu!;
-    expect(Object.keys(verifactu.properties)).not.toContain('apply_by_default');
+    const verifactu = companySchemaProperties().verifactu!;
+    expect(Object.keys(verifactu.properties!)).not.toContain('apply_by_default');
   });
 
   it('asks for the tax configuration of each company by its id', async () => {
@@ -437,13 +443,7 @@ describe('a payment connection is not needed to issue', () => {
 
 describe('the tax defaults are described as the contract applies them', () => {
   it('says the main tax is only a prefill and the IRPF default does apply (TAX-010)', () => {
-    const description = (
-      setupTool.outputSchema as {
-        properties: {
-          companies: { items: { properties: Record<string, { description?: string }> } };
-        };
-      }
-    ).properties.companies.items.properties.tax_defaults!.description!;
+    const description = companySchemaProperties().tax_defaults!.description!;
     expect(description).toMatch(/default_main_tax is a prefill the API never applies/);
     expect(description).toMatch(/A line without irpf_rate takes default_irpf_rate \(TAX-010\)/);
   });
