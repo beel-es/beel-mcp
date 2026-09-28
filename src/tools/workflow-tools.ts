@@ -14,6 +14,9 @@ import {
   stringItems,
 } from '../shared/guards.js';
 import { pLimit } from '../shared/fetch.js';
+import { loadSdks } from '../sdks/fetch.js';
+import { SDK_REPORT_SCHEMA, sdkReport, type SdkReport } from '../sdks/report.js';
+import type { SdkCatalog } from '../sdks/catalog.js';
 
 /**
  * Synthetic workflow tools that are NOT derived from the OpenAPI spec. They call
@@ -49,11 +52,12 @@ export const workflowTools: Tool[] = [
     name: SETUP_STATUS,
     description:
       'Read-only setup status across your account, with the ids an integration needs: for each ' +
-      'company its company_id and NIF, whether it can issue Live and exactly what is missing ' +
+      'company its company_id and NIF, whether it can issue in this environment and what is missing ' +
       '(issuing-readiness blockers, default series, VeriFactu, payment connection), its default ' +
       'series per document type (id and code), its VeriFactu status and its tax defaults, and ' +
-      'the single recommended next action. A section that could not be read carries an `error` ' +
-      'and never a default, so an unknown is never reported as ready.',
+      'the single recommended next action; also the official SDKs by stack. A section that ' +
+      'could not be read carries an `error` and never a default, so an unknown is never ' +
+      'reported as ready.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -72,8 +76,8 @@ export const workflowTools: Tool[] = [
           type: 'string',
           enum: ['test', 'live'],
           description:
-            'Which BeeL environment this session operates on. `live` means every ' +
-            'invoice issued is a real fiscal document.',
+            "Which BeeL environment this session operates on: `test` is the contract's TEST and " +
+            '`live` its PROD, where every invoice issued is a real fiscal document.',
         },
         account: {
           type: 'object',
@@ -102,7 +106,7 @@ export const workflowTools: Tool[] = [
               ready: {
                 type: ['boolean', 'null'],
                 description:
-                  'Can issue Live (no blockers). `null` means readiness could not be read — ' +
+                  "Can issue in this session's environment (no blockers). `null` means readiness could not be read — " +
                   'see `error`; it does not mean not ready, and it does not mean ready.',
               },
               blockers: { type: 'array', items: { type: 'string' } },
@@ -134,7 +138,6 @@ export const workflowTools: Tool[] = [
                 type: 'object',
                 properties: {
                   enabled: { type: 'boolean' },
-                  apply_by_default: { type: 'boolean' },
                   status: {
                     type: 'string',
                     description: 'VeriFactu state as the API derives it, e.g. ACTIVE or UNSIGNED.',
@@ -145,9 +148,10 @@ export const workflowTools: Tool[] = [
               tax_defaults: {
                 type: 'object',
                 description:
-                  'The tax configuration as stored, under the API field names. A prefill the ' +
-                  'API never applies to a line on its own: every NORMAL line still sends its ' +
-                  'main_tax. allowed_irpf_rates are the IRPF rates this NIF may bear.',
+                  'The tax configuration as stored, under the API field names. ' +
+                  'default_main_tax is a prefill the API never applies: every NORMAL line ' +
+                  'sends its main_tax. A line without irpf_rate takes default_irpf_rate ' +
+                  '(TAX-010). allowed_irpf_rates are the IRPF rates this NIF may bear.',
                 properties: {
                   default_main_tax: {
                     type: 'object',
@@ -177,7 +181,9 @@ export const workflowTools: Tool[] = [
               missing: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Human-readable list of what is missing to issue Live.',
+                description:
+                  'What is missing to issue in this environment. A payment connection is not: ' +
+                  'it is needed to get paid, and payment_connection reports it.',
               },
               next_action: { type: 'string', description: 'Single recommended next action.' },
             },
@@ -188,8 +194,9 @@ export const workflowTools: Tool[] = [
           type: 'string',
           description: 'Single recommended next action across the whole account.',
         },
+        ...SDK_REPORT_SCHEMA,
       },
-      required: ['environment', 'account', 'companies', 'next_action'],
+      required: ['environment', 'account', 'companies', 'next_action', 'sdks', 'sdk_guidance'],
     },
     annotations: { title: 'Setup status', readOnlyHint: true, openWorldHint: true },
   },
@@ -268,7 +275,6 @@ interface SeriesSection {
 
 interface VerifactuSection {
   enabled?: boolean;
-  apply_by_default?: boolean;
   status?: string;
   error?: string;
 }
@@ -346,9 +352,6 @@ function verifactuSection(outcome: Outcome<unknown>): VerifactuSection {
   if (!outcome.ok) return { error: outcome.error };
   return compact({
     enabled: readBoolean(outcome.value, 'enabled') === true,
-    // Only when the API sends it: the contract no longer declares this field,
-    // and an absent flag read as `false` would be a default this report made up.
-    apply_by_default: readBoolean(outcome.value, 'apply_by_default'),
     status: readString(outcome.value, 'status'),
   });
 }
@@ -391,12 +394,12 @@ function paymentSection(outcome: Outcome<unknown>): PaymentSection {
   };
 }
 
-/** What still stands between this company and a Live invoice, in plain words. */
-function missingFor(
-  blockers: string[],
-  verifactu: VerifactuSection,
-  payment: PaymentSection,
-): string[] {
+/**
+ * What still stands between this company and issuing in this environment, in
+ * plain words. A payment connection is not among them: it is needed to get
+ * paid, not to issue, and is reported apart.
+ */
+function missingFor(blockers: string[], verifactu: VerifactuSection): string[] {
   const missing: string[] = [];
   // Blocker remedies come from the shared error catalogue rather than a local
   // map, so this report and a failed call always phrase the fix the same way.
@@ -405,9 +408,6 @@ function missingFor(
     missing.push(
       'VeriFactu is disabled; enable it with beel_update_verifactu_configuration if this company must reach AEAT.',
     );
-  }
-  if (payment.active === false) {
-    missing.push('No active payment connection; run beel_initiate_payment_connection to get paid.');
   }
   return missing;
 }
@@ -419,25 +419,37 @@ function missingFor(
  * establish readiness first, because "we could not check" and "you are clear to
  * issue a real fiscal document" are not the same answer.
  */
-function nextActionFor(report: Omit<CompanyReport, 'next_action'>): string {
+function nextActionFor(report: Omit<CompanyReport, 'next_action'>, env: KeyEnv): string {
   if (report.ready === null) {
     return (
       `Issuing readiness is unknown (${report.error ?? 'the check did not answer'}); ` +
-      're-run beel_get_issuing_readiness before issuing anything Live.'
+      're-run beel_get_issuing_readiness before issuing anything.'
     );
   }
-  if (report.ready) {
-    return (
-      report.missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_invoice.'
-    );
-  }
+  if (report.ready) return report.missing[0] ?? readyToIssue(env, 'This company');
+
   const firstBlocker = report.blockers[0];
   if (firstBlocker) return explainCode(firstBlocker);
   return report.missing[0] ?? 'Check beel_get_issuing_readiness.';
 }
 
+/**
+ * How the report names an environment: the session's own value, with the
+ * contract's name for it, so the two vocabularies never read as two places.
+ */
+const ENVIRONMENT_NAME: Record<KeyEnv, string> = { test: 'test (TEST)', live: 'live (PROD)' };
+
+/** "Ready to issue", worded from the environment: in live it is a real fiscal document. */
+function readyToIssue(env: KeyEnv, subject: string): string {
+  const where = `${subject} can issue in ${ENVIRONMENT_NAME[env]}.`;
+  return env === 'live'
+    ? `${where} Every invoice there is a real fiscal document: confirm with the user before beel_create_invoice.`
+    : `${where} Create a first invoice with beel_create_invoice.`;
+}
+
 async function reportForCompany(
   call: OperationCaller,
+  env: KeyEnv,
   companyId: string,
   company: unknown,
 ): Promise<CompanyReport> {
@@ -469,12 +481,15 @@ async function reportForCompany(
     verifactu,
     tax_defaults: taxDefaults,
     payment_connection: payment,
-    missing: missingFor(blockers, verifactu, payment),
+    missing: missingFor(blockers, verifactu),
   });
-  return { ...partial, next_action: nextActionFor(partial) };
+  return { ...partial, next_action: nextActionFor(partial, env) };
 }
 
-export interface SetupStatus {
+/** The account half of the report; the SDKs are added to it on every path. */
+type AccountStatus = Omit<SetupStatus, keyof SdkReport>;
+
+export interface SetupStatus extends SdkReport {
   /**
    * The environment this session acts on. Computed in exactly one place (see
    * policy/scopes.ts) and surfaced here so the agent can tell whether it is
@@ -507,15 +522,35 @@ async function listCompanies(
   return { ok: true, value: entries };
 }
 
+/** Reads the SDK catalogue; tests inject one. */
+export type SdkCatalogReader = () => Promise<SdkCatalog>;
+
+const readSdkCatalog: SdkCatalogReader = async () => (await loadSdks()).catalog;
+
 /**
- * Aggregate identity, companies and per-company readiness into a compact checklist.
- * `caller` defaults to the spec-derived API caller; tests inject a fake.
+ * Aggregate identity, companies and per-company readiness into a compact
+ * checklist, with the official SDKs. The SDKs do not depend on the credential,
+ * so they are reported even when identity cannot be read, and their catalogue
+ * never fails (it falls back to the bundled copy). `caller` defaults to the
+ * spec-derived API caller and `sdks` to the published catalogue; tests inject
+ * both.
  */
 export async function getSetupStatus(
   config: ResolvedConfig,
   args: Record<string, unknown>,
   caller?: OperationCaller,
+  sdks: SdkCatalogReader = readSdkCatalog,
 ): Promise<SetupStatus> {
+  const [status, catalog] = await Promise.all([accountStatus(config, args, caller), sdks()]);
+  return { ...status, ...sdkReport(catalog) };
+}
+
+/** Identity, companies and per-company readiness. */
+async function accountStatus(
+  config: ResolvedConfig,
+  args: Record<string, unknown>,
+  caller?: OperationCaller,
+): Promise<AccountStatus> {
   const call = caller ?? defaultCaller(config);
   const filterId = readString(args, 'company_id');
 
@@ -545,7 +580,7 @@ async function companiesReport(
   config: ResolvedConfig,
   account: SetupStatus['account'],
   filterId: string | undefined,
-): Promise<SetupStatus> {
+): Promise<AccountStatus> {
   const accountId = account.account_id!;
   const listing = await listCompanies(call, accountId);
   if (!listing.ok) {
@@ -569,7 +604,9 @@ async function companiesReport(
 
   const companies = await pLimit(
     MAX_COMPANIES_IN_FLIGHT,
-    scoped.map((entry) => () => reportForCompany(call, readString(entry, 'id')!, entry)),
+    scoped.map(
+      (entry) => () => reportForCompany(call, config.env, readString(entry, 'id')!, entry),
+    ),
   );
 
   const notReady = companies.find((c) => c.ready === false);
@@ -582,7 +619,7 @@ async function companiesReport(
         ? `${label(notReady)}: ${notReady.next_action}`
         : unknown
           ? `${label(unknown)}: ${unknown.next_action}`
-          : 'All companies can issue Live. Issue an invoice with beel_create_invoice.';
+          : readyToIssue(config.env, 'Every company');
 
   return compact({ environment: config.env, account, error: note, companies, next_action });
 }

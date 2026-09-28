@@ -7,8 +7,14 @@ import { RULES_GET, RULES_LIST, executeRulesTool } from '../src/tools/rules-tool
 import { jsonText } from '../src/tools/tool-result.js';
 import { declareOperation, declareSchema, schemaNames } from '../src/spec/declarations.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
+import { workflowTools } from '../src/tools/workflow-tools.js';
 import { SCHEMA_GET, executeSchemaTool } from '../src/tools/schema-tools.js';
 import { getSetupStatus, type OperationCaller } from '../src/tools/workflow-tools.js';
+import { snapshotSdkCatalog } from '../src/sdks/fetch.js';
+import { sdkReport } from '../src/sdks/report.js';
 
 /**
  * Size budgets for the results an agent reads most while it builds.
@@ -29,16 +35,30 @@ const LIST_LINE_BUDGET = 220;
 const LIST_FRAME_BUDGET = 400;
 /** One fully configured company in the setup report, as compact JSON. */
 const SETUP_COMPANY_BUDGET = 1_500;
+/**
+ * The SDKs and the catalogue's two sentences, as compact JSON: about 1,300
+ * characters for three SDKs today, each an id, a status, a few marker files, an
+ * install command, links and, when not recommended, a one-sentence note.
+ */
+const SDK_REPORT_BUDGET = 2_000;
 /** Compact JSON against indented JSON, on the contract's invoice example. */
 const COMPACT_JSON_RATIO = 0.8;
 /**
- * CreateInvoiceRequest with its inline line type: 27 fields, each a name, a type
- * and at most one sentence, about 90 characters on average today. The SDK's
- * generated type for the same schema runs to about 14,600 characters.
+ * CreateInvoiceRequest with its inline line type: 27 fields, each a name, a type,
+ * its first sentence and the sentences that say what is required or rejected
+ * (at most MAX_FIELD_CONSTRAINT_CHARS); about 4,400 characters today. The SDK's
+ * generated type for the same schema runs to about 14,600.
  */
-const CREATE_INVOICE_BUDGET = 3_000;
-/** The five schemas an invoice body is written from, read in one call. */
-const INVOICE_BODY_BATCH_BUDGET = 6_000;
+const CREATE_INVOICE_BUDGET = 5_000;
+/** The five schemas an invoice body is written from, read in one call: about 7,500 today. */
+const INVOICE_BODY_BATCH_BUDGET = 9_000;
+/**
+ * The whole tools/list answer, which a client sends with every request: about
+ * 448,000 characters today, from 582,000 before input-schema descriptions were
+ * kept to their first paragraph and their rules. Most of what remains is the
+ * contract's shared schemas, repeated in each tool that uses them.
+ */
+const TOOLS_LIST_BUDGET = 470_000;
 /** Any one schema or operation of the contract; the largest today is about 4,400. */
 const DECLARATION_BUDGET = 6_000;
 
@@ -138,7 +158,9 @@ describe('beel_get_setup_status', () => {
     };
     const caller: OperationCaller = async (operationId) => responses[operationId];
     const status = await getSetupStatus(config, {}, caller);
-    expect(jsonText(status).length).toBeLessThan(SETUP_COMPANY_BUDGET);
+    // The SDKs have a budget of their own, below.
+    const { sdks: _sdks, sdk_guidance: _guidance, ...account } = status;
+    expect(jsonText(account).length).toBeLessThan(SETUP_COMPANY_BUDGET);
   });
 });
 
@@ -173,5 +195,24 @@ describe(`${SCHEMA_GET} answers a field-level question in a few KB`, () => {
       .filter(([, text]) => text.length > DECLARATION_BUDGET)
       .map(([name, text]) => `${name}: ${text.length}`);
     expect(over).toEqual([]);
+  });
+});
+
+describe('the official SDKs in the setup report', () => {
+  it(`take under ${SDK_REPORT_BUDGET} characters`, () => {
+    expect(jsonText(sdkReport(snapshotSdkCatalog())).length).toBeLessThan(SDK_REPORT_BUDGET);
+  });
+});
+
+describe('tools/list', () => {
+  it(`stays under ${TOOLS_LIST_BUDGET} characters`, () => {
+    const tools = [
+      ...buildApiTools().tools.map((t) => t.tool),
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+      ...workflowTools,
+    ];
+    expect(JSON.stringify({ tools }).length).toBeLessThan(TOOLS_LIST_BUDGET);
   });
 });

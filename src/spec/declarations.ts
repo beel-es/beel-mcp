@@ -23,9 +23,8 @@ import { isRecord } from '../shared/guards.js';
 import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { resolveRef } from './refs.js';
+import { REQUIREMENT, fieldDescription, firstSentence } from './prose.js';
 
-/** Longest description a field carries: its first sentence, cut at this length. */
-export const MAX_FIELD_DESCRIPTION_CHARS = 120;
 /**
  * Most values a named enum may have and still be written out where it is used.
  * Past it the enum is referenced by name, like an object: a regime key or an
@@ -102,18 +101,6 @@ function isInlinable(node: SpecNode): boolean {
   return values === undefined || values.length <= MAX_INLINE_ENUM_VALUES;
 }
 
-/** The first sentence of a description, on one line, without Markdown emphasis. */
-export function firstSentence(text: unknown, max = MAX_FIELD_DESCRIPTION_CHARS): string {
-  if (typeof text !== 'string') return '';
-  const flat = text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
-  // A full stop ends it unless it closes "e.g." or "i.e."; a colon that opens a list does too.
-  const end = [...flat.matchAll(/[.!?](?=\s|$)|:(?=\s+[-*]\s)/g)].find(
-    (match) => !/\b(e\.g|i\.e)$/.test(flat.slice(0, match.index)),
-  );
-  const sentence = end ? flat.slice(0, end.index + 1) : flat;
-  return sentence.length <= max ? sentence : `${sentence.slice(0, max - 1).trimEnd()}…`;
-}
-
 /** Format, integer-ness, default and deprecation: what a type annotation cannot say. */
 function hints(node: SpecNode): string[] {
   const out: string[] = [];
@@ -135,16 +122,22 @@ function allHints(node: SpecNode): string[] {
   return [...new Set([...own, ...nested])];
 }
 
-/** The trailing `// …` of a field: its hints, then the first sentence of its description. */
-function fieldComment(doc: SpecNode, node: SpecNode): string {
-  let description = firstSentence(node.description);
+/**
+ * The trailing `// …` of a field: its hints, then what its description says
+ * (see {@link fieldDescription}). An optional field whose description says it
+ * is mandatory or required in some case is marked `conditionally required`: the
+ * schema cannot say it, and the agent must not read `?` as "never needed".
+ */
+function fieldComment(doc: SpecNode, node: SpecNode, optional = false): string {
+  let description = fieldDescription(node.description);
   if (!description) {
     // A bare reference carries no description of its own; the schema it names does.
     const target = shapeRef(node);
     const named = target ? schemaNamed(doc, target) : undefined;
     description = firstSentence(named?.description);
   }
-  const annotations = allHints(node).join(', ');
+  const conditional = optional && REQUIREMENT.test(description) ? ['conditionally required'] : [];
+  const annotations = [...conditional, ...allHints(node)].join(', ');
   const parts = [annotations, description].filter(Boolean);
   return parts.length === 0 ? '' : ` // ${parts.join(' — ')}`;
 }
@@ -232,7 +225,7 @@ function objectBlock(doc: SpecNode, node: SpecNode, refs: References, indent: st
     const field = isRecord(value) ? value : {};
     const type = typeOf(doc, field, refs, inner);
     const optional = required.has(key) ? '' : '?';
-    return `${inner}${key}${optional}: ${type};${fieldComment(doc, field)}`;
+    return `${inner}${key}${optional}: ${type};${fieldComment(doc, field, optional === '?')}`;
   });
   return lines.length === 0 ? '{}' : `{\n${lines.join('\n')}\n${indent}}`;
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { specErrorCodes } from './spec-error-codes.js';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
 import {
@@ -63,6 +64,30 @@ describe('guardrail enrichment', () => {
     expect(desc).toContain('beel_rules_list');
     expect(desc).toMatch(/domains simplified, contents, taxes, surcharge/);
     expect(desc).toContain(guardrailUri('invoice-lines'));
+  });
+
+  it('adds no footer to a read: the instructions skip the rules for reading', () => {
+    for (const op of manifest.filter((o) => o.method === 'GET')) {
+      expect(describeTool(op), op.operationId).not.toMatch(/Relevant rules:|Read before calling/);
+    }
+  });
+
+  it('heads the footer "Relevant rules:" and names no unreadable placeholder URI', () => {
+    const desc = describeTool(byId('createCompanyInvoice'));
+    expect(desc).toContain('Relevant rules:');
+    expect(desc).not.toContain('<domain>');
+    expect(desc).not.toContain('Read before calling');
+  });
+
+  it('binds the simplified and tax rules only to recurring operations that carry lines', () => {
+    expect(guardrailsForOperation(byId('createCompanyRecurringInvoice'))).toEqual([
+      'simplified',
+      'taxes',
+    ]);
+    expect(guardrailsForOperation(byId('skipCompanyRecurringInvoice'))).toEqual([]);
+    expect(guardrailsForOperation(byId('deleteCompanyRecurringInvoice'))).toEqual([]);
+    expect(guardrailsForOperation(byId('deleteCompanyInvoiceSchedule'))).not.toContain('void');
+    expect(guardrailsForOperation(byId('getCompanyIssuingReadiness'))).toEqual(['verifactu-gates']);
   });
 
   it('copies no rule text into a tool description', () => {
@@ -152,5 +177,32 @@ describe('guardrail prose points at things that exist', () => {
       expect(g.body.length, g.id).toBeGreaterThan(200);
       expect(g.body.startsWith('---'), `${g.id} still contains its front matter`).toBe(false);
     }
+  });
+});
+
+describe('the guides say only what the contract says', () => {
+  it('every code a guide names in backticks is one the contract names', () => {
+    const unknown = GUARDRAILS.flatMap((g) =>
+      [...g.body.matchAll(/`(?:\d{3} )?([A-Z][A-Z0-9_]{3,})`/g)]
+        .map((m) => m[1]!)
+        .filter((code) => !specErrorCodes().has(code))
+        .map((code) => `${g.id}: ${code}`),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it('multi-nif names the real 403 and verifactu-gates no retired flag', () => {
+    const multiNif = GUARDRAILS.find((g) => g.id === 'multi-nif')!.body;
+    expect(multiNif).toContain('403 ACTIVE_COMPANY_NOT_ACCESSIBLE');
+    expect(multiNif).not.toMatch(/[^_]COMPANY_NOT_ACCESSIBLE/);
+    expect(GUARDRAILS.find((g) => g.id === 'verifactu-gates')!.body).not.toContain(
+      'apply_by_default',
+    );
+  });
+
+  it('the overview does not promise every error code; the errors resource lists a subset', async () => {
+    const overview = (await readGuardrailResource('beel://guardrails'))!;
+    expect(overview).not.toMatch(/explains every error code/);
+    expect(overview).toMatch(/lists the error codes this server adds a next step to/);
   });
 });

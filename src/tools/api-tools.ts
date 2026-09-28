@@ -11,6 +11,7 @@ import { describeTool } from '../guardrails/enrich.js';
 import { APP_BINDINGS } from '../mcpapp/binding.js';
 import { assertNoViolations } from '../guardrails/validate.js';
 import { ArgumentError } from './validate-args.js';
+import { renameInDescriptions, routeNamer } from '../spec/routes.js';
 
 /** A registered API tool: its MCP definition plus the operation it invokes. */
 export interface ApiTool {
@@ -26,11 +27,21 @@ export function buildApiTools(): { tools: ApiTool[]; policy: PolicyResult } {
   const doc = loadSpec();
   const manifest = buildManifest(doc);
   const policy = applyToolPolicy(manifest);
+  // Routes quoted in the contract's prose, named as the tools that call them.
+  const nameRoutes = routeNamer(
+    policy.tools.map((op) => ({
+      name: toolName(op.operationId),
+      method: op.method,
+      path: op.path,
+    })),
+  );
   const tools = policy.tools.map((operation): ApiTool => {
+    const inputSchema = buildInputSchema(operation, doc);
+    renameInDescriptions(inputSchema, nameRoutes);
     const tool: Tool = {
       name: toolName(operation.operationId),
-      description: describeTool(operation),
-      inputSchema: buildInputSchema(operation, doc),
+      description: nameRoutes(describeTool(operation)),
+      inputSchema,
       annotations: annotationsFor(operation),
     };
     // MCP Apps: when an operation has a viewer bound to it, the host renders it on call.

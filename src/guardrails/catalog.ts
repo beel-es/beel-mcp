@@ -33,6 +33,11 @@ export type Actor =
   | 'configuration'
   /** Nothing is wrong — the operation already happened, or is in flight. */
   | 'benign'
+  /**
+   * The request was refused before it ran (a rate limit): it was NOT applied,
+   * so the same call can be sent again once the wait is over.
+   */
+  | 'throttled'
   /** Access or quota; retrying the same call unchanged will not help. */
   | 'access';
 
@@ -48,6 +53,12 @@ export interface CatalogEntry {
    * guide id, or a fiscal-rule domain slug of the published rules catalogue.
    */
   guardrail?: string;
+  /**
+   * `false` when the docs site publishes no `/errors/<CODE>` page for this code,
+   * so no link to one is ever written. The docs-links test fails once a page
+   * appears, so the flag is dropped then.
+   */
+  page?: false;
 }
 
 export const ERROR_CATALOG: Record<string, CatalogEntry> = {
@@ -101,7 +112,11 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'it signed. Only required in production.',
     guardrail: 'verifactu-gates',
   },
-  COMPANY_HAS_NO_NIF: { actor: 'configuration' },
+  COMPANY_HAS_NO_NIF: {
+    actor: 'configuration',
+    remedy: 'Set its nif with beel_patch_company; once set, it cannot be changed.',
+    page: false,
+  },
 
   // ── Series ────────────────────────────────────────────────────────────────
   // The API points at the dashboard ("create a series in settings"); these give
@@ -113,10 +128,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'details name the document type required.',
     guardrail: 'series-and-numbering',
   },
+  // A payment event's failure_reason, not an HTTP error code: it has no page.
   MISSING_DEFAULT_SERIES: {
     actor: 'configuration',
     remedy: 'Set one with beel_set_default_series, or pass series_id explicitly.',
     guardrail: 'series-and-numbering',
+    page: false,
   },
   SERIES_INCOMPATIBLE_DOC_TYPE: {
     actor: 'request',
@@ -240,8 +257,8 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   SIMPLIFICADA_FORBIDS_IRPF: {
     actor: 'request',
     remedy:
-      'Send irpf_rate: 0 explicitly on every F2 line — omitting it inherits the account ' +
-      'default, which may be non-zero.',
+      'On an F2 (SIMPLIFIED) line, omit irpf_rate or send 0; any other rate is rejected, ' +
+      'never coerced to 0.',
     guardrail: 'simplified',
   },
   // Also answered when issuing a draft saved with an identified recipient, where
@@ -258,7 +275,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'surcharge' },
 
   // ── Identity ──────────────────────────────────────────────────────────────
-  NIF_INVALID: {
+  NIF_INVALID_FORMAT: {
+    actor: 'request',
+    remedy: 'Check it with beel_validate_nif before using it on a customer or invoice.',
+    guardrail: 'nif-validation',
+  },
+  NIF_INVALID_CONTROL_DIGIT: {
     actor: 'request',
     remedy: 'Check it with beel_validate_nif before using it on a customer or invoice.',
     guardrail: 'nif-validation',
@@ -279,13 +301,17 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   // ── Idempotency ───────────────────────────────────────────────────────────
   IDEMPOTENCY_KEY_PROCESSING: {
     actor: 'benign',
-    remedy: 'Wait briefly and retry with the SAME key. A new key would create a second invoice.',
+    remedy:
+      'The same request is still being processed. Wait briefly and repeat the call unchanged; ' +
+      'a changed request or a new key would create a second invoice.',
   },
   IDEMPOTENCY_KEY_MISMATCH: {
     actor: 'request',
     remedy:
-      'Use a new key for a genuinely different request. If the body was not meant to change, ' +
-      'check what already exists before retrying — you are about to duplicate an invoice.',
+      'This idempotency_key was used in the last 24 hours for a different request. To retry ' +
+      'that request, send it unchanged; for a new operation, pass a new key or omit ' +
+      'idempotency_key so one is derived. If the body was not meant to change, check what ' +
+      'already exists first.',
   },
 
   // ── Access and quota ──────────────────────────────────────────────────────
@@ -307,10 +333,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'with beel_patch_webhook_subscription, or delete it with beel_delete_webhook_subscription.',
   },
   RATE_LIMIT_EXCEEDED: {
-    actor: 'benign',
+    actor: 'throttled',
     remedy:
       'This server already retries 429s honouring Retry-After, so reaching you means the ' +
-      'limit is sustained rather than momentary. Slow down instead of retrying harder.',
+      'limit is sustained rather than momentary. Wait, then send the call again at a slower pace.',
   },
 };
 
@@ -319,8 +345,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
  * `type` on every error and that value is preferred; this builds the same URL
  * for codes that arrive without one — nested blockers, chiefly.
  */
-export function docsUrlForCode(code: string): string {
-  return `${BEEL_DEFAULTS.docsUrl}/errors/${code}`;
+export function docsUrlForCode(code: string): string | undefined {
+  return ERROR_CATALOG[code]?.page === false
+    ? undefined
+    : `${BEEL_DEFAULTS.docsUrl}/errors/${code}`;
 }
 
 export function lookupError(code: string | undefined): CatalogEntry | undefined {

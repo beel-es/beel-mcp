@@ -5,7 +5,7 @@ import {
   findGuardrail,
   guardrailUri,
 } from '../guardrails/rules.js';
-import { ERROR_CATALOG, catalogCodes, docsUrlForCode } from '../guardrails/catalog.js';
+import { ERROR_CATALOG, catalogCodes, docsUrlForCode, type Actor } from '../guardrails/catalog.js';
 import { BEEL_DEFAULTS } from '../shared/defaults.js';
 import { loadRules } from '../rules/fetch.js';
 import type { Rule, RuleDomain, RulesCatalog } from '../rules/catalog.js';
@@ -103,9 +103,10 @@ function overviewBody(catalog: RulesCatalog): string {
     '',
     '## Error codes',
     '',
-    `\`${ERRORS_URI}\` explains every error code this API answers with, and what each one`,
-    'calls for. A subset is checked before the request is even sent, so those arrive as a',
-    'refusal from this server rather than as an API error.',
+    `\`${ERRORS_URI}\` lists the error codes this server adds a next step to, and whether`,
+    `retrying helps; every code has its own page under ${BEEL_DEFAULTS.docsUrl}/errors/<CODE>.`,
+    'A subset is checked before the request is even sent, so those arrive as a refusal from',
+    'this server rather than as an API error.',
   ].join('\n');
 }
 
@@ -136,16 +137,19 @@ function domainBody(catalog: RulesCatalog, domain: RuleDomain): string {
 }
 
 function errorsBody(): string {
-  const byActor: Record<string, string[]> = {
+  // Typed by Actor, so a new actor without a heading fails to compile.
+  const byActor: Record<Actor, string[]> = {
     request: ['## Fix the request and retry', ''],
     configuration: ['## Account configuration — a human must change something', ''],
     access: ['## Access or quota — retrying unchanged will not help', ''],
+    throttled: ['## Throttled — not applied; wait, then send the same call again', ''],
     benign: ['## Not a failure — the operation already happened, or is in flight', ''],
   };
 
   for (const code of catalogCodes()) {
     const entry = ERROR_CATALOG[code]!;
-    const parts = [`- **\`${code}\`** — ${docsUrlForCode(code)}`];
+    const page = docsUrlForCode(code);
+    const parts = [`- **\`${code}\`**${page ? ` — ${page}` : ''}`];
     if (entry.remedy) parts.push(`  ${entry.remedy}`);
     if (entry.guardrail) parts.push(`  Background: \`${guardrailUri(entry.guardrail)}\``);
     byActor[entry.actor]!.push(parts.join('\n'));
@@ -175,7 +179,7 @@ export async function readGuardrailResource(uri: string): Promise<string | null>
   const id = uri.slice(GUARDRAIL_URI_PREFIX.length);
   const guide = findGuardrail(id);
   if (guide) {
-    return `# ${guide.title}\n\n${guide.body}\n\n---\n\nCanonical documentation: ${guide.docPath}`;
+    return `# ${guide.title}\n\n${guide.body}\n\n---\n\nCanonical documentation: ${BEEL_DEFAULTS.docsUrl}${guide.docPath}`;
   }
 
   const { catalog } = await loadRules();

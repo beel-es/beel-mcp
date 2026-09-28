@@ -30,11 +30,15 @@ const TOOL_NAMES = new Set([
 /** `beel_sk_test_`/`beel_sk_live_` are API key prefixes, not tools. */
 const NOT_A_TOOL = /^beel_sk_(test|live)_/;
 
+/** `@beel_es/sdk` names an npm scope, not a tool. */
+const isNpmScope = (text: string, index: number): boolean => text[index - 1] === '@';
+
 function brokenReferencesIn(text: string, label: string): string[] {
   const broken: string[] = [];
   for (const match of text.matchAll(/\bbeel_[a-z0-9_]+/g)) {
     const name = match[0];
     if (NOT_A_TOOL.test(name) || TOOL_NAMES.has(name)) continue;
+    if (isNpmScope(text, match.index)) continue;
     broken.push(`${label}: ${name}`);
   }
   return broken;
@@ -50,6 +54,11 @@ function textFiles(dir: string): string[] {
 }
 
 describe('every tool named in agent-facing text exists', () => {
+  it('reads an npm scope as a package, and still flags a name that is no tool', () => {
+    expect(brokenReferencesIn('npm install @beel_es/sdk', 'x')).toEqual([]);
+    expect(brokenReferencesIn('call beel_es_missing', 'x')).toEqual(['x: beel_es_missing']);
+  });
+
   it('anywhere under src/ — prose, prompts, descriptions, comments alike', () => {
     // The whole tree rather than the files that happen to hold prose today: a
     // tool name reaches the model from wherever it is written, and the next

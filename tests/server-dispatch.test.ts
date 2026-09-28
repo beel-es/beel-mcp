@@ -88,6 +88,8 @@ describe('CallTool dispatch', () => {
     const result = await callTool(SETUP_STATUS, {});
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toMatchObject({ environment: 'test' });
+    // The docs host answers with no catalogue here, so the bundled copy fills in.
+    expect((result.structuredContent as { sdks: unknown[] }).sdks.length).toBeGreaterThan(0);
   });
 
   it('returns an API payload as compact JSON, every field kept', async () => {

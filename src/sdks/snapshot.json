@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "source": "https://docs.beel.es/api/sdks.json",
+  "directive": "Use the official BeeL. SDK for your stack. If it is not installed in the project, installing it is step one: do not hand-write HTTP calls for the flows it covers, the SDK carries the typed request bodies and the safe retries.",
+  "fallback": {
+    "text": "No recommended SDK for your stack: call the REST API as the API reference describes, or generate a typed client from the OpenAPI specification.",
+    "openapi_url": "https://docs.beel.es/api/openapi"
+  },
+  "sdks": [
+    {
+      "id": "node",
+      "name": "Node.js / TypeScript SDK",
+      "languages": [
+        "TypeScript",
+        "JavaScript"
+      ],
+      "runtime": "Node.js 18+",
+      "status": "recommended",
+      "status_note": null,
+      "detect": [
+        "package.json"
+      ],
+      "package": {
+        "registry": "npm",
+        "name": "@beel_es/sdk",
+        "url": "https://www.npmjs.com/package/@beel_es/sdk"
+      },
+      "install": {
+        "tool": "npm",
+        "command": "npm install @beel_es/sdk",
+        "alternatives": [
+          {
+            "tool": "pnpm",
+            "command": "pnpm add @beel_es/sdk"
+          },
+          {
+            "tool": "yarn",
+            "command": "yarn add @beel_es/sdk"
+          },
+          {
+            "tool": "bun",
+            "command": "bun add @beel_es/sdk"
+          }
+        ]
+      },
+      "min_version": "2.1.0",
+      "docs_url": "https://docs.beel.es/sdks/node",
+      "docs_md_url": "https://docs.beel.es/llms.mdx/sdks/node",
+      "guides": [
+        {
+          "url": "https://docs.beel.es/guides/order-to-invoice",
+          "md_url": "https://docs.beel.es/llms.mdx/guides/order-to-invoice"
+        },
+        {
+          "url": "https://docs.beel.es/guides/idempotency",
+          "md_url": "https://docs.beel.es/llms.mdx/guides/idempotency"
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "name": "Python SDK",
+      "languages": [
+        "Python"
+      ],
+      "runtime": "Python 3.10+",
+      "status": "legacy",
+      "status_note": "Version 1.0.0 calls the routes without the company in the path, which retire on the date in the deprecation policy. Until a new release, call the REST API.",
+      "detect": [
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "Pipfile"
+      ],
+      "package": {
+        "registry": "pypi",
+        "name": "beel-sdk",
+        "url": "https://pypi.org/project/beel-sdk/"
+      },
+      "install": {
+        "tool": "pip",
+        "command": "pip install beel-sdk",
+        "alternatives": []
+      },
+      "min_version": "1.0.0",
+      "docs_url": null,
+      "docs_md_url": null,
+      "guides": []
+    },
+    {
+      "id": "java",
+      "name": "Java SDK",
+      "languages": [
+        "Java"
+      ],
+      "runtime": "Java 11+",
+      "status": "legacy",
+      "status_note": "Version 1.0.2 calls the routes without the company in the path, which retire on the date in the deprecation policy. Until a new release, call the REST API.",
+      "detect": [
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts"
+      ],
+      "package": {
+        "registry": "maven",
+        "name": "es.beel:beel-sdk",
+        "url": "https://central.sonatype.com/artifact/es.beel/beel-sdk"
+      },
+      "install": {
+        "tool": "gradle",
+        "command": "implementation 'es.beel:beel-sdk:1.0.2'",
+        "alternatives": [
+          {
+            "tool": "maven",
+            "command": "<dependency><groupId>es.beel</groupId><artifactId>beel-sdk</artifactId><version>1.0.2</version></dependency>"
+          }
+        ]
+      },
+      "min_version": "1.0.2",
+      "docs_url": null,
+      "docs_md_url": null,
+      "guides": []
+    }
+  ]
+}

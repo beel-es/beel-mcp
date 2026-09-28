@@ -67,6 +67,19 @@ describe('explaining API errors', () => {
     expect(text).toMatch(/not necessarily a failure/);
   });
 
+  it('says a rate limit was not applied, never that it may have succeeded', () => {
+    const text = explainError({ status: 429, message: 'Too many', code: 'RATE_LIMIT_EXCEEDED' });
+    expect(text).toMatch(/The request was not applied\. Wait before sending the same call again\./);
+    expect(text).not.toMatch(/may have already succeeded/);
+  });
+
+  it('tells an F2 line to omit irpf_rate or send 0, as the contract does', () => {
+    const text = explainError({ status: 422, message: 'no', code: 'SIMPLIFICADA_FORBIDS_IRPF' });
+    expect(text).toMatch(
+      /omit irpf_rate or send 0; any other rate is rejected, never coerced to 0/,
+    );
+  });
+
   it('surfaces detail fields verbatim', () => {
     const text = explainError({
       status: 403,

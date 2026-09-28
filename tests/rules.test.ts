@@ -167,6 +167,19 @@ describe('filters', () => {
     expect(mustNot.every((r) => r.severity === 'MUST_NOT')).toBe(true);
   });
 
+  it('takes the strengths a list prints as well as the catalogue values', () => {
+    const required = filterRules(snapshot, { severity: 'required' });
+    expect(required.map((r) => r.id)).toEqual(
+      snapshot.rules.filter((r) => r.severity !== 'SHOULD').map((r) => r.id),
+    );
+    expect(filterRules(snapshot, { severity: 'Recommended' }).map((r) => r.id)).toEqual(
+      filterRules(snapshot, { severity: 'SHOULD' }).map((r) => r.id),
+    );
+    expect(() => filterRules(snapshot, { severity: 'critical' })).toThrow(
+      /Use one of: required, recommended, MUST/,
+    );
+  });
+
   it('matches every query word against id, title and statement', () => {
     const [first] = filterRules(snapshot, { query: 'simplified 3,000' });
     expect(first?.id).toBe('SIM-001');

@@ -2,6 +2,7 @@ import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { BEEL_HEADER } from '../shared/defaults.js';
 import { resolvePointer } from './refs.js';
+import { schemaDescription } from './prose.js';
 
 /** A minimal JSON Schema object — what MCP tools expose as `inputSchema`. */
 export interface JsonSchema {
@@ -131,7 +132,8 @@ class SchemaProjector {
     const readOnlyNames = new Set<string>();
     for (const [key, value] of Object.entries(src)) {
       if (DROP_KEYS.has(key) || key === 'nullable') continue;
-      if (key === 'properties') out[key] = this.cloneProperties(value, readOnlyNames);
+      if (key === 'description' && typeof value === 'string') out[key] = schemaDescription(value);
+      else if (key === 'properties') out[key] = this.cloneProperties(value, readOnlyNames);
       else out[key] = this.clone(value, COMPOSITION_KEYS.has(key));
     }
     if (readOnlyNames.size > 0 && Array.isArray(out.required)) {
@@ -181,9 +183,31 @@ class SchemaProjector {
 }
 
 /**
+ * The one line an agent reads about `idempotency_key`. When to use it is said
+ * once, in the server instructions; this only says what it is for.
+ */
+export const IDEMPOTENCY_KEY_DESCRIPTION =
+  'Only for a deliberate second operation identical to one already sent: a key unique to it, ' +
+  'e.g. an order id. Omitted, the key is derived from the request.';
+
+/**
+ * Path parameters whose contract description is replaced by one line. The
+ * company id is a parameter of most tools; its contract text runs to a
+ * paragraph about how the account is derived from it, which every tool
+ * definition carried again. What an agent needs to pass it is this.
+ */
+export const PATH_PARAM_DESCRIPTIONS: Record<string, string> = {
+  company_id:
+    'The company id (a UUID) — not its NIF. A company you cannot reach, or that does not ' +
+    'exist, answers 403.',
+};
+
+/**
  * Build the MCP `inputSchema` for an operation: path params and query params
  * become top-level properties; a JSON request body is nested under `body` so its
  * full structure (line items, enums, regime keys…) reaches the model intact.
+ * Every description is kept to what an agent needs to build the call (see
+ * `schemaDescription`); the full text stays in the contract and the docs.
  */
 export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
   const projector = new SchemaProjector(doc);
@@ -192,12 +216,14 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
 
   const withDescription = (schema: unknown, description?: string): object => {
     const obj = (schema && typeof schema === 'object' ? schema : {}) as Record<string, unknown>;
-    if (description && obj.description === undefined) obj.description = description;
+    if (description && obj.description === undefined)
+      obj.description = schemaDescription(description);
     return obj;
   };
 
   for (const p of op.pathParams) {
-    properties[p.name] = withDescription(projector.project(p.schema), p.description);
+    const description = PATH_PARAM_DESCRIPTIONS[p.name] ?? p.description;
+    properties[p.name] = withDescription(projector.project(p.schema), description);
     required.push(p.name);
   }
   for (const p of op.queryParams) {
@@ -223,12 +249,7 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
       type: 'string',
       pattern: '^[a-zA-Z0-9_-]+$',
       maxLength: 255,
-      description:
-        'Optional idempotency key for this operation. Omit it and one is derived from the ' +
-        'request itself, which makes a blind retry safe but also collapses a SECOND, ' +
-        'deliberately identical operation into the first for 24 hours. Set it — to an order ' +
-        'id, or anything unique per intended operation — whenever you mean to create ' +
-        'something that may look identical to what you just created.',
+      description: IDEMPOTENCY_KEY_DESCRIPTION,
     };
   }
 

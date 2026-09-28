@@ -1,6 +1,6 @@
 ---
 title: Invoice lines — pricing, discounts and SUPLIDO
-docPath: /api-reference/invoices
+docPath: /guides/amounts-and-rounding
 summary: How a line states its price, and which field combinations are rejected.
 ---
 

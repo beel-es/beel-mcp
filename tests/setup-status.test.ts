@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getSetupStatus,
   isWorkflowTool,
@@ -9,6 +9,8 @@ import type { OperationCaller } from '../src/tools/workflow-tools.js';
 import { assertValidOutput } from '../src/tools/validate-args.js';
 import { ApiError } from '../src/api/client.js';
 import type { ResolvedConfig } from '../src/config.js';
+import { clearSdksCache, snapshotSdkCatalog } from '../src/sdks/fetch.js';
+import { sdkReport } from '../src/sdks/report.js';
 
 const config: ResolvedConfig = {
   apiKey: 'beel_sk_test_x',
@@ -18,6 +20,27 @@ const config: ResolvedConfig = {
 };
 
 const setupTool = workflowTools.find((t) => t.name === SETUP_STATUS)!;
+
+/** The advertised output schema of one company in the report. */
+function companySchemaProperties(): Record<string, { description?: string; properties?: object }> {
+  const schema = setupTool.outputSchema as unknown as {
+    properties: {
+      companies: {
+        items: { properties: Record<string, { description?: string; properties?: object }> };
+      };
+    };
+  };
+  return schema.properties.companies.items.properties;
+}
+
+// The SDK catalogue is read from the docs site; offline, the bundled copy answers.
+beforeEach(() => {
+  clearSdksCache();
+  vi.stubGlobal('fetch', async () => {
+    throw new Error('offline');
+  });
+});
+afterEach(() => vi.unstubAllGlobals());
 
 /** A fake API caller that answers each operationId from a fixture map. */
 function fakeCaller(
@@ -101,7 +124,7 @@ describe('beel_get_setup_status', () => {
       missing: ['F1'],
       defaults: [{ document_type: 'F2', series_id: 'ser-2', code: 'R' }],
     });
-    expect(co.verifactu).toEqual({ enabled: false, apply_by_default: false });
+    expect(co.verifactu).toEqual({ enabled: false });
     expect(co.next_action).toContain('beel_set_default_series');
     expect(status.next_action).toContain('B1');
   });
@@ -160,7 +183,7 @@ describe('what an integration needs to start', () => {
     expect(co.default_series.defaults).toEqual([
       { document_type: 'STANDARD', series_id: 'ser-1', code: 'F' },
     ]);
-    expect(co.verifactu).toEqual({ enabled: true, apply_by_default: true, status: 'ACTIVE' });
+    expect(co.verifactu).toEqual({ enabled: true, status: 'ACTIVE' });
     // Under the API's own field names, and only those a line is built from.
     expect(co.tax_defaults).toEqual({
       default_main_tax: { type: 'IVA', percentage: 21, regime_key: '01' },
@@ -172,14 +195,11 @@ describe('what an integration needs to start', () => {
     });
   });
 
-  it('reports apply_by_default only when the API sends it', async () => {
-    const caller = fakeCaller({
-      ...HEALTHY,
-      getCompanyVeriFactuConfiguration: { enabled: true, status: 'ACTIVE' },
-    });
-    const status = await getSetupStatus(config, {}, caller);
-    assertValidOutput(setupTool, status);
-    expect(status.companies[0]!.verifactu).toEqual({ enabled: true, status: 'ACTIVE' });
+  it('does not report the retired apply_by_default, even when a response still carries it', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    expect(status.companies[0]!.verifactu).not.toHaveProperty('apply_by_default');
+    const verifactu = companySchemaProperties().verifactu!;
+    expect(Object.keys(verifactu.properties!)).not.toContain('apply_by_default');
   });
 
   it('asks for the tax configuration of each company by its id', async () => {
@@ -359,5 +379,72 @@ describe('listing entries and fan-out', () => {
     expect(status.companies).toHaveLength(12);
     // Four companies, one sub-call each at any instant.
     expect(peak).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the official SDKs', () => {
+  it('are reported from the catalogue, next to the account', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    assertValidOutput(setupTool, status);
+    const expected = sdkReport(snapshotSdkCatalog());
+    expect(status.sdks).toEqual(expected.sdks);
+    expect(status.sdk_guidance).toEqual(expected.sdk_guidance);
+  });
+
+  it('are reported even when the credential cannot be read', async () => {
+    const failing = new Map<string, unknown>([['getMyIdentity', new Error('boom')]]);
+    const status = await getSetupStatus(config, {}, fakeCaller({}, failing));
+    assertValidOutput(setupTool, status);
+    expect(status.account.error).toContain('boom');
+    expect(status.sdks.length).toBeGreaterThan(0);
+  });
+
+  it('come from the catalogue it is given', async () => {
+    const catalog = structuredClone(snapshotSdkCatalog());
+    catalog.directive = 'Use the SDK.';
+    catalog.sdks = catalog.sdks.slice(0, 1);
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY), async () => catalog);
+    expect(status.sdk_guidance.directive).toBe('Use the SDK.');
+    expect(status.sdks.map((sdk) => sdk.id)).toEqual([catalog.sdks[0]!.id]);
+  });
+});
+
+describe('readiness is worded from the environment', () => {
+  it('says test (TEST) in a test session, and never Live', async () => {
+    const status = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    expect(status.companies[0]!.next_action).toBe(
+      'This company can issue in test (TEST). Create a first invoice with beel_create_invoice.',
+    );
+    expect(status.next_action).toMatch(/^Every company can issue in test \(TEST\)\./);
+    expect(JSON.stringify(status)).not.toMatch(/issue Live/);
+  });
+
+  it('asks for confirmation in a live session, where every invoice is a real fiscal document', async () => {
+    const status = await getSetupStatus({ ...config, env: 'live' }, {}, fakeCaller(HEALTHY));
+    expect(status.environment).toBe('live');
+    expect(status.companies[0]!.next_action).toMatch(
+      /can issue in live \(PROD\)\. Every invoice there is a real fiscal document: confirm with the user/,
+    );
+  });
+});
+
+describe('a payment connection is not needed to issue', () => {
+  it('stays out of missing and next_action, and is still reported', async () => {
+    const caller = fakeCaller({ ...HEALTHY, listCompanyPaymentConnections: { connections: [] } });
+    const status = await getSetupStatus(config, {}, caller);
+    assertValidOutput(setupTool, status);
+    const co = status.companies[0]!;
+    expect(co.payment_connection).toEqual({ count: 0, active: false });
+    expect(co.missing).toEqual([]);
+    expect(co.next_action).not.toMatch(/payment/i);
+    expect(status.next_action).not.toMatch(/payment/i);
+  });
+});
+
+describe('the tax defaults are described as the contract applies them', () => {
+  it('says the main tax is only a prefill and the IRPF default does apply (TAX-010)', () => {
+    const description = companySchemaProperties().tax_defaults!.description!;
+    expect(description).toMatch(/default_main_tax is a prefill the API never applies/);
+    expect(description).toMatch(/A line without irpf_rate takes default_irpf_rate \(TAX-010\)/);
   });
 });

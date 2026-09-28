@@ -37,6 +37,16 @@ export const BY_OPERATION_ID: Record<string, string[]> = {
   createCompanySimplifiedExchange: ['simplified', 'records', 'verifactu-gates'],
   setCompanyInvoiceStatus: ['invoice-state-machine'],
   setCompanyInvoiceSchedule: ['lifecycle', 'invoice-state-machine'],
+  // Removing a schedule touches no void or corrective rule, which the lifecycle tag would bring.
+  deleteCompanyInvoiceSchedule: ['lifecycle', 'invoice-state-machine'],
+  // Readiness is the VeriFactu and issuing gate, not the multi-NIF model its Company tag names.
+  getCompanyIssuingReadiness: ['verifactu-gates'],
+  // Only the operations that carry lines meet the simplified and tax rules; pausing,
+  // skipping or deleting a recurring invoice does not, so its tag maps nothing.
+  createCompanyRecurringInvoice: ['simplified', 'taxes'],
+  patchCompanyRecurringInvoice: ['simplified', 'taxes'],
+  createCompanyRecurringInvoiceDerivation: ['simplified', 'taxes'],
+  generateCompanyRecurringInvoiceNow: ['simplified', 'taxes'],
   validateNif: ['nif-validation'],
   createCompanyCustomer: ['nif-validation'],
   createCompanyCustomersBulk: ['nif-validation'],
@@ -54,7 +64,6 @@ export const BY_TAG: Record<string, string[]> = {
   CompanyInvoices: ['lifecycle', 'invoice-state-machine'],
   CompanyInvoiceLifecycle: ['lifecycle', 'void', 'corrective', 'invoice-state-machine'],
   CompanyProforma: ['invoice-state-machine'],
-  CompanyRecurringInvoices: ['simplified', 'taxes'],
   CompanyVeriFactuConfiguration: ['records', 'verifactu-gates'],
   Company: ['multi-nif'],
   PublicCompanyRepresentations: ['multi-nif'],
@@ -76,10 +85,13 @@ const ONE_LINER: Record<string, string> = Object.fromEntries(
 /**
  * Build the full tool description: the operation's own summary/description plus a
  * footer naming the fiscal-rule domains and the API usage guides that apply.
+ *
+ * A read (GET) carries no footer: the server instructions skip the rules for
+ * listing and reading, and a footer there would say the opposite.
  */
 export function describeTool(op: OperationSpec): string {
   const base = op.description?.trim() || op.summary;
-  const ids = guardrailIdsFor(op);
+  const ids = op.method === 'GET' ? [] : guardrailIdsFor(op);
   if (ids.length === 0) {
     return `${base}\n\nEndpoint: ${op.method} ${op.path}`;
   }
@@ -87,12 +99,9 @@ export function describeTool(op: OperationSpec): string {
   const guides = ids
     .filter((id) => ONE_LINER[id])
     .map((id) => `- ${ONE_LINER[id]} (resource: ${guardrailUri(id)})`);
-  const lines = [base, '', `Endpoint: ${op.method} ${op.path}`, '', '⚠️ Read before calling:'];
+  const lines = [base, '', `Endpoint: ${op.method} ${op.path}`, '', 'Relevant rules:'];
   if (domains.length > 0) {
-    lines.push(
-      `- Fiscal rules, domains ${domains.join(', ')}: beel_rules_list with domain, or ` +
-        `resource ${guardrailUri('<domain>')}.`,
-    );
+    lines.push(`- Fiscal rules, domains ${domains.join(', ')}: beel_rules_list with domain.`);
   }
   lines.push(...guides);
   // What to do on a fiscal error is general guidance and lives in the server

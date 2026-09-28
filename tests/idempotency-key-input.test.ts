@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { IDEMPOTENCY_KEY_DESCRIPTION } from '../src/spec/json-schema.js';
+import { SERVER_INSTRUCTIONS } from '../src/server.js';
+import { ERROR_CATALOG } from '../src/guardrails/catalog.js';
 
 /**
  * The idempotency key is derived from a hash of the request itself. That makes a
@@ -53,5 +56,38 @@ describe('the idempotency escape hatch', () => {
         `${t.operation.operationId} should not offer it`,
       ).toBeUndefined();
     }
+  });
+
+  it('describes it in one line, the same on every tool', () => {
+    expect(IDEMPOTENCY_KEY_DESCRIPTION.length).toBeLessThan(160);
+    for (const t of tools) {
+      const props = (t.tool.inputSchema as { properties: Record<string, { description?: string }> })
+        .properties;
+      if (props.idempotency_key) {
+        expect(props.idempotency_key.description).toBe(IDEMPOTENCY_KEY_DESCRIPTION);
+      }
+    }
+  });
+});
+
+describe('one story about idempotency', () => {
+  it('the instructions say the tools derive the key, and when to pass one', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/derives its Idempotency-Key from the request/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/pass idempotency_key only for a deliberate identical/);
+  });
+
+  it('nothing asks for a new key after a 4xx: the API frees the key (LIF-004)', () => {
+    const texts = [
+      SERVER_INSTRUCTIONS,
+      ...Object.values(ERROR_CATALOG).map((entry) => entry.remedy ?? ''),
+    ];
+    for (const text of texts)
+      expect(text).not.toMatch(/new Idempotency-Key|retry with the SAME key/);
+  });
+
+  it('a key mismatch says how to retry and how to start a new operation', () => {
+    const remedy = ERROR_CATALOG.IDEMPOTENCY_KEY_MISMATCH!.remedy!;
+    expect(remedy).toMatch(/send it unchanged/);
+    expect(remedy).toMatch(/omit idempotency_key so one is derived/);
   });
 });

@@ -54,10 +54,10 @@ function queryWords(query: string): string[] {
     .filter(Boolean);
 }
 
-function assertKnown(value: string, known: string[], field: string): void {
+function assertKnown(value: string, known: string[], field: string, shown = known): void {
   if (!known.includes(value)) {
     throw new RulesQueryError(
-      `Unknown ${field} "${value}". Use one of: ${known.join(', ')}. ` +
+      `Unknown ${field} "${value}". Use one of: ${shown.join(', ')}. ` +
         `Omit ${field} to list every value.`,
     );
   }
@@ -75,16 +75,13 @@ export function filterRules(catalog: RulesCatalog, filters: RuleFilters): Rule[]
   if (enforced_by) {
     assertKnown(enforced_by, distinct(catalog.rules.map((r) => r.enforced_by)), 'enforced_by');
   }
-  const wantedSeverity = severity?.toUpperCase();
-  if (wantedSeverity) {
-    assertKnown(wantedSeverity, distinct(catalog.rules.map((r) => r.severity)), 'severity');
-  }
+  const matchesSeverity = severity ? severityMatcher(catalog, severity) : () => true;
   const words = query ? queryWords(query) : [];
 
   return catalog.rules.filter((rule) => {
     if (domain && rule.domain !== domain) return false;
     if (enforced_by && rule.enforced_by !== enforced_by) return false;
-    if (wantedSeverity && rule.severity !== wantedSeverity) return false;
+    if (!matchesSeverity(rule)) return false;
     if (words.length > 0) {
       const haystack = `${rule.id} ${rule.title} ${rule.statement}`.toLowerCase();
       if (!words.every((w) => haystack.includes(w))) return false;
@@ -102,6 +99,23 @@ export function filterRules(catalog: RulesCatalog, filters: RuleFilters): Rule[]
  */
 export function strength(rule: Rule): string {
   return rule.severity === 'SHOULD' ? 'recommended' : 'required';
+}
+
+/** The strengths a list prints; the severity filter takes them as well as the catalogue's values. */
+const STRENGTHS = ['required', 'recommended'];
+
+/**
+ * A test for the severity filter, in either vocabulary: the one a list prints
+ * (`required`, `recommended`) or the catalogue's (`MUST`, `MUST_NOT`, `SHOULD`).
+ * An agent filtering by what it just read must not be told the value is unknown.
+ */
+function severityMatcher(catalog: RulesCatalog, severity: string): (rule: Rule) => boolean {
+  const lower = severity.trim().toLowerCase();
+  if (STRENGTHS.includes(lower)) return (rule) => strength(rule) === lower;
+  const upper = severity.trim().toUpperCase();
+  const values = distinct(catalog.rules.map((r) => r.severity));
+  assertKnown(upper, values, 'severity', [...STRENGTHS, ...values]);
+  return (rule) => rule.severity === upper;
 }
 
 export function listLine(rule: Rule, format: ResponseFormat): string {
@@ -153,7 +167,7 @@ export function renderRuleList(
   const truncated = matches.length > shown.length;
   parts.push(
     `${truncated ? `${total} match, the first ${shown.length} shown` : total} ` +
-      '(ID · SEVERITY · statement · enforced_by):',
+      '(ID · required or recommended · statement · enforced_by):',
   );
   parts.push(...shown.map((rule) => listLine(rule, format)));
   // A cut list says so, with the count and the call that returns the rest: an

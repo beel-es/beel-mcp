@@ -155,7 +155,7 @@ function checkLine(
         'SIMPLIFICADA_FORBIDS_IRPF',
         `${path}.irpf_rate`,
         `irpf_rate is ${irpf} on a SIMPLIFIED (F2) invoice, where AEAT forbids withholding.`,
-        'Send irpf_rate: 0 explicitly on this line. Omitting it inherits the account default, which may be non-zero.',
+        'Omit irpf_rate on this line or send 0; any other rate is rejected, never coerced to 0.',
       ),
     );
   }

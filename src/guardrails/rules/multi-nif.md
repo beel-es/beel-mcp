@@ -1,6 +1,6 @@
 ---
 title: Multi-NIF accounts and company scope
-docPath: /api-reference/multi-nif
+docPath: /multi-nif
 summary: Which company an operation acts on, and how that is selected.
 ---
 
@@ -23,7 +23,7 @@ you can reach with `beel_list_companies`.
 
 ## Reachability is never disclosed
 
-A `company_id` you cannot reach answers `403 COMPANY_NOT_ACCESSIBLE` — and so does one
+A `company_id` you cannot reach answers `403 ACTIVE_COMPANY_NOT_ACCESSIBLE` — and so does one
 that does not exist. That is deliberate: it prevents probing for NIFs in other accounts.
 So a 403 here means *check the id you used*, not *this company definitely exists*.
 

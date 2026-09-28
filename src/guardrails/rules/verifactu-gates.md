@@ -11,10 +11,11 @@ REC-011 (the NIF holder signs the AEAT representation first) in particular.
 
 ## The configuration
 
-Read it with `beel_get_verifactu_configuration`, change it with
-`beel_update_verifactu_configuration`. The update carries two flags: `enabled` (whether
-VeriFactu is enabled) and `apply_by_default` (whether it is applied to new invoices, which
-requires `enabled`).
+Read it with `beel_get_verifactu_configuration`: `enabled` says whether the NIF is under
+VeriFactu in this environment (always true in sandbox), and `status` is the one derived
+state (`DISABLED`, `UNSIGNED`, `NOT_ACTIVATED`, `ACTIVE`). Change it with
+`beel_update_verifactu_configuration`, which takes only `enabled`; in Live, enabling it
+needs a signed AEAT representation first (`VERIFACTU_REPRESENTATION_REQUIRED`).
 
 ## Checking before you issue
 

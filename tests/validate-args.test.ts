@@ -139,6 +139,8 @@ describe('output validation', () => {
         account: { account_id: 'a' },
         companies: [],
         next_action: 'do the thing',
+        sdks: [],
+        sdk_guidance: { directive: 'Use the SDK.', fallback: 'Call the API.', openapi_url: 'x' },
       }),
     ).toEqual([]);
   });

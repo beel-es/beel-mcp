@@ -120,7 +120,8 @@ than a redirect; both point at the same npm package and the same hosted server.
   body and return type); and
   `beel_get_setup_status`, which reports per NIF exactly what is missing before it can
   issue, the one next action to take, and the ids an integration starts from (company,
-  default series per document type, VeriFactu status and tax defaults).
+  default series per document type, VeriFactu status and tax defaults), plus the official
+  SDKs by stack from [`docs.beel.es/api/sdks.json`](https://docs.beel.es/api/sdks.json).
 - **Guardrail resources** under `beel://guardrails/*` — the fiscal rules, one resource
   per domain, the API usage guides, and `beel://guardrails/errors`, a catalogue of every
   error code with the action it calls for. The domains and guides that apply are named in
@@ -255,6 +256,8 @@ npm run build        # single-file bundle to dist/index.js
 npm run inspect      # MCP Inspector against the local build
 npm run spec:verify  # the vendored contract still matches its lock
 npm run sync:rules   # refresh the bundled rules snapshot from docs.beel.es
+npm run sync:sdks    # refresh the bundled SDK catalogue snapshot from docs.beel.es
+npm run sync:docs-index  # refresh the docs page list the link test checks against
 ```
 
 `openapi/public-api.yaml` is a **generated** copy of the API contract, and
