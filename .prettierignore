@@ -11,3 +11,5 @@ src/mcpapp/generated
 # Written by `npm run sync:rules` / `npm run sync:sdks` and checked byte-for-byte by a test; never formatted.
 src/rules/snapshot.json
 src/sdks/snapshot.json
+# Written by `npm run sync:docs-index` and checked byte-for-byte by a test.
+tests/fixtures/docs-paths.json

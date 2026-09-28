@@ -257,6 +257,7 @@ npm run inspect      # MCP Inspector against the local build
 npm run spec:verify  # the vendored contract still matches its lock
 npm run sync:rules   # refresh the bundled rules snapshot from docs.beel.es
 npm run sync:sdks    # refresh the bundled SDK catalogue snapshot from docs.beel.es
+npm run sync:docs-index  # refresh the docs page list the link test checks against
 ```
 
 `openapi/public-api.yaml` is a **generated** copy of the API contract, and

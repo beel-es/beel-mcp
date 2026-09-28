@@ -66,6 +66,7 @@ checked out first; see `sync-spec.yml`.
 | `spec-lock.mjs` | Records and verifies the provenance of that contract |
 | `sync-rules.mjs` | `npm run sync:rules`. Refreshes `src/rules/snapshot.json`, the fallback copy of the fiscal rules catalogue, from `docs.beel.es/api/rules.json` (or a docs URL passed as the argument). Never edit the snapshot by hand |
 | `sync-sdks.mjs` | `npm run sync:sdks`. Refreshes `src/sdks/snapshot.json`, the fallback copy of the official SDK catalogue, from `docs.beel.es/api/sdks.json` (or a docs URL passed as the argument). Never edit the snapshot by hand |
+| `sync-docs-index.mjs` | `npm run sync:docs-index`. Refreshes `tests/fixtures/docs-paths.json`, the page list of the docs sitemap that the docs-links test checks every link against, offline. Never edit it by hand |
 | `server-manifest.mjs` | Keeps `server.json` in step with the package version |
 | `build-mcpapp.mjs` | Bundles the invoice viewer into `dist/mcpapp/invoice-pdf.html` |
 | `gen-tools-catalog.mts` | `npm run tools:catalog`. Emits the tool reference as MDX for the documentation site at docs.beel.es. Nothing here consumes it; it is copied over by hand after a contract sync |

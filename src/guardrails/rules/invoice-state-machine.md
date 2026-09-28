@@ -1,6 +1,6 @@
 ---
 title: Invoice and proforma states, and the tool for each operation
-docPath: /verifactu/submission-states
+docPath: /guides/invoice-lifecycle
 summary: The status names, the proforma lifecycle, and which tool performs each operation.
 ---
 

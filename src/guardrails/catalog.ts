@@ -53,6 +53,12 @@ export interface CatalogEntry {
    * guide id, or a fiscal-rule domain slug of the published rules catalogue.
    */
   guardrail?: string;
+  /**
+   * `false` when the docs site publishes no `/errors/<CODE>` page for this code,
+   * so no link to one is ever written. The docs-links test fails once a page
+   * appears, so the flag is dropped then.
+   */
+  page?: false;
 }
 
 export const ERROR_CATALOG: Record<string, CatalogEntry> = {
@@ -106,7 +112,11 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'it signed. Only required in production.',
     guardrail: 'verifactu-gates',
   },
-  COMPANY_HAS_NO_NIF: { actor: 'configuration' },
+  COMPANY_HAS_NO_NIF: {
+    actor: 'configuration',
+    remedy: 'Set its nif with beel_patch_company; once set, it cannot be changed.',
+    page: false,
+  },
 
   // ── Series ────────────────────────────────────────────────────────────────
   // The API points at the dashboard ("create a series in settings"); these give
@@ -118,10 +128,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
       'details name the document type required.',
     guardrail: 'series-and-numbering',
   },
+  // A payment event's failure_reason, not an HTTP error code: it has no page.
   MISSING_DEFAULT_SERIES: {
     actor: 'configuration',
     remedy: 'Set one with beel_set_default_series, or pass series_id explicitly.',
     guardrail: 'series-and-numbering',
+    page: false,
   },
   SERIES_INCOMPATIBLE_DOC_TYPE: {
     actor: 'request',
@@ -263,7 +275,12 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   REGIME_REQUIRES_SURCHARGE: { actor: 'request', guardrail: 'surcharge' },
 
   // ── Identity ──────────────────────────────────────────────────────────────
-  NIF_INVALID: {
+  NIF_INVALID_FORMAT: {
+    actor: 'request',
+    remedy: 'Check it with beel_validate_nif before using it on a customer or invoice.',
+    guardrail: 'nif-validation',
+  },
+  NIF_INVALID_CONTROL_DIGIT: {
     actor: 'request',
     remedy: 'Check it with beel_validate_nif before using it on a customer or invoice.',
     guardrail: 'nif-validation',
@@ -328,8 +345,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
  * `type` on every error and that value is preferred; this builds the same URL
  * for codes that arrive without one — nested blockers, chiefly.
  */
-export function docsUrlForCode(code: string): string {
-  return `${BEEL_DEFAULTS.docsUrl}/errors/${code}`;
+export function docsUrlForCode(code: string): string | undefined {
+  return ERROR_CATALOG[code]?.page === false
+    ? undefined
+    : `${BEEL_DEFAULTS.docsUrl}/errors/${code}`;
 }
 
 export function lookupError(code: string | undefined): CatalogEntry | undefined {

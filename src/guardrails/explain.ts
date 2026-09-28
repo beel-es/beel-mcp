@@ -63,9 +63,8 @@ export function explainError(err: ExplainableError): string {
     lines.push('', 'Blockers reported, each resolved separately:');
     for (const blocker of blockers) {
       const remedy = lookupError(blocker)?.remedy;
-      lines.push(
-        `- ${blocker} — ${docsUrlForCode(blocker)}` + (remedy ? `\n  Fix: ${remedy}` : ''),
-      );
+      const page = docsUrlForCode(blocker);
+      lines.push(`- ${blocker}${page ? ` — ${page}` : ''}` + (remedy ? `\n  Fix: ${remedy}` : ''));
     }
   }
 
@@ -80,7 +79,8 @@ export function explainError(err: ExplainableError): string {
  * the documentation link, which is always more useful than a generic sentence.
  */
 export function explainCode(code: string): string {
-  return lookupError(code)?.remedy ?? `See ${docsUrlForCode(code)}`;
+  const page = docsUrlForCode(code);
+  return lookupError(code)?.remedy ?? (page ? `See ${page}` : code);
 }
 
 /** Most rules named under a failed call; the rest are one tool call away. */

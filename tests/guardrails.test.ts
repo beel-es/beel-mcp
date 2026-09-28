@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { specErrorCodes } from './spec-error-codes.js';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
 import {
@@ -176,5 +177,32 @@ describe('guardrail prose points at things that exist', () => {
       expect(g.body.length, g.id).toBeGreaterThan(200);
       expect(g.body.startsWith('---'), `${g.id} still contains its front matter`).toBe(false);
     }
+  });
+});
+
+describe('the guides say only what the contract says', () => {
+  it('every code a guide names in backticks is one the contract names', () => {
+    const unknown = GUARDRAILS.flatMap((g) =>
+      [...g.body.matchAll(/`(?:\d{3} )?([A-Z][A-Z0-9_]{3,})`/g)]
+        .map((m) => m[1]!)
+        .filter((code) => !specErrorCodes().has(code))
+        .map((code) => `${g.id}: ${code}`),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it('multi-nif names the real 403 and verifactu-gates no retired flag', () => {
+    const multiNif = GUARDRAILS.find((g) => g.id === 'multi-nif')!.body;
+    expect(multiNif).toContain('403 ACTIVE_COMPANY_NOT_ACCESSIBLE');
+    expect(multiNif).not.toMatch(/[^_]COMPANY_NOT_ACCESSIBLE/);
+    expect(GUARDRAILS.find((g) => g.id === 'verifactu-gates')!.body).not.toContain(
+      'apply_by_default',
+    );
+  });
+
+  it('the overview does not promise every error code; the errors resource lists a subset', async () => {
+    const overview = (await readGuardrailResource('beel://guardrails'))!;
+    expect(overview).not.toMatch(/explains every error code/);
+    expect(overview).toMatch(/lists the error codes this server adds a next step to/);
   });
 });

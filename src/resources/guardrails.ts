@@ -103,9 +103,10 @@ function overviewBody(catalog: RulesCatalog): string {
     '',
     '## Error codes',
     '',
-    `\`${ERRORS_URI}\` explains every error code this API answers with, and what each one`,
-    'calls for. A subset is checked before the request is even sent, so those arrive as a',
-    'refusal from this server rather than as an API error.',
+    `\`${ERRORS_URI}\` lists the error codes this server adds a next step to, and whether`,
+    `retrying helps; every code has its own page under ${BEEL_DEFAULTS.docsUrl}/errors/<CODE>.`,
+    'A subset is checked before the request is even sent, so those arrive as a refusal from',
+    'this server rather than as an API error.',
   ].join('\n');
 }
 
@@ -147,7 +148,8 @@ function errorsBody(): string {
 
   for (const code of catalogCodes()) {
     const entry = ERROR_CATALOG[code]!;
-    const parts = [`- **\`${code}\`** — ${docsUrlForCode(code)}`];
+    const page = docsUrlForCode(code);
+    const parts = [`- **\`${code}\`**${page ? ` — ${page}` : ''}`];
     if (entry.remedy) parts.push(`  ${entry.remedy}`);
     if (entry.guardrail) parts.push(`  Background: \`${guardrailUri(entry.guardrail)}\``);
     byActor[entry.actor]!.push(parts.join('\n'));
@@ -177,7 +179,7 @@ export async function readGuardrailResource(uri: string): Promise<string | null>
   const id = uri.slice(GUARDRAIL_URI_PREFIX.length);
   const guide = findGuardrail(id);
   if (guide) {
-    return `# ${guide.title}\n\n${guide.body}\n\n---\n\nCanonical documentation: ${guide.docPath}`;
+    return `# ${guide.title}\n\n${guide.body}\n\n---\n\nCanonical documentation: ${BEEL_DEFAULTS.docsUrl}${guide.docPath}`;
   }
 
   const { catalog } = await loadRules();

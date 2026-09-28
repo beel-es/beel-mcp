@@ -1,6 +1,6 @@
 ---
 title: Series and invoice numbering
-docPath: /api-reference/series
+docPath: /guides/series-and-numbering
 summary: How a series formats numbers, and which series configurations are rejected.
 ---
 
