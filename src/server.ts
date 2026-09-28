@@ -225,13 +225,6 @@ function createCallToolHandler(
 export const INTEGRATION_GUIDE_PATH = '/guides/order-to-invoice';
 
 /**
- * The official SDK for Node and TypeScript, which the guide's snippets call.
- * Named so that an agent in such a project installs it rather than rebuilding
- * its HTTP layer (auth, idempotency, errors) by hand.
- */
-export const SDK_PACKAGE = '@beel_es/sdk';
-
-/**
  * What the client puts in the agent's context: the ONE place for guidance that
  * applies to every tool — which tool family to reach for, in what order, when
  * not to, and how to cite. Tool descriptions only say what each tool does and
@@ -259,10 +252,9 @@ export const SERVER_INSTRUCTIONS = [
     'beel://guardrails/* resources hold the same rules plus API usage guides.',
   '',
   `To write integration code, follow beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (one SDK ` +
-    `call per invoicing case); in Node/TypeScript install the official SDK (npm install ` +
-    `${SDK_PACKAGE}) instead of hand-writing HTTP calls. Take the company id, series ids and ` +
-    'tax defaults from beel_get_setup_status, and field-level shapes from beel_schema_get, ' +
-    "not an SDK's type file.",
+    "call per invoicing case) with the official SDK for the project's language if there is " +
+    'one, not hand-written HTTP calls. beel_get_setup_status lists the SDKs, the company id, ' +
+    "series ids and tax defaults; beel_schema_get gives field-level shapes, not an SDK's type file.",
   'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
     'schemas in one beel_schema_get.',
   '',

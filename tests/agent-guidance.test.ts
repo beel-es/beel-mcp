@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  createServer,
-  INTEGRATION_GUIDE_PATH,
-  SDK_PACKAGE,
-  SERVER_INSTRUCTIONS,
-} from '../src/server.js';
+import { createServer, INTEGRATION_GUIDE_PATH, SERVER_INSTRUCTIONS } from '../src/server.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { DOCS_GET, DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
@@ -87,19 +82,20 @@ describe('the server instructions', () => {
     expect(INTEGRATION_GUIDE_PATH).toBe('/guides/order-to-invoice');
     expect(SERVER_INSTRUCTIONS).toContain(`beel_docs_get page "${INTEGRATION_GUIDE_PATH}"`);
     expect(SERVER_INSTRUCTIONS).toMatch(
-      new RegExp(`series ids and tax\\s+defaults from ${SETUP_STATUS}`),
+      new RegExp(`${SETUP_STATUS} lists the SDKs, the company id,\\s+series ids and tax defaults`),
     );
   });
 
-  it('send Node/TypeScript integrations to the official SDK, not hand-written HTTP calls', () => {
-    expect(SDK_PACKAGE).toBe('@beel_es/sdk');
-    expect(SERVER_INSTRUCTIONS).toContain(
-      `in Node/TypeScript install the official SDK (npm install ${SDK_PACKAGE}) ` +
-        'instead of hand-writing HTTP calls',
+  it("send integration code to the official SDK of the project's language, from the setup report", () => {
+    const line = SERVER_INSTRUCTIONS.split('\n').find((l) =>
+      l.startsWith('To write integration code'),
+    )!;
+    expect(line).toContain(
+      "with the official SDK for the project's language if there is one, not hand-written HTTP calls",
     );
-    // The SDK clause comes with the guide, whose snippets are written against it.
-    const line = SERVER_INSTRUCTIONS.split('\n').find((l) => l.includes(SDK_PACKAGE))!;
-    expect(line).toContain(INTEGRATION_GUIDE_PATH);
+    expect(line).toContain(`${SETUP_STATUS} lists the SDKs`);
+    // Stack-agnostic: which SDK exists for which language is data, not prose.
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/npm install|pip install|@beel_es\/|Node\/TypeScript/);
   });
 
   it('ask for batched reads: sections, rules and schemas, each in one call', () => {
@@ -110,7 +106,7 @@ describe('the server instructions', () => {
 
   it('send field-level shapes to beel_schema_get rather than an SDK type file', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(
-      /field-level shapes from beel_schema_get, not an SDK's type file/,
+      /beel_schema_get gives field-level shapes, not an SDK's type file/,
     );
   });
 
