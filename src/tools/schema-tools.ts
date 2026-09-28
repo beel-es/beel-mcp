@@ -8,6 +8,7 @@ import {
 import { loadSpec } from '../spec/load.js';
 import type { OperationSpec } from '../spec/manifest.js';
 import { closestMatches } from '../shared/similar.js';
+import { routeNamer } from '../spec/routes.js';
 import { buildApiTools } from './api-tools.js';
 import { ArgumentError, assertValidArguments } from './validate-args.js';
 
@@ -110,6 +111,23 @@ interface Resolved {
   key: string;
 }
 
+let nameRoutes: ((text: string) => string) | undefined;
+
+/**
+ * A declaration with the routes its descriptions quote named as the tools that
+ * call them, as in the tool definitions (see `src/spec/routes.ts`).
+ */
+function withToolNames(declaration: Declaration): Declaration {
+  nameRoutes ??= routeNamer(
+    buildApiTools().tools.map(({ tool, operation }) => ({
+      name: tool.name,
+      method: operation.method,
+      path: operation.path,
+    })),
+  );
+  return { ...declaration, text: nameRoutes(declaration.text) };
+}
+
 /** Exact names first, then the same names ignoring case. */
 function resolve(wanted: string, schemas: string[]): Resolved | undefined {
   const doc = loadSpec();
@@ -117,12 +135,14 @@ function resolve(wanted: string, schemas: string[]): Resolved | undefined {
   const lower = wanted.toLowerCase();
   const schema =
     schemas.find((n) => n === wanted) ?? schemas.find((n) => n.toLowerCase() === lower);
-  if (schema) return { declaration: declareSchema(doc, schema)!, schema, key: schema };
+  if (schema) {
+    return { declaration: withToolNames(declareSchema(doc, schema)!), schema, key: schema };
+  }
   const operation =
     byOperation.get(wanted) ?? [...byOperation].find(([key]) => key.toLowerCase() === lower)?.[1];
   if (operation) {
     return {
-      declaration: declareOperation(doc, operation.op, operation.toolName),
+      declaration: withToolNames(declareOperation(doc, operation.op, operation.toolName)),
       key: operation.toolName,
     };
   }

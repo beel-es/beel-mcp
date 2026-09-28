@@ -1,7 +1,9 @@
+import { buildApiTools } from '../src/tools/api-tools.js';
+import { MAX_SCHEMA_CONSTRAINT_CHARS } from '../src/spec/prose.js';
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '../src/spec/load.js';
 import { buildManifest, type OperationSpec } from '../src/spec/manifest.js';
-import { buildInputSchema } from '../src/spec/json-schema.js';
+import { PATH_PARAM_DESCRIPTIONS, buildInputSchema } from '../src/spec/json-schema.js';
 
 const doc = loadSpec();
 const manifest = buildManifest(doc);
@@ -266,5 +268,38 @@ describe('OpenAPI 3.0 → JSON Schema normalisation', () => {
       exclusiveMinimum: 0,
       maximum: 10,
     });
+  });
+});
+
+describe('descriptions in an input schema carry what builds the call', () => {
+  const tools = buildApiTools().tools;
+
+  it('describe company_id in one line, the same on every tool', () => {
+    const withCompany = tools.filter((t) =>
+      t.operation.pathParams.some((p) => p.name === 'company_id'),
+    );
+    expect(withCompany.length).toBeGreaterThan(50);
+    for (const { tool } of withCompany) {
+      const props = (tool.inputSchema as { properties: Record<string, { description?: string }> })
+        .properties;
+      expect(props.company_id!.description).toBe(PATH_PARAM_DESCRIPTIONS.company_id);
+    }
+  });
+
+  it('keep at most a first paragraph and a bounded paragraph of rules', () => {
+    const over: string[] = [];
+    const walk = (node: unknown, where: string): void => {
+      if (Array.isArray(node)) return node.forEach((item) => walk(item, where));
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === 'description' && typeof value === 'string') {
+          const [, rules, ...more] = value.split('\n\n');
+          if (more.length > 0 || (rules ?? '').length > MAX_SCHEMA_CONSTRAINT_CHARS)
+            over.push(where);
+        } else walk(value, `${where}.${key}`);
+      }
+    };
+    for (const { tool } of tools) walk(tool.inputSchema, tool.name);
+    expect(over).toEqual([]);
   });
 });

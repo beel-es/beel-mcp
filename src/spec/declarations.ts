@@ -23,23 +23,8 @@ import { isRecord } from '../shared/guards.js';
 import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { resolveRef } from './refs.js';
+import { REQUIREMENT, fieldDescription, firstSentence } from './prose.js';
 
-/** Longest description a schema heading carries: its first sentence, cut at this length. */
-export const MAX_FIELD_DESCRIPTION_CHARS = 120;
-/**
- * Longest description a field carries. Its first sentence, then each later
- * sentence that states a requirement or a rejection, while they fit: the part of
- * a description that decides whether a call is accepted is rarely the first
- * sentence ("Mandatory on NORMAL lines", "CORRECTIVE is not accepted here").
- */
-export const MAX_FIELD_CONSTRAINT_CHARS = 280;
-/** A sentence that says what is required or refused. */
-const CONSTRAINT_WORDS =
-  /\b(mandatory|required|must|not accepted|not allowed|rejected|refused|forbidden)\b/i;
-/** An error code, which only a rejection names. */
-const ERROR_CODE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/;
-/** Says a field is needed, not that it is not. */
-const REQUIREMENT = /\b(mandatory|required)\b/i;
 /**
  * Most values a named enum may have and still be written out where it is used.
  * Past it the enum is referenced by name, like an object: a regime key or an
@@ -114,90 +99,6 @@ function isInlinable(node: SpecNode): boolean {
   if (node.type === 'object' || node.type === 'array') return false;
   const values = enumValues(node);
   return values === undefined || values.length <= MAX_INLINE_ENUM_VALUES;
-}
-
-/** A description on one line, without Markdown emphasis. */
-function flatten(text: string): string {
-  return text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
-}
-
-/** Abbreviations whose full stop ends no sentence ("e.g.", "art. 78", "arts. 6"). */
-const ABBREVIATION = /\b(e\.g|i\.e|arts?|etc|vs|approx|No)$/i;
-
-/**
- * The sentences of a description, in order. A full stop ends one unless it
- * closes an {@link ABBREVIATION}; a colon that opens a list does too, and the
- * list is dropped with it.
- */
-function sentences(text: string): string[] {
-  const flat = flatten(text);
-  const out: string[] = [];
-  let start = 0;
-  for (const match of flat.matchAll(/[.!?](?=\s|$)|:(?=\s+[-*]\s)/g)) {
-    if (ABBREVIATION.test(flat.slice(0, match.index))) continue;
-    out.push(flat.slice(start, match.index + 1).trim());
-    if (match[0] === ':') return out;
-    start = match.index + 1;
-  }
-  const rest = flat.slice(start).trim();
-  return rest ? [...out, rest] : out;
-}
-
-function cut(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
-}
-
-/** The first sentence of a description, on one line, without Markdown emphasis. */
-export function firstSentence(text: unknown, max = MAX_FIELD_DESCRIPTION_CHARS): string {
-  if (typeof text !== 'string') return '';
-  return cut(sentences(text)[0] ?? '', max);
-}
-
-/**
- * Where a sentence may be cut and still say something true: after a semicolon
- * or a colon, before a dash, or before a clause joined by "and", "but" or
- * "which". Never at a bare comma, which may sit inside a list ("one of `a`,
- * `b` or `c`") whose first item alone would say the opposite.
- */
-const CLAUSE_BOUNDARY = /(?<=[;:])\s|\s(?=—\s)|(?<=,)\s(?=(?:and|but|which)\s)/;
-
-/**
- * The longest run of a sentence's leading clauses that fits in `room`, closed
- * with a full stop, or `undefined` when not even the first clause does.
- */
-function leadingClauses(sentence: string, room: number): string | undefined {
-  const clauses = sentence.split(CLAUSE_BOUNDARY);
-  let best: string | undefined;
-  for (let n = 1; n <= clauses.length; n++) {
-    const text = clauses
-      .slice(0, n)
-      .join(' ')
-      .replace(/[\s,;:.—]*$/, '.');
-    if (text.length > room) break;
-    best = text;
-  }
-  return best;
-}
-
-/**
- * What a field's comment says: its first sentence, then every later sentence
- * that states a requirement or a rejection, in order, within
- * {@link MAX_FIELD_CONSTRAINT_CHARS}. A constraint too long to fit keeps its
- * leading clauses, which is where the rule and the error code usually are.
- */
-export function fieldDescription(text: unknown): string {
-  if (typeof text !== 'string') return '';
-  const [first = '', ...rest] = sentences(text);
-  let out = cut(first, MAX_FIELD_DESCRIPTION_CHARS);
-  for (const sentence of rest) {
-    if (!CONSTRAINT_WORDS.test(sentence) && !ERROR_CODE.test(sentence)) continue;
-    const room = MAX_FIELD_CONSTRAINT_CHARS - out.length - 1;
-    const kept = sentence.length <= room ? sentence : leadingClauses(sentence, room);
-    // One that does not fit is skipped, not the end: a shorter one after it may still.
-    if (!kept) continue;
-    out = `${out} ${kept}`;
-  }
-  return out;
 }
 
 /** Format, integer-ness, default and deprecation: what a type annotation cannot say. */

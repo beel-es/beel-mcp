@@ -58,6 +58,10 @@ than the size of any one result. So:
   an agent that cannot tell it saw part of a list treats it as all of it.
 - **Concise by default.** `response_format: concise` carries what an agent needs to
   act; rationale, quotes and examples are for `detailed`.
+- **Descriptions carry what builds the call.** An input-schema description keeps its
+  first paragraph and the sentences that state a rule (`schemaDescription` in
+  `src/spec/prose.ts`); a route quoted in prose becomes the tool that calls it
+  (`src/spec/routes.ts`). The full text stays in the contract and the docs.
 - **Compact JSON.** Payloads go through `jsonText` in `src/tools/tool-result.ts`,
   without indentation. Do not add another serializer.
 - **Guidance lives once.** Which tool to use, in what order and how to batch is in

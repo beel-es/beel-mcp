@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_FIELD_CONSTRAINT_CHARS,
-  MAX_FIELD_DESCRIPTION_CHARS,
-  fieldDescription,
   MAX_INLINE_ENUM_VALUES,
   declareOperation,
   declareSchema,
-  firstSentence,
   schemaNames,
 } from '../src/spec/declarations.js';
+import {
+  MAX_FIELD_CONSTRAINT_CHARS,
+  MAX_FIELD_DESCRIPTION_CHARS,
+  fieldDescription,
+  firstSentence,
+} from '../src/spec/prose.js';
 import { loadSpec, type SpecNode } from '../src/spec/load.js';
 import { closestMatches, editDistance } from '../src/shared/similar.js';
 import { buildApiTools } from '../src/tools/api-tools.js';

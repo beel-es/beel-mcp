@@ -7,6 +7,10 @@ import { RULES_GET, RULES_LIST, executeRulesTool } from '../src/tools/rules-tool
 import { jsonText } from '../src/tools/tool-result.js';
 import { declareOperation, declareSchema, schemaNames } from '../src/spec/declarations.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
+import { workflowTools } from '../src/tools/workflow-tools.js';
 import { SCHEMA_GET, executeSchemaTool } from '../src/tools/schema-tools.js';
 import { getSetupStatus, type OperationCaller } from '../src/tools/workflow-tools.js';
 import { snapshotSdkCatalog } from '../src/sdks/fetch.js';
@@ -48,6 +52,13 @@ const COMPACT_JSON_RATIO = 0.8;
 const CREATE_INVOICE_BUDGET = 5_000;
 /** The five schemas an invoice body is written from, read in one call: about 7,500 today. */
 const INVOICE_BODY_BATCH_BUDGET = 9_000;
+/**
+ * The whole tools/list answer, which a client sends with every request: about
+ * 448,000 characters today, from 582,000 before input-schema descriptions were
+ * kept to their first paragraph and their rules. Most of what remains is the
+ * contract's shared schemas, repeated in each tool that uses them.
+ */
+const TOOLS_LIST_BUDGET = 470_000;
 /** Any one schema or operation of the contract; the largest today is about 4,400. */
 const DECLARATION_BUDGET = 6_000;
 
@@ -190,5 +201,18 @@ describe(`${SCHEMA_GET} answers a field-level question in a few KB`, () => {
 describe('the official SDKs in the setup report', () => {
   it(`take under ${SDK_REPORT_BUDGET} characters`, () => {
     expect(jsonText(sdkReport(snapshotSdkCatalog())).length).toBeLessThan(SDK_REPORT_BUDGET);
+  });
+});
+
+describe('tools/list', () => {
+  it(`stays under ${TOOLS_LIST_BUDGET} characters`, () => {
+    const tools = [
+      ...buildApiTools().tools.map((t) => t.tool),
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+      ...workflowTools,
+    ];
+    expect(JSON.stringify({ tools }).length).toBeLessThan(TOOLS_LIST_BUDGET);
   });
 });
