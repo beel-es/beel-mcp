@@ -65,6 +65,30 @@ describe('guardrail enrichment', () => {
     expect(desc).toContain(guardrailUri('invoice-lines'));
   });
 
+  it('adds no footer to a read: the instructions skip the rules for reading', () => {
+    for (const op of manifest.filter((o) => o.method === 'GET')) {
+      expect(describeTool(op), op.operationId).not.toMatch(/Relevant rules:|Read before calling/);
+    }
+  });
+
+  it('heads the footer "Relevant rules:" and names no unreadable placeholder URI', () => {
+    const desc = describeTool(byId('createCompanyInvoice'));
+    expect(desc).toContain('Relevant rules:');
+    expect(desc).not.toContain('<domain>');
+    expect(desc).not.toContain('Read before calling');
+  });
+
+  it('binds the simplified and tax rules only to recurring operations that carry lines', () => {
+    expect(guardrailsForOperation(byId('createCompanyRecurringInvoice'))).toEqual([
+      'simplified',
+      'taxes',
+    ]);
+    expect(guardrailsForOperation(byId('skipCompanyRecurringInvoice'))).toEqual([]);
+    expect(guardrailsForOperation(byId('deleteCompanyRecurringInvoice'))).toEqual([]);
+    expect(guardrailsForOperation(byId('deleteCompanyInvoiceSchedule'))).not.toContain('void');
+    expect(guardrailsForOperation(byId('getCompanyIssuingReadiness'))).toEqual(['verifactu-gates']);
+  });
+
   it('copies no rule text into a tool description', () => {
     // Rule wording lives in the catalogue only; a description that quoted it
     // would be a second copy, and the first to go stale.
