@@ -5,7 +5,9 @@ import { parseRulesCatalog, RulesCatalogError, type RulesCatalog } from '../src/
 import { clearRulesCache, loadRules, rulesUrl, snapshotCatalog } from '../src/rules/fetch.js';
 import {
   CONCISE_STATEMENT_CHARS,
+  LIST_LIMIT,
   RulesQueryError,
+  defaultListLimit,
   filterRules,
   renderRuleList,
 } from '../src/rules/render.js';
@@ -204,8 +206,45 @@ describe(`${RULES_LIST}`, () => {
   it('lists the domains when called unfiltered, and stays small', async () => {
     const text = await executeRulesTool(RULES_LIST, {});
     for (const d of snapshot.domains) expect(text).toContain(`- ${d.slug} (`);
-    expect(text).toMatch(/more\. Narrow with domain/);
+    expect(text).toMatch(/rules match, the first 20 shown/);
+    expect(text).toMatch(/Truncated: \d+ more not shown\. Pass limit \d+ to list them/);
     expect(text.length).toBeLessThan(8_000);
+  });
+
+  it('returns every match of a category filter, never a silent first page', async () => {
+    const integrator = snapshot.rules.filter((r) => r.enforced_by === 'integrator');
+    expect(integrator.length).toBeGreaterThan(LIST_LIMIT.default);
+    const text = await executeRulesTool(RULES_LIST, { enforced_by: 'integrator' });
+    for (const rule of integrator) expect(text).toContain(`${rule.id} · `);
+    expect(text).toContain(`${integrator.length} rules (ID`);
+    expect(text).not.toMatch(/Truncated/);
+  });
+
+  it('keeps the small default for a keyword-only list', async () => {
+    const matches = filterRules(snapshot, { query: 'invoice' });
+    expect(matches.length).toBeGreaterThan(LIST_LIMIT.default);
+    const text = await executeRulesTool(RULES_LIST, { query: 'invoice' });
+    const lines = text.split('\n').filter((l) => /^[A-Z]{3}-\d{3} · /.test(l));
+    expect(lines).toHaveLength(LIST_LIMIT.default);
+    expect(text).toContain(
+      `Truncated: ${matches.length - LIST_LIMIT.default} more not shown. ` +
+        `Pass limit ${matches.length} to list them`,
+    );
+  });
+
+  it('honours an explicit limit on a filtered list, and says what it cut', async () => {
+    const integrator = filterRules(snapshot, { enforced_by: 'integrator' });
+    const text = await executeRulesTool(RULES_LIST, { enforced_by: 'integrator', limit: 5 });
+    expect(text).toContain(`${integrator.length} rules match, the first 5 shown`);
+    expect(text).toContain(`Truncated: ${integrator.length - 5} more not shown`);
+  });
+
+  it('defaults to every match only for category filters', () => {
+    expect(defaultListLimit({})).toBe(LIST_LIMIT.default);
+    expect(defaultListLimit({ query: 'x' })).toBe(LIST_LIMIT.default);
+    expect(defaultListLimit({ domain: 'void' })).toBe(LIST_LIMIT.max);
+    expect(defaultListLimit({ enforced_by: 'api', query: 'x' })).toBe(LIST_LIMIT.max);
+    expect(defaultListLimit({ severity: 'SHOULD' })).toBe(LIST_LIMIT.max);
   });
 
   it('cuts long statements in concise and keeps them whole in detailed', () => {
@@ -250,17 +289,19 @@ describe(`${RULES_GET}`, () => {
     expect(text).toContain(rule.url);
   });
 
-  it('is concise by default: statement, why, error codes, legal basis with its link, docs', async () => {
+  it('is concise by default: statement, error codes and the docs link to cite', async () => {
     const rule = snapshot.rules.find((r) => r.id === 'LIF-001')!;
     const text = await executeRulesTool(RULES_GET, { id: 'LIF-001' });
     expect(text).toContain(rule.statement);
-    expect(text).toContain(rule.why);
     expect(text).toContain(rule.error_codes[0]!.code);
-    expect(text).toContain(rule.legal_basis[0]!.url!);
     expect(text).toContain(rule.url);
+    // The rationale and the legal basis are for detailed: an agent building a
+    // flow needs what to do, and cites the rule by its link.
+    expect(text).not.toContain(rule.why);
+    expect(text).not.toContain(rule.legal_basis[0]!.url!);
     expect(text).not.toContain(rule.legal_basis[0]!.quote!);
     expect(text).not.toContain(rule.examples.incorrect!.text);
-    expect(text.length).toBeLessThan(1_500);
+    expect(text.length).toBeLessThan(1_000);
   });
 
   it('returns several rules in one call with ids, in the order asked, each once', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { enrichToolResult } from '../src/tools/tool-result.js';
+import { enrichToolResult, jsonText } from '../src/tools/tool-result.js';
 
 const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
 const DOWNLOAD_URL = 'https://files.example.test/x.pdf';
@@ -98,5 +98,30 @@ describe('the attachment is fetched only from an allow-listed storage host', () 
       download_url: 'http://files.example.test/x.pdf',
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('jsonText', () => {
+  const invoice = {
+    id: 'inv-1',
+    number: null,
+    lines: [{ description: 'Consulting', quantity: 1, main_tax: { type: 'IVA', percentage: 21 } }],
+    customer: { nif: 'B12345678', address: null },
+  };
+
+  it('is compact: no indentation and no line breaks', () => {
+    const text = jsonText(invoice);
+    expect(text).not.toMatch(/\n|": /);
+    expect(text.length).toBeLessThan(JSON.stringify(invoice, null, 2).length);
+  });
+
+  it('loses nothing: the payload parses back identical, nulls included', () => {
+    expect(JSON.parse(jsonText(invoice))).toEqual(invoice);
+    expect(jsonText(invoice)).toContain('"number":null');
+  });
+
+  it('always returns a string, even for a value JSON cannot carry', () => {
+    expect(jsonText(undefined)).toBe('null');
+    expect(jsonText(null)).toBe('null');
   });
 });

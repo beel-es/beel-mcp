@@ -5,6 +5,7 @@ import { buildApiTools } from '../src/tools/api-tools.js';
 import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
 import { DOCS_SEARCH } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST } from '../src/tools/rules-tools.js';
+import { SCHEMA_GET } from '../src/tools/schema-tools.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = {
@@ -89,6 +90,19 @@ describe('CallTool dispatch', () => {
     expect(result.structuredContent).toMatchObject({ environment: 'test' });
   });
 
+  it('returns an API payload as compact JSON, every field kept', async () => {
+    const data = { companies: [{ id: 'co-1', nif: 'B1', trade_name: null }] };
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ success: true, data }), { status: 200 }),
+    );
+    const result = await callTool('beel_list_companies', {
+      account_id: '9c8f1f2e-2b7a-4a1e-9d1f-3f5a8c2b7e10',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toBe(JSON.stringify(data));
+  });
+
   it('reports an upstream API error through the guardrail catalogue', async () => {
     vi.stubGlobal(
       'fetch',
@@ -140,6 +154,15 @@ describe('CallTool dispatch', () => {
     expect(textOf(bad)).toContain('beel_rules_list');
   });
 
+  it('dispatches the schema tool, and answers an unknown name as an error', async () => {
+    const found = await callTool(SCHEMA_GET, { name: 'TaxInfo' });
+    expect(found.isError).toBeFalsy();
+    expect(textOf(found)).toContain('interface TaxInfo {');
+    const missing = await callTool(SCHEMA_GET, { name: 'NoSuchSchema' });
+    expect(missing.isError).toBe(true);
+    expect(textOf(missing)).toContain('List schema names with query');
+  });
+
   it('logs one structured line per call, with no arguments in it', async () => {
     const lines: string[] = [];
     vi.stubGlobal('console', { ...console, error: (line: string) => lines.push(line) });
@@ -164,6 +187,7 @@ describe('hand-written tool names', () => {
     'beel_docs_list',
     RULES_LIST,
     RULES_GET,
+    SCHEMA_GET,
   ];
 
   it('follow the beel_ convention', () => {

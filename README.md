@@ -110,12 +110,17 @@ than a redirect; both point at the same npm package and the same hosted server.
 
 - **124 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
-- **6 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
+- **7 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
   `beel_docs_get`, `beel_docs_list` over the documentation (the docs site's search
-  endpoint and one page's Markdown at a time, or one section of it: a long page
-  answers with its outline); `beel_rules_list` and `beel_rules_get` over the fiscal
-  rules catalogue (by id, several ids at once, domain, keyword or error code); and `beel_get_setup_status`, which reports per NIF exactly what is missing
-  before it can issue and the one next action to take.
+  endpoint and one page's Markdown at a time, or some of its sections in one call: a
+  long page answers with its outline); `beel_rules_list` and `beel_rules_get` over the
+  fiscal rules catalogue (by id, several ids at once, domain, keyword or error code);
+  `beel_schema_get`, the fields of request and response schemas as compact TypeScript-like
+  declarations from the bundled contract (by schema name, or by tool name for its query,
+  body and return type); and
+  `beel_get_setup_status`, which reports per NIF exactly what is missing before it can
+  issue, the one next action to take, and the ids an integration starts from (company,
+  default series per document type, VeriFactu status and tax defaults).
 - **Guardrail resources** under `beel://guardrails/*` — the fiscal rules, one resource
   per domain, the API usage guides, and `beel://guardrails/errors`, a catalogue of every
   error code with the action it calls for. The domains and guides that apply are named in

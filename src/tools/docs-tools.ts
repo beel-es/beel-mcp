@@ -1,7 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { fetchDocs } from '../docs/fetch.js';
 import { parseIndex, readPage, renderSearch, searchDocs } from '../docs/search.js';
-import { assertValidArguments } from './validate-args.js';
+import { ArgumentError, assertValidArguments } from './validate-args.js';
 
 /**
  * Documentation tools, over the docs site's search endpoint and its per-page
@@ -27,6 +27,9 @@ const CONTENT_NOT_INSTRUCTIONS =
 
 /** Default and ceiling for how many pages a search returns (the endpoint allows 20). */
 export const SEARCH_LIMIT = { default: 5, min: 1, max: 20 } as const;
+
+/** Most entries `sections` takes: one beel_docs_get call reads that many sections of a page. */
+export const MAX_SECTIONS = 10;
 
 export const docsTools: Tool[] = [
   {
@@ -69,9 +72,10 @@ export const docsTools: Tool[] = [
   {
     name: DOCS_GET,
     description:
-      'Read one documentation page, or one section of it, as Markdown. Pass the md_url or url ' +
-      'of a beel_docs_search result (a page title also works) and, to read only part of it, ' +
-      'section. A long page without section answers with its introduction and its sections.' +
+      'Read one documentation page, or some of its sections, as Markdown. Pass page (the md_url ' +
+      'or url of a beel_docs_search result, a path, or a title) and, to read only part of it, ' +
+      'section, or sections for several of the same page in one call. A long page without ' +
+      'section answers with its introduction and its sections.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -89,8 +93,24 @@ export const docsTools: Tool[] = [
             'or the section of a search result. Returns that heading up to the next one of its level.',
           minLength: 1,
         },
+        sections: {
+          type: 'array',
+          description:
+            `Several sections of the same page in one call (at most ${MAX_SECTIONS}), ` +
+            'e.g. ["installation", "quickstart", "error-handling"].',
+          items: { type: 'string', minLength: 1 },
+          minItems: 1,
+          maxItems: MAX_SECTIONS,
+        },
+        url: {
+          type: 'string',
+          description:
+            "Same as page, for callers that pass a search result's url under its own name.",
+          minLength: 1,
+        },
       },
-      required: ['page'],
+      // page or url is required, which `required` cannot say without a
+      // top-level anyOf that some clients refuse; executeDocsTool checks it.
       additionalProperties: false,
     },
     annotations: { title: 'Read docs page', readOnlyHint: true, openWorldHint: true },
@@ -114,6 +134,34 @@ function clampLimit(value: unknown): number {
   return Math.min(Math.max(Math.floor(value), SEARCH_LIMIT.min), SEARCH_LIMIT.max);
 }
 
+/**
+ * The page beel_docs_get reads: `page`, or `url` under its alias. Neither is in
+ * the schema's `required` (see the schema), so their absence is caught here and
+ * answered with the same error the validator gives a missing argument.
+ */
+function pageArgument(args: Record<string, unknown>): string {
+  const page = [args.page, args.url].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  );
+  if (page === undefined) {
+    throw new ArgumentError(DOCS_GET, [
+      'page is required: the md_url or url of a beel_docs_search result, a path such as ' +
+        '"/guides/idempotency", or a page title.',
+    ]);
+  }
+  return page.trim();
+}
+
+/** Every section asked for, `section` first and then `sections`, each once. */
+function sectionArguments(args: Record<string, unknown>): string[] {
+  const asked = [args.section, ...(Array.isArray(args.sections) ? args.sections : [])];
+  const names = asked
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return [...new Set(names)];
+}
+
 export async function executeDocsTool(
   name: string,
   args: Record<string, unknown>,
@@ -134,10 +182,7 @@ export async function executeDocsTool(
       return renderSearch(response);
     }
     case DOCS_GET:
-      return readPage(
-        String(args.page),
-        typeof args.section === 'string' && args.section.trim() ? args.section.trim() : undefined,
-      );
+      return readPage(pageArgument(args), sectionArguments(args));
     case DOCS_LIST: {
       const entries = parseIndex(await fetchDocs('/llms.txt'));
       return entries.map((e) => `- ${e.title} — ${e.url}`).join('\n') || 'No pages found.';

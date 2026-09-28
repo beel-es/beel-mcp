@@ -14,9 +14,10 @@ import { ApiError } from './api/client.js';
 import { buildApiTools, executeApiTool, type ApiTool } from './tools/api-tools.js';
 import { docsTools, executeDocsTool, isDocsTool } from './tools/docs-tools.js';
 import { executeRulesTool, isRulesTool, rulesTools } from './tools/rules-tools.js';
+import { executeSchemaTool, isSchemaTool, schemaTools } from './tools/schema-tools.js';
 import { getSetupStatus, workflowTools } from './tools/workflow-tools.js';
 import { listGuardrailResources, readGuardrailResource } from './resources/guardrails.js';
-import { enrichToolResult } from './tools/tool-result.js';
+import { enrichToolResult, jsonText } from './tools/tool-result.js';
 import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
 import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
@@ -116,8 +117,8 @@ async function readResource(uri: string): Promise<{ contents: Array<Record<strin
 }
 
 /**
- * Run one of the hand-written tools: the documentation readers and the setup
- * report. Their schemas are advertised exactly like the derived ones, so their
+ * Run one of the hand-written tools: the documentation and rules readers, the
+ * schema declarations and the setup report. Their schemas are advertised exactly like the derived ones, so their
  * arguments — and, where they declare an outputSchema, their output — go
  * through the same validator.
  */
@@ -129,12 +130,13 @@ async function runSyntheticTool(
   assertValidArguments(tool, args);
   if (isDocsTool(tool.name)) return textResult(await executeDocsTool(tool.name, args));
   if (isRulesTool(tool.name)) return textResult(await executeRulesTool(tool.name, args));
+  if (isSchemaTool(tool.name)) return textResult(await executeSchemaTool(tool.name, args));
 
   const status = await getSetupStatus(getConfig(), args);
   // The output schema is advertised to the client, which may validate against
   // it. A divergence is our defect and is reported as one.
   assertValidOutput(tool, status);
-  const result = textResult(JSON.stringify(status, null, 2));
+  const result = textResult(jsonText(status));
   // Validated against that same outputSchema just above; the SDK types
   // structuredContent as an open record and cannot see it.
   result.structuredContent = status as unknown as Record<string, unknown>;
@@ -203,11 +205,10 @@ function createCallToolHandler(
       assertValidArguments(apiTool.tool, args);
       const data = await executeApiTool(getConfig(), apiTool.operation, args);
       // A few tools enrich their payload — the invoice PDF supplies viewer data
-      // and an attachment — while the rest fall back to formatted JSON. The
-      // registry lives in ./tools/tool-result.
+      // and an attachment — while the rest fall back to compact JSON. Both live
+      // in ./tools/tool-result.
       const result =
-        (await enrichToolResult(apiTool.operation.operationId, data)) ??
-        textResult(JSON.stringify(data, null, 2));
+        (await enrichToolResult(apiTool.operation.operationId, data)) ?? textResult(jsonText(data));
       logToolCall(name, 'ok', Date.now() - startedAt);
       return result;
     } catch (err) {
@@ -215,6 +216,13 @@ function createCallToolHandler(
     }
   };
 }
+
+/**
+ * The docs page that maps each invoicing case to its typed SDK call: where an
+ * agent writing integration code starts. Only named in the instructions; no
+ * behaviour depends on the page being there.
+ */
+export const INTEGRATION_GUIDE_PATH = '/guides/order-to-invoice';
 
 /**
  * What the client puts in the agent's context: the ONE place for guidance that
@@ -244,6 +252,13 @@ export const SERVER_INSTRUCTIONS = [
   'Skip the rules for questions that do not touch them (listing, reading, auth, pagination). ' +
     'The beel://guardrails/* resources hold the same rules by domain plus API usage guides.',
   '',
+  `To write integration code, read beel_docs_get page "${INTEGRATION_GUIDE_PATH}" (each ` +
+    'invoicing case with its typed SDK call); take the company id, series ids and tax ' +
+    'defaults from beel_get_setup_status, and field-level shapes from beel_schema_get, ' +
+    "not an SDK's type file.",
+  'Batch reads: sections of one page in one beel_docs_get, rules in one beel_rules_get, ' +
+    'schemas in one beel_schema_get.',
+  '',
   'When your answer relies on a rule, cite its id with its link (e.g. COR-024, ' +
     'https://docs.beel.es/rules/corrective#cor-024); when it relies on a docs page, link it.',
 ].join('\n');
@@ -265,11 +280,17 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...apiTools.map((t) => t.tool), ...docsTools, ...rulesTools, ...workflowTools],
+    tools: [
+      ...apiTools.map((t) => t.tool),
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+      ...workflowTools,
+    ],
   }));
 
   const syntheticByName = new Map<string, Tool>(
-    [...docsTools, ...rulesTools, ...workflowTools].map((t) => [t.name, t]),
+    [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => [t.name, t]),
   );
   const callTool = createCallToolHandler(apiByName, syntheticByName, getConfig);
 
@@ -293,7 +314,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     writeStderr(
-      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + workflowTools.length} synthetic tools, ` +
+      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + schemaTools.length + workflowTools.length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }

@@ -13,6 +13,7 @@ import { fetchDocs } from './fetch.js';
 import {
   OUTLINE_THRESHOLD_CHARS,
   extractSection,
+  type Heading,
   findHeading,
   parseHeadings,
   renderOutline,
@@ -72,7 +73,30 @@ export function renderSearch(response: SearchResponse): string {
     );
     if (r.snippet) lines.push(`   ${r.snippet}`);
   });
+  const batches = sameAnchorPages(response.results);
+  if (batches.length > 0) {
+    lines.push('', 'Several of these are sections of one page; read them in one call:');
+    for (const [page, anchors] of batches) {
+      lines.push(`- beel_docs_get with page "${page}", sections ${JSON.stringify(anchors)}`);
+    }
+  }
   return lines.join('\n');
+}
+
+/**
+ * The pages that two or more results point into, with the anchor of each, so
+ * the agent reads them in one beel_docs_get call instead of one call apiece.
+ */
+function sameAnchorPages(results: SearchResult[]): Array<[string, string[]]> {
+  const byPage = new Map<string, string[]>();
+  for (const result of results) {
+    const anchor = sectionAnchor(result);
+    if (!anchor) continue;
+    const anchors = byPage.get(result.md_url) ?? [];
+    if (!anchors.includes(anchor)) anchors.push(anchor);
+    byPage.set(result.md_url, anchors);
+  }
+  return [...byPage].filter(([, anchors]) => anchors.length > 1);
 }
 
 /**
@@ -129,18 +153,52 @@ export const MAX_PAGE_CHARS = 30_000;
 function capped(text: string, what: string): string {
   if (text.length <= MAX_PAGE_CHARS) return text;
   return (
-    `${text.slice(0, MAX_PAGE_CHARS)}\n\n[…truncated: the ${what} is ${text.length} characters. ` +
+    `${text.slice(0, MAX_PAGE_CHARS)}\n\n[…truncated: ${what} ${text.length} characters. ` +
     'Ask for one of its subsections with section, or search with more specific terms.]'
   );
 }
 
+/** `"a", "b"` — section names as the agent asked for them. */
+function quoted(names: string[]): string {
+  return names.map((name) => `"${name}"`).join(', ');
+}
+
+/**
+ * The sections of one page an agent asked for, in the order asked. Reading
+ * several in one call saves a round trip per section, and every round trip
+ * re-reads the whole conversation. Two names for one heading return it once;
+ * a name that matches no heading is reported after the sections that were
+ * found, and when none matches, the outline says what there is.
+ */
+function readSections(path: string, text: string, headings: Heading[], wanted: string[]): string {
+  const found: string[] = [];
+  const missing: string[] = [];
+  const read = new Set<Heading>();
+  for (const name of wanted) {
+    const heading = findHeading(headings, name);
+    if (!heading) {
+      missing.push(name);
+      continue;
+    }
+    if (read.has(heading)) continue;
+    read.add(heading);
+    found.push(extractSection(text, headings, heading));
+  }
+  if (found.length === 0) {
+    return `No section ${quoted(missing)} on this page.\n\n${renderOutline(path, text, headings)}`;
+  }
+  const what = found.length === 1 ? 'the section is' : `these ${found.length} sections are`;
+  const body = capped(found.join('\n\n'), what);
+  return missing.length === 0 ? body : `${body}\n\n[No section ${quoted(missing)} on this page.]`;
+}
+
 /**
  * Read one page as Markdown: by path or URL, or by title via the search's first
- * hit. With `section`, only that section. Without it, a page longer than
+ * hit. With sections, only those. Without, a page longer than
  * {@link OUTLINE_THRESHOLD_CHARS} answers with its introduction and outline,
  * and a shorter one whole.
  */
-export async function readPage(page: string, section?: string): Promise<string> {
+export async function readPage(page: string, sections: string | string[] = []): Promise<string> {
   let path = markdownPath(page);
   if (path === null) {
     const { results } = await searchDocs(page, { limit: 1 });
@@ -149,14 +207,13 @@ export async function readPage(page: string, section?: string): Promise<string> 
   }
   const text = await fetchDocs(path);
   const headings = parseHeadings(text);
+  const wanted = (typeof sections === 'string' ? [sections] : sections).filter(Boolean);
 
-  if (section) {
-    const heading = findHeading(headings, section);
-    if (heading) return capped(extractSection(text, headings, heading), 'section');
-    if (headings.length === 0) return capped(text, 'page');
-    return `No section "${section}" on this page.\n\n${renderOutline(path, text, headings)}`;
+  if (headings.length === 0) return capped(text, 'the page is');
+  if (wanted.length > 0) return readSections(path, text, headings, wanted);
+  if (text.length <= OUTLINE_THRESHOLD_CHARS || headings.length < 2) {
+    return capped(text, 'the page is');
   }
-  if (text.length <= OUTLINE_THRESHOLD_CHARS || headings.length < 2) return capped(text, 'page');
   return renderOutline(path, text, headings);
 }
 

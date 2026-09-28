@@ -20,11 +20,11 @@ npm run tools:list  # every tool the server exposes, with its scopes
 
 ## Where things live
 
-- `src/spec/` — loads the OpenAPI contract (`openapi/public-api.yaml`) and derives the operation manifest. The contract is synced from the API, never edited by hand.
+- `src/spec/` — loads the OpenAPI contract (`openapi/public-api.yaml`) and derives the operation manifest, and the compact schema declarations `beel_schema_get` serves (`declarations.ts`). The contract is synced from the API, never edited by hand.
 - `src/policy/` — which operations become tools (`tool-policy.ts`) and which scopes they need (`scopes.ts`). Least privilege: never add a scope no tool uses.
 - `src/guardrails/` — the fiscal invariants checked before a request leaves (`validate.ts`), the API usage guides as markdown (`rules/`), and the error catalogue (`catalog.ts`).
 - `src/rules/` — the fiscal rules catalogue, read from `docs.beel.es/api/rules.json`. `snapshot.json` is only its offline fallback, written by `npm run sync:rules`; never edit it, and never re-type a rule anywhere else.
-- `src/tools/` — API tools, docs tools, workflow tools; `src/prompts/` — the workflow prompts.
+- `src/tools/` — API tools, docs tools, rules tools, the schema tool, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
 - `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.
 - `src/mcpapp/` — the invoice viewer MCP App and its CSP contract.
@@ -37,6 +37,35 @@ npm run tools:list  # every tool the server exposes, with its scopes
 - **Do not hand-edit the contract or the lock.** `npm run sync:spec` and `npm run spec:lock` are the only way it changes.
 - **Every string an agent reads is product copy.** Tool descriptions, guardrail hints and error remedies must be precise and short; no marketing.
 - **Conventional Commits.** Releases are cut by release-please from the commit history.
+
+## Token efficiency
+
+An agent pays for this server twice: once per call, because every call re-reads
+the whole conversation, and once per byte of every result, because each result
+stays in that conversation for every later turn. The number of calls costs more
+than the size of any one result. So:
+
+- **Fewer calls, bounded outputs.** A tool that answers a question in one call beats
+  two that answer it in halves; a result has a stated ceiling (`MAX_PAGE_CHARS`,
+  `LIST_LIMIT`, `CONCISE_STATEMENT_CHARS`) and never grows without one.
+- **Batch parameters.** A read that agents repeat takes a list (`ids` in
+  `beel_rules_get`, `sections` in `beel_docs_get`, `names` in `beel_schema_get`),
+  capped by a named constant.
+- **Explicit truncation.** A cut result says it was cut, how many items it left out
+  and the argument that returns them. A filtered checklist is not cut by default:
+  an agent that cannot tell it saw part of a list treats it as all of it.
+- **Concise by default.** `response_format: concise` carries what an agent needs to
+  act; rationale, quotes and examples are for `detailed`.
+- **Compact JSON.** Payloads go through `jsonText` in `src/tools/tool-result.ts`,
+  without indentation. Do not add another serializer.
+- **Guidance lives once.** Which tool to use, in what order and how to batch is in
+  `SERVER_INSTRUCTIONS`; a tool description says what the tool does and does not
+  repeat it. `tests/agent-guidance.test.ts` holds both to that.
+- **Actionable errors.** An error names what to send instead (the accepted arguments,
+  the valid values), so the retry is one call and not a series of guesses.
+- **Every output-size change comes with a test.** `tests/output-size.test.ts` holds the
+  size budgets of the results agents read most; a change that breaks one shrinks the
+  output or raises the budget with its reason.
 
 ## This repository is public
 

@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer, SERVER_INSTRUCTIONS } from '../src/server.js';
+import { createServer, INTEGRATION_GUIDE_PATH, SERVER_INSTRUCTIONS } from '../src/server.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { DOCS_GET, DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
 import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
-import { workflowTools } from '../src/tools/workflow-tools.js';
+import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
 
 /**
  * Everything the agent reads before it picks a tool. The rule of these texts:
@@ -16,7 +17,7 @@ import { workflowTools } from '../src/tools/workflow-tools.js';
  * from its neighbours, and its first sentence is enough to choose it.
  */
 
-const SYNTHETIC: Tool[] = [...docsTools, ...rulesTools, ...workflowTools];
+const SYNTHETIC: Tool[] = [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools];
 const API: Tool[] = buildApiTools().tools.map((t) => t.tool);
 
 /** Up to the first full stop followed by a space or the end; "e.g." and "BeeL." are not one. */
@@ -74,6 +75,26 @@ describe('the server instructions', () => {
     );
     expect(SERVER_INSTRUCTIONS).toMatch(
       /page\s+and section of the result that answers, not the whole page/,
+    );
+  });
+
+  it('send integration work to the order-to-invoice guide and the setup report', () => {
+    expect(INTEGRATION_GUIDE_PATH).toBe('/guides/order-to-invoice');
+    expect(SERVER_INSTRUCTIONS).toContain(`beel_docs_get page "${INTEGRATION_GUIDE_PATH}"`);
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      new RegExp(`series ids and tax\\s+defaults from ${SETUP_STATUS}`),
+    );
+  });
+
+  it('ask for batched reads: sections, rules and schemas, each in one call', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/sections of one page in one beel_docs_get/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/rules in one beel_rules_get/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/schemas in one beel_schema_get/);
+  });
+
+  it('send field-level shapes to beel_schema_get rather than an SDK type file', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /field-level shapes from beel_schema_get, not an SDK's type file/,
     );
   });
 

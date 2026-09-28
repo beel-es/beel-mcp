@@ -4,6 +4,7 @@ import {
   isRecord,
   readArray,
   readBoolean,
+  readNumber,
   readString,
   stringItems,
 } from '../src/shared/guards.js';
@@ -29,6 +30,10 @@ describe('typed guards', () => {
     expect(readString(undefined, 'id')).toBeUndefined();
     expect(readBoolean({ ok: false }, 'ok')).toBe(false);
     expect(readBoolean({ ok: 'false' }, 'ok')).toBeUndefined();
+    expect(readNumber({ rate: 15 }, 'rate')).toBe(15);
+    expect(readNumber({ rate: 0 }, 'rate')).toBe(0);
+    expect(readNumber({ rate: '15' }, 'rate')).toBeUndefined();
+    expect(readNumber({ rate: Number.NaN }, 'rate')).toBeUndefined();
     expect(readArray({ xs: [1] }, 'xs')).toEqual([1]);
     expect(readArray({ xs: 1 }, 'xs')).toBeUndefined();
   });

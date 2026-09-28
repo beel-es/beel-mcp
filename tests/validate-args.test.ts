@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { docsTools } from '../src/tools/docs-tools.js';
 import { rulesTools } from '../src/tools/rules-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 import {
   assertValidArguments,
@@ -18,7 +19,13 @@ describe('argument validation against the derived inputSchema', () => {
     // A schema the validator cannot take is a defect in the projection. It must
     // fail here rather than at a user's call, where it now propagates instead of
     // degrading to no validation at all.
-    const all = [...tools.map((t) => t.tool), ...docsTools, ...rulesTools, ...workflowTools];
+    const all = [
+      ...tools.map((t) => t.tool),
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+      ...workflowTools,
+    ];
     const rejected = all.filter((tool) => {
       try {
         findArgumentIssues(tool, {});
@@ -88,6 +95,23 @@ describe('unknown top-level arguments', () => {
       return;
     }
     expect(issues.join(' ')).toMatch(/not_a_parameter/);
+  });
+
+  it('name the arguments the tool takes, once per call, so the retry is not a guess', () => {
+    const tool = byName.get('beel_get_default_series')!;
+    const issues = findArgumentIssues(tool, { nif: 'B12345678' });
+    expect(issues).toEqual([
+      'unknown argument "nif". This tool takes: company_id (required).',
+      'Instance does not have required property "company_id".',
+    ]);
+  });
+
+  it('list every unknown argument in one line and keep the other issues', () => {
+    const tool = byName.get('beel_create_invoice')!;
+    const issues = findArgumentIssues(tool, { company_id: 123, foo: 1, 'a/b': 2 });
+    expect(issues[0]).toMatch(/^unknown arguments "foo", "a\/b"\. This tool takes: .*company_id/);
+    expect(issues.join('\n')).not.toMatch(/additional properties|^(foo|a\/b): /m);
+    expect(issues.join('\n')).toMatch(/^company_id: /m);
   });
 });
 

@@ -3,12 +3,14 @@ import { loadRules, type RulesOrigin } from '../rules/fetch.js';
 import {
   LIST_LIMIT,
   RulesQueryError,
+  defaultListLimit,
   findRuleById,
   renderRule,
   renderRuleList,
   renderRulesById,
   renderRulesForCode,
   type ResponseFormat,
+  type RuleFilters,
 } from '../rules/render.js';
 import { assertValidArguments } from './validate-args.js';
 
@@ -32,7 +34,8 @@ const RESPONSE_FORMAT = {
   enum: ['concise', 'detailed'],
   default: 'concise',
   description:
-    'concise (default) keeps the output short; detailed adds legal quotes, examples and related rules.',
+    'concise (default) keeps the output short; detailed adds the rationale, the legal basis ' +
+    'with its quotes, examples and related rules.',
 } as const;
 
 /** Most rules one beel_rules_get call returns by id. */
@@ -44,8 +47,7 @@ export const rulesTools: Tool[] = [
     description:
       'List the Spanish invoicing rules BeeL. publishes, one line each (ID · severity · ' +
       'statement · enforced_by), filtered by domain, enforced_by, severity or keywords; with ' +
-      'no filters it also lists the domains. Use it to find the rule that governs a flow before ' +
-      'designing or changing it, then beel_rules_get for the full rule.' +
+      'no filters it also lists the domains. Full rules: beel_rules_get.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -59,8 +61,8 @@ export const rulesTools: Tool[] = [
         enforced_by: {
           type: 'string',
           description:
-            'Who enforces it: "api" (BeeL. rejects the request), "integrator" (your code must), ' +
-            '"issuer" (the business must), "aeat".',
+            'Who enforces it: "api" (BeeL. rejects the request), "integrator" (your code must) ' +
+            'or "issuer" (the business must).',
         },
         severity: { type: 'string', description: '"MUST", "MUST_NOT" or "SHOULD".' },
         query: {
@@ -72,8 +74,9 @@ export const rulesTools: Tool[] = [
         },
         limit: {
           type: 'integer',
-          description: `Max rules to return (default ${LIST_LIMIT.default}).`,
-          default: LIST_LIMIT.default,
+          description:
+            'Max rules to return. Default: every match when domain, enforced_by or severity ' +
+            `is given, ${LIST_LIMIT.default} otherwise. A cut list says how many it left out.`,
           minimum: LIST_LIMIT.min,
           maximum: LIST_LIMIT.max,
         },
@@ -87,9 +90,8 @@ export const rulesTools: Tool[] = [
     name: RULES_GET,
     description:
       'Get fiscal rules by id (e.g. "COR-024"), several at once with ids, or every rule behind ' +
-      'an API error_code (e.g. "CORRECTIVE_WITHHOLDING_ONLY"): statement, why, legal basis, ' +
-      'error codes and docs URL; detailed adds legal quotes, examples and related rules. Use it ' +
-      'when a call fails with a fiscal error, or to read rules found with beel_rules_list.' +
+      'an API error_code (e.g. "CORRECTIVE_WITHHOLDING_ONLY"): statement, error codes and docs ' +
+      'URL; detailed adds why, the legal basis, examples and related rules.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
@@ -125,8 +127,9 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function clampLimit(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return LIST_LIMIT.default;
+/** The limit asked for, kept inside the advertised bounds, or the default for these filters. */
+function listLimit(value: unknown, filters: RuleFilters): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return defaultListLimit(filters);
   return Math.min(Math.max(Math.floor(value), LIST_LIMIT.min), LIST_LIMIT.max);
 }
 
@@ -149,16 +152,17 @@ export async function executeRulesTool(
 
   switch (name) {
     case RULES_LIST: {
+      const filters: RuleFilters = {
+        domain: optionalString(args.domain),
+        enforced_by: optionalString(args.enforced_by),
+        severity: optionalString(args.severity),
+        query: optionalString(args.query),
+      };
       const text = renderRuleList(
         catalog,
-        {
-          domain: optionalString(args.domain),
-          enforced_by: optionalString(args.enforced_by),
-          severity: optionalString(args.severity),
-          query: optionalString(args.query),
-        },
+        filters,
         responseFormat(args.response_format, 'concise'),
-        clampLimit(args.limit),
+        listLimit(args.limit, filters),
       );
       return text + originNote(origin);
     }
