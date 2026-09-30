@@ -13,6 +13,7 @@ import { SERVER_INFO } from '../shared/defaults.js';
 import { withAgentAuth } from './agent-auth.js';
 import { BeelAuthHandler } from './beel-handler.js';
 import { WORKER_PATH, WORKER_TTL } from './constants.js';
+import { createProductAnalytics, instrumentProductAnalytics } from './product-analytics.js';
 import { sentryOptions } from './telemetry.js';
 import { createTokenExchangeCallback, type SessionProps } from './token-exchange.js';
 import { upstreamConfig, workerAccessTokenTTL } from './upstream.js';
@@ -59,7 +60,12 @@ class BeelMcpAgentBase extends McpAgent<Env, Record<string, never>, SessionProps
   });
 
   async init(): Promise<void> {
-    // Tools/resources/prompts are wired inside createServer — nothing to do here.
+    // Tools/resources/prompts are wired inside createServer. Runs before the
+    // transport connects; the token is read per event because a refresh replaces it.
+    const analytics = createProductAnalytics(this.env);
+    if (analytics) {
+      instrumentProductAnalytics(this.server, analytics, () => this.props?.accessToken);
+    }
   }
 }
 

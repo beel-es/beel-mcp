@@ -87,6 +87,8 @@ The KV namespace id and the route stay in `wrangler.jsonc` (see step 2).
 | `BEEL_OAUTH_ALLOW_PUBLIC_FALLBACK` | no | Default `false`. Without a client secret the bridge refuses to start rather than falling back to a public client that silently issues 60-minute sessions. Set it to `true` only for a deployment that is deliberately a public client, having read what that costs. |
 | `BEEL_ALLOW_INSECURE_BASE_URL` | no | Default `false`. Permits a non-`https` `BEEL_BASE_URL`, which sends the caller's bearer token in clear. For a local backend and nothing else. |
 | `MCP_IDENTITY_HMAC_KEY` | secret | Dedicated key for the client-identity assertion (see below). Falls back to the client secret if unset; give it its own key so the two rotate independently. |
+| `POSTHOG_PROJECT_TOKEN` | secret | Product-analytics project token. Set, every MCP tool call is recorded under the user id of the session's token, with the agent's stated intent; the tool arguments, results and error text are dropped before sending. **Unset sends nothing.** |
+| `POSTHOG_HOST` | secret | Ingestion host for those events. Defaults to the client library's own. |
 | `BACKEND_REPOSITORY` | GitHub secret | Not a Worker variable: `sync-spec.yml` reads it as `owner/name` of the private repository the contract is bundled from. A secret rather than a variable so the name never reaches this public repository's workflow logs. |
 
 Secrets set with `wrangler secret put` survive redeploys, so Workers Builds does not
