@@ -3,6 +3,14 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.10.0](https://github.com/beel-es/beel-mcp/compare/v0.9.0...v0.10.0) (2026-09-30)
+
+
+### Novedades
+
+* **cf:** record MCP tool usage in product analytics ([dbd9eec](https://github.com/beel-es/beel-mcp/commit/dbd9eec1e232cbb1784f72464b6e144d4e317a9e))
+* **cf:** record MCP tool usage in product analytics ([c98d623](https://github.com/beel-es/beel-mcp/commit/c98d623ee1af833ae532d0c6fd185f7094816af8))
+
 ## [0.9.0](https://github.com/beel-es/beel-mcp/compare/v0.8.0...v0.9.0) (2026-09-28)
 
 
