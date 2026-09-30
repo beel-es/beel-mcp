@@ -89,6 +89,10 @@ export const ENV_VAR = {
   sentryDsn: 'SENTRY_DSN',
   /** Label the error reports are filed under. */
   sentryEnvironment: 'SENTRY_ENVIRONMENT',
+  /** Product-analytics project token for MCP usage events. Absent: nothing is sent. */
+  posthogProjectToken: 'POSTHOG_PROJECT_TOKEN',
+  /** Ingestion host for those events. Absent: the client library's default. */
+  posthogHost: 'POSTHOG_HOST',
 } as const;
 
 /**

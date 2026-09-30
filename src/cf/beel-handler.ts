@@ -20,6 +20,7 @@ import {
   resolveClientIdentity,
 } from './client-identity.js';
 import { WORKER_PATH, WORKER_TTL } from './constants.js';
+import { subjectFromAccessToken } from './access-token.js';
 import { loadSpec } from '../spec/load.js';
 import { buildManifest } from '../spec/manifest.js';
 import {
@@ -422,7 +423,7 @@ async function completeCallback(
   // The grant is keyed by the person behind it. Without a subject every session
   // would collapse onto one identity, so an unreadable token fails the callback
   // rather than inventing one.
-  const userId = subjectFromJwt(tokens.access_token);
+  const userId = subjectFromAccessToken(tokens.access_token);
   if (!userId) return c.text('BeeL returned a token with no identity in it.', 502);
 
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
@@ -526,17 +527,6 @@ function finalRedirect(target: string): Response {
       'Referrer-Policy': 'no-referrer',
     },
   });
-}
-
-/** The subject of the BeeL access token (a JWT), which keys the grant. */
-function subjectFromJwt(token: string): string | null {
-  try {
-    const claims = decodeJwt(token);
-    const sub = claims.user_id ?? claims.sub;
-    return typeof sub === 'string' && sub ? sub : null;
-  } catch {
-    return null;
-  }
 }
 
 export const BeelAuthHandler = app;

@@ -39,4 +39,8 @@ export type Env = {
   SENTRY_DSN?: string;
   /** Environment label attached to those events. Defaults to `production`. */
   SENTRY_ENVIRONMENT?: string;
+  /** Product-analytics project token. Absent, no usage event is sent anywhere. */
+  POSTHOG_PROJECT_TOKEN?: string;
+  /** Ingestion host for those events. */
+  POSTHOG_HOST?: string;
 };
