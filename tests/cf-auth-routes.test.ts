@@ -410,3 +410,20 @@ describe('/healthz', () => {
     expect(await response.json()).toMatchObject({ status: 'ok', runtime: 'cloudflare' });
   });
 });
+
+describe('/.well-known/openai-apps-challenge', () => {
+  it('answers with the configured token as bare text, nothing around it', async () => {
+    const response = await call(
+      fakeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: ' token-123 ' }).env,
+      WORKER_PATH.openaiAppsChallenge,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toMatch(/^text\/plain/);
+    expect(await response.text()).toBe('token-123');
+  });
+
+  it('is a 404 when no token is configured', async () => {
+    const response = await call(fakeEnv().env, WORKER_PATH.openaiAppsChallenge);
+    expect(response.status).toBe(404);
+  });
+});

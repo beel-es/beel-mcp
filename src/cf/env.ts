@@ -43,4 +43,6 @@ export type Env = {
   POSTHOG_PROJECT_TOKEN?: string;
   /** Ingestion host for those events. */
   POSTHOG_HOST?: string;
+  /** Domain-verification token issued by OpenAI's plugin submission portal. */
+  OPENAI_APPS_CHALLENGE_TOKEN?: string;
 };
