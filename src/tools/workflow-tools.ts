@@ -191,7 +191,7 @@ export const workflowTools: Tool[] = [
       },
       required: ['environment', 'account', 'companies', 'next_action'],
     },
-    annotations: { title: 'Setup status', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'Setup status', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
 ];
 

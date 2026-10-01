@@ -65,7 +65,7 @@ export const schemaTools: Tool[] = [
       },
       additionalProperties: false,
     },
-    annotations: { title: 'Get API schema', readOnlyHint: true, openWorldHint: false },
+    annotations: { title: 'Get API schema', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
 ];
 

@@ -84,7 +84,7 @@ export const rulesTools: Tool[] = [
       },
       additionalProperties: false,
     },
-    annotations: { title: 'List fiscal rules', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'List fiscal rules', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
   {
     name: RULES_GET,
@@ -113,7 +113,7 @@ export const rulesTools: Tool[] = [
       },
       additionalProperties: false,
     },
-    annotations: { title: 'Get fiscal rule', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'Get fiscal rule', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
 ];
 

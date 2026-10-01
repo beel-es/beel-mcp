@@ -67,7 +67,7 @@ export const docsTools: Tool[] = [
       required: ['query'],
       additionalProperties: false,
     },
-    annotations: { title: 'Search docs', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'Search docs', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
   {
     name: DOCS_GET,
@@ -113,7 +113,7 @@ export const docsTools: Tool[] = [
       // top-level anyOf that some clients refuse; executeDocsTool checks it.
       additionalProperties: false,
     },
-    annotations: { title: 'Read docs page', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'Read docs page', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
   {
     name: DOCS_LIST,
@@ -122,7 +122,7 @@ export const docsTools: Tool[] = [
       'to find something, beel_docs_search is faster.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: { title: 'List docs pages', readOnlyHint: true, openWorldHint: true },
+    annotations: { title: 'List docs pages', readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
 ];
 
