@@ -135,6 +135,13 @@ app.get(WORKER_PATH.health, (c) =>
   c.json({ status: 'ok', name: SERVER_NAME, runtime: 'cloudflare' }),
 );
 
+// OpenAI's plugin portal proves we own the MCP host by fetching its token here,
+// bare, with no JSON around it. Unset, the path does not exist.
+app.get(WORKER_PATH.openaiAppsChallenge, (c) => {
+  const token = readEnv(c.env, ENV_VAR.openaiAppsChallengeToken);
+  return token ? c.text(token) : c.notFound();
+});
+
 // The PDF relay for the viewer: inline + CORS, restricted to an allowlist.
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
 

@@ -93,6 +93,8 @@ export const ENV_VAR = {
   posthogProjectToken: 'POSTHOG_PROJECT_TOKEN',
   /** Ingestion host for those events. Absent: the client library's default. */
   posthogHost: 'POSTHOG_HOST',
+  /** Token OpenAI's plugin portal asks to find at /.well-known/openai-apps-challenge. */
+  openaiAppsChallengeToken: 'OPENAI_APPS_CHALLENGE_TOKEN',
 } as const;
 
 /**
