@@ -180,6 +180,60 @@ class SchemaProjector {
   }
 }
 
+type JsonType = string | string[];
+
+function enumType(values: unknown[]): JsonType | undefined {
+  const types = new Set<string>();
+  for (const value of values) {
+    if (value === null) types.add('null');
+    else if (typeof value === 'string') types.add('string');
+    else if (typeof value === 'boolean') types.add('boolean');
+    else if (typeof value === 'number') types.add(Number.isInteger(value) ? 'integer' : 'number');
+    else return undefined;
+  }
+  if (types.has('number')) types.delete('integer');
+  const list = [...types];
+  return list.length === 1 ? list[0] : list.length > 1 ? list : undefined;
+}
+
+/**
+ * The JSON type a projected schema accepts, read through `$ref`s into `$defs`,
+ * enums and compositions; `undefined` when the schema does not pin one down.
+ */
+function jsonTypeOf(
+  schema: unknown,
+  defs: Record<string, unknown>,
+  seen = new Set<string>(),
+): JsonType | undefined {
+  if (!schema || typeof schema !== 'object') return undefined;
+  const node = schema as SpecNode;
+  if (typeof node.type === 'string' || Array.isArray(node.type)) return node.type as JsonType;
+  if (typeof node.$ref === 'string') {
+    const name = node.$ref.replace(/^#\/\$defs\//, '');
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    return jsonTypeOf(defs[name], defs, seen);
+  }
+  if (Array.isArray(node.enum)) return enumType(node.enum);
+  if (Array.isArray(node.allOf)) {
+    for (const member of node.allOf) {
+      const type = jsonTypeOf(member, defs, seen);
+      if (type !== undefined) return type;
+    }
+    return undefined;
+  }
+  const branches = Array.isArray(node.anyOf) ? node.anyOf : node.oneOf;
+  if (!Array.isArray(branches)) return undefined;
+  const union = new Set<string>();
+  for (const branch of branches) {
+    const type = jsonTypeOf(branch, defs, seen);
+    if (type === undefined) return undefined;
+    for (const t of Array.isArray(type) ? type : [type]) union.add(t);
+  }
+  const list = [...union];
+  return list.length === 1 ? list[0] : list;
+}
+
 /**
  * Build the MCP `inputSchema` for an operation: path params and query params
  * become top-level properties; a JSON request body is nested under `body` so its
@@ -236,6 +290,17 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
   // function put there, so anything else is an argument the model invented. An
   // open schema lets it through to the API, which answers 400 about a field the
   // model believed in; closed, the client's own validator says so first.
+  // A parameter projected as a bare `$ref` (or a composition) carries its type
+  // only inside `$defs`. Clients and directories that read the top level — a
+  // form, a catalogue, a reviewer — see an untyped argument, so the type is
+  // stated beside the reference too, as the description already is. It restates
+  // the referenced schema and never narrows it.
+  for (const schema of Object.values(properties) as Record<string, unknown>[]) {
+    if (schema.type !== undefined) continue;
+    const type = jsonTypeOf(schema, projector.defs);
+    if (type !== undefined) schema.type = type;
+  }
+
   const out: JsonSchema = { type: 'object', properties, additionalProperties: false };
   if (required.length > 0) out.required = required;
   if (Object.keys(projector.defs).length > 0) out.$defs = projector.defs;

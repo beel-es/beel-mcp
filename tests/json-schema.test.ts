@@ -131,6 +131,47 @@ describe('buildInputSchema', () => {
     }
   });
 
+  it('states a type on every top-level argument, references included', () => {
+    // A parameter or body projected as a bare `$ref` keeps its type in `$defs`,
+    // where a client reading only the top level does not look.
+    for (const op of manifest) {
+      const { properties } = buildInputSchema(op, doc);
+      for (const [name, schema] of Object.entries(properties)) {
+        expect((schema as { type?: unknown }).type, `${op.operationId}.${name}`).toBeDefined();
+      }
+    }
+  });
+
+  it('reads the type of a referenced enum, and keeps the reference', () => {
+    const contract = {
+      components: {
+        schemas: {
+          Status: { enum: ['ACTIVE', 'PAUSED'] },
+          Id: { type: 'string', format: 'uuid' },
+        },
+      },
+    } as never;
+    const { properties } = buildInputSchema(
+      stubOperation({
+        method: 'GET',
+        pathParams: [
+          { name: 'id', in: 'path', required: true, schema: { $ref: '#/components/schemas/Id' } },
+        ],
+        queryParams: [
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { $ref: '#/components/schemas/Status' },
+          },
+        ],
+      }),
+      contract,
+    );
+    expect(properties.id).toMatchObject({ $ref: '#/$defs/Id', type: 'string' });
+    expect(properties.status).toMatchObject({ $ref: '#/$defs/Status', type: 'string' });
+  });
+
   it('respects the contract when it declares a body open', () => {
     const permissive = {
       components: {
