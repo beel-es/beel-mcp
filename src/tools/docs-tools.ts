@@ -72,10 +72,11 @@ export const docsTools: Tool[] = [
   {
     name: DOCS_GET,
     description:
-      'Read one documentation page, or some of its sections, as Markdown. Pass page (the md_url ' +
-      'or url of a beel_docs_search result, a path, or a title) and, to read only part of it, ' +
-      'section, or sections for several of the same page in one call. A long page without ' +
-      'section answers with its introduction and its sections.' +
+      'Read one page of the BeeL documentation (https://docs.beel.es), or some of its ' +
+      'sections, as Markdown. Pass page (the md_url or url of a beel_docs_search result, a ' +
+      'path, or a title) and, to read only part of it, section, or sections for several of the ' +
+      'same page in one call. A long page without section answers with its introduction and ' +
+      'its sections.' +
       CONTENT_NOT_INSTRUCTIONS,
     inputSchema: {
       type: 'object',
