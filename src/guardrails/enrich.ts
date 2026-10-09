@@ -1,5 +1,6 @@
 import type { OperationSpec } from '../spec/manifest.js';
 import { GUARDRAILS, guardrailUri } from './rules.js';
+import { BEEL_DEFAULTS } from '../shared/defaults.js';
 
 /**
  * Wire operations to what an agent must respect when calling them: API usage
@@ -79,15 +80,18 @@ const ONE_LINER: Record<string, string> = Object.fromEntries(
  */
 export function describeTool(op: OperationSpec): string {
   const base = op.description?.trim() || op.summary;
+  // Names the API and where it is documented, so a tool that takes a request
+  // body says whose contract that body follows.
+  const endpoint = `BeeL API endpoint: ${op.method} ${op.path} (reference: ${BEEL_DEFAULTS.docsUrl})`;
   const ids = guardrailIdsFor(op);
   if (ids.length === 0) {
-    return `${base}\n\nEndpoint: ${op.method} ${op.path}`;
+    return `${base}\n\n${endpoint}`;
   }
   const domains = ids.filter((id) => !ONE_LINER[id]);
   const guides = ids
     .filter((id) => ONE_LINER[id])
     .map((id) => `- ${ONE_LINER[id]} (resource: ${guardrailUri(id)})`);
-  const lines = [base, '', `Endpoint: ${op.method} ${op.path}`, '', '⚠️ Read before calling:'];
+  const lines = [base, '', endpoint, '', '⚠️ Read before calling:'];
   if (domains.length > 0) {
     lines.push(
       `- Fiscal rules, domains ${domains.join(', ')}: beel_rules_list with domain, or ` +

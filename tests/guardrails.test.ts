@@ -65,6 +65,15 @@ describe('guardrail enrichment', () => {
     expect(desc).toContain(guardrailUri('invoice-lines'));
   });
 
+  it('names the BeeL API and its reference in every endpoint line', () => {
+    // A tool that takes a request body says whose contract the body follows.
+    for (const op of manifest) {
+      expect(describeTool(op), op.operationId).toContain(
+        `BeeL API endpoint: ${op.method} ${op.path} (reference: https://docs.beel.es)`,
+      );
+    }
+  });
+
   it('copies no rule text into a tool description', () => {
     // Rule wording lives in the catalogue only; a description that quoted it
     // would be a second copy, and the first to go stale.
