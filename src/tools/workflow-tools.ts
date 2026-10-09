@@ -49,7 +49,8 @@ export const workflowTools: Tool[] = [
     name: SETUP_STATUS,
     description:
       'Read-only setup status across your account, with the ids an integration needs: for each ' +
-      'company its company_id and NIF, whether it can issue Live and exactly what is missing ' +
+      "company its company_id and NIF, whether it can issue in this session's environment (Test " +
+      'or Live, reported as `environment`) and exactly what is missing ' +
       '(issuing-readiness blockers, default series, VeriFactu, payment connection), its default ' +
       'series per document type (id and code), its VeriFactu status and its tax defaults, and ' +
       'the single recommended next action. A section that could not be read carries an `error` ' +
@@ -102,8 +103,9 @@ export const workflowTools: Tool[] = [
               ready: {
                 type: ['boolean', 'null'],
                 description:
-                  'Can issue Live (no blockers). `null` means readiness could not be read — ' +
-                  'see `error`; it does not mean not ready, and it does not mean ready.',
+                  "Can issue in this session's `environment` (no blockers). `null` means " +
+                  'readiness could not be read — see `error`; it does not mean not ready, and ' +
+                  'it does not mean ready.',
               },
               blockers: { type: 'array', items: { type: 'string' } },
               error: errorSchema,
@@ -177,7 +179,8 @@ export const workflowTools: Tool[] = [
               missing: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Human-readable list of what is missing to issue Live.',
+                description:
+                  "Human-readable list of what is missing to issue in this session's environment.",
               },
               next_action: { type: 'string', description: 'Single recommended next action.' },
             },
@@ -391,7 +394,7 @@ function paymentSection(outcome: Outcome<unknown>): PaymentSection {
   };
 }
 
-/** What still stands between this company and a Live invoice, in plain words. */
+/** What still stands between this company and an invoice in this session's environment. */
 function missingFor(
   blockers: string[],
   verifactu: VerifactuSection,
@@ -423,13 +426,11 @@ function nextActionFor(report: Omit<CompanyReport, 'next_action'>): string {
   if (report.ready === null) {
     return (
       `Issuing readiness is unknown (${report.error ?? 'the check did not answer'}); ` +
-      're-run beel_get_issuing_readiness before issuing anything Live.'
+      're-run beel_get_issuing_readiness before issuing anything.'
     );
   }
   if (report.ready) {
-    return (
-      report.missing[0] ?? 'Ready to issue Live. Issue a first invoice with beel_create_invoice.'
-    );
+    return report.missing[0] ?? 'Ready to issue. Issue a first invoice with beel_create_invoice.';
   }
   const firstBlocker = report.blockers[0];
   if (firstBlocker) return explainCode(firstBlocker);
@@ -582,7 +583,7 @@ async function companiesReport(
         ? `${label(notReady)}: ${notReady.next_action}`
         : unknown
           ? `${label(unknown)}: ${unknown.next_action}`
-          : 'All companies can issue Live. Issue an invoice with beel_create_invoice.';
+          : `All companies can issue in ${config.env === 'live' ? 'Live' : 'Test'}. Issue an invoice with beel_create_invoice.`;
 
   return compact({ environment: config.env, account, error: note, companies, next_action });
 }
