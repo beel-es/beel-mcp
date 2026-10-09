@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CallToolRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { createServer } from '../src/server.js';
+import { createServer, RETIRED_ARGUMENTS } from '../src/server.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import { SETUP_STATUS, workflowTools } from '../src/tools/workflow-tools.js';
-import { DOCS_SEARCH } from '../src/tools/docs-tools.js';
-import { RULES_GET, RULES_LIST } from '../src/tools/rules-tools.js';
-import { SCHEMA_GET } from '../src/tools/schema-tools.js';
+import { DOCS_SEARCH, docsTools } from '../src/tools/docs-tools.js';
+import { RULES_GET, RULES_LIST, rulesTools } from '../src/tools/rules-tools.js';
+import { SCHEMA_GET, schemaTools } from '../src/tools/schema-tools.js';
 import type { ResolvedConfig } from '../src/config.js';
 
 const config: ResolvedConfig = {
@@ -103,6 +103,29 @@ describe('CallTool dispatch', () => {
     expect(textOf(result)).toBe(JSON.stringify(data));
   });
 
+  it('drops an argument the server no longer declares, for clients with a cached list', async () => {
+    const data = { companies: [] };
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ success: true, data }), { status: 200 }),
+    );
+    const result = await callTool('beel_list_companies', {
+      account_id: '9c8f1f2e-2b7a-4a1e-9d1f-3f5a8c2b7e10',
+      context: 'Listing the companies of an account to pick one to invoice from.',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toBe(JSON.stringify(data));
+  });
+
+  it('still refuses any other unknown argument', async () => {
+    const result = await callTool('beel_list_companies', {
+      account_id: '9c8f1f2e-2b7a-4a1e-9d1f-3f5a8c2b7e10',
+      invented: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('invented');
+  });
+
   it('reports an upstream API error through the guardrail catalogue', async () => {
     vi.stubGlobal(
       'fetch',
@@ -192,6 +215,18 @@ describe('hand-written tool names', () => {
 
   it('follow the beel_ convention', () => {
     for (const name of synthetic) expect(name).toMatch(/^beel_[a-z0-9_]+$/);
+  });
+
+  it('retire only names no tool declares', () => {
+    // A retired name that a tool did declare would be stripped from its calls.
+    const declared = [
+      ...buildApiTools().tools.map((t) => t.tool),
+      ...workflowTools,
+      ...docsTools,
+      ...rulesTools,
+      ...schemaTools,
+    ].flatMap((tool) => Object.keys(tool.inputSchema.properties ?? {}));
+    for (const name of RETIRED_ARGUMENTS) expect(declared).not.toContain(name);
   });
 
   it('collide with no name derived from the contract', () => {
