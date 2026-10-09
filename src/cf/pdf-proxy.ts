@@ -17,7 +17,7 @@
 import type { Context } from 'hono';
 import { ENV_VAR, HTTP_DEFAULTS } from '../shared/defaults.js';
 import { readEnvList, type EnvRecord } from '../shared/env.js';
-import { appOrigin } from '../mcpapp/contract.js';
+import { appOrigin, isAppSandboxOrigin } from '../mcpapp/contract.js';
 import { PDF_RELAY_LIMITS } from './constants.js';
 
 /**
@@ -141,13 +141,18 @@ function refusalFor(status: number): RelayRefusal {
 /**
  * A presigned URL is a bearer capability, so the relay answers only the viewer.
  *
- * The app runs sandboxed with an opaque origin and therefore sends `Origin: null`;
- * a page served from this deployment's own origin sends that. Any other origin
- * gets the bytes without CORS, which means its script cannot read them.
+ * The app sends `Origin: null` when its host sandboxes it with an opaque origin,
+ * and the origin of the host's per-app sandbox subdomain when the host serves it
+ * from one, as Claude does; a page served from this deployment's own origin
+ * sends that. Any other origin gets the bytes without CORS, which means its
+ * script cannot read them.
  */
 function corsHeaders(requestOrigin: string | undefined, ownOrigin: string): Record<string, string> {
   const headers: Record<string, string> = { Vary: 'Origin' };
-  if (requestOrigin !== undefined && (requestOrigin === 'null' || requestOrigin === ownOrigin)) {
+  if (
+    requestOrigin !== undefined &&
+    (requestOrigin === 'null' || requestOrigin === ownOrigin || isAppSandboxOrigin(requestOrigin))
+  ) {
     headers['Access-Control-Allow-Origin'] = requestOrigin;
   }
   return headers;
