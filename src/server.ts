@@ -170,6 +170,22 @@ async function errorResult(name: string, err: unknown, ms: number): Promise<Call
 }
 
 /**
+ * Arguments the remote server once added to every tool and no longer declares.
+ * A client that cached the earlier tool list keeps sending them, and the closed
+ * input schemas would reject every one of its calls until it lists the tools
+ * again, so they are dropped before validation. Only a name no tool declares
+ * may be listed here.
+ */
+export const RETIRED_ARGUMENTS: readonly string[] = ['context'];
+
+function withoutRetiredArguments(args: Record<string, unknown>): Record<string, unknown> {
+  if (!RETIRED_ARGUMENTS.some((name) => Object.hasOwn(args, name))) return args;
+  const kept = { ...args };
+  for (const name of RETIRED_ARGUMENTS) delete kept[name];
+  return kept;
+}
+
+/**
  * The CallTool handler: dispatch to a docs tool, a workflow tool or a derived
  * API tool, and turn every failure into a result the model can act on.
  */
@@ -187,7 +203,7 @@ function createCallToolHandler(
       if (rawArgs !== undefined && !isRecord(rawArgs)) {
         throw new ArgumentError(name, ['arguments must be a JSON object']);
       }
-      const args: Record<string, unknown> = rawArgs ?? {};
+      const args = withoutRetiredArguments(rawArgs ?? {});
 
       const synthetic = syntheticByName.get(name);
       if (synthetic) {
