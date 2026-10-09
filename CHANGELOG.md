@@ -3,6 +3,30 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.10.0](https://github.com/beel-es/beel-mcp/compare/v0.9.0...v0.10.0) (2026-10-09)
+
+
+### Novedades
+
+* **cf:** record MCP tool usage in product analytics ([dbd9eec](https://github.com/beel-es/beel-mcp/commit/dbd9eec1e232cbb1784f72464b6e144d4e317a9e))
+* **cf:** record MCP tool usage in product analytics ([c98d623](https://github.com/beel-es/beel-mcp/commit/c98d623ee1af833ae532d0c6fd185f7094816af8))
+* **tools:** name the BeeL API and its reference in tool descriptions ([9cb4ae0](https://github.com/beel-es/beel-mcp/commit/9cb4ae09b725318e7f6f83b11f856efda2c8d0b1))
+* **tools:** name the BeeL API and its reference in tool descriptions ([dff0abc](https://github.com/beel-es/beel-mcp/commit/dff0abc357c0819834cc43435c229af5b24e8210))
+
+
+### Correcciones
+
+* accept the retired context argument from cached tool lists ([52bc284](https://github.com/beel-es/beel-mcp/commit/52bc284928f3e213e3ae8829df9dd1e8ad9f8769))
+* accept the retired context argument from cached tool lists ([8201b28](https://github.com/beel-es/beel-mcp/commit/8201b284210a402dee8e5a19402692fbf603b14e))
+* **cf:** add no analytics argument to the tools ([c883dce](https://github.com/beel-es/beel-mcp/commit/c883dced7007f103acb1bda3f0b99d2a12ca9e9e))
+* **cf:** add no analytics argument to the tools ([b688e35](https://github.com/beel-es/beel-mcp/commit/b688e35005a438d23452d85854984d1fceb8aca6))
+* **mcpapp:** let the invoice viewer read the PDF in Claude ([b49184d](https://github.com/beel-es/beel-mcp/commit/b49184d81d52a3307a9795192fd4ae7dd8216183))
+* **mcpapp:** let the invoice viewer read the PDF in Claude ([3ef62ff](https://github.com/beel-es/beel-mcp/commit/3ef62ff7f5829e5e815d409df71225c21f26a07d))
+* **spec:** state a type on every top-level tool argument ([f4bf6d9](https://github.com/beel-es/beel-mcp/commit/f4bf6d955c5194d9335b8d77dc4b415602eb300a))
+* **spec:** state a type on every top-level tool argument ([89202a8](https://github.com/beel-es/beel-mcp/commit/89202a82779c2aaf9f784720f42dea80a4150b41))
+* **tools:** report setup readiness for the session's environment ([8b8eb2e](https://github.com/beel-es/beel-mcp/commit/8b8eb2e48f7ab6b7114cb8f58742ac75219becf2))
+* **tools:** report setup readiness for the session's environment ([7aeb214](https://github.com/beel-es/beel-mcp/commit/7aeb2143a582ece974183d9a4c9f9966176faa71))
+
 ## [0.9.0](https://github.com/beel-es/beel-mcp/compare/v0.8.0...v0.9.0) (2026-09-28)
 
 
