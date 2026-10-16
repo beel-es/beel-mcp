@@ -72,6 +72,9 @@ try {
     input: REQUESTS.map((r) => JSON.stringify(r)).join('\n') + '\n',
     encoding: 'utf8',
     timeout: 60_000,
+    // tools/list plus the viewer resource already exceed the 1 MiB default; a
+    // truncated read here is a harness failure, not a broken package.
+    maxBuffer: 16 * 1024 * 1024,
   });
 
   const replies = new Map(
