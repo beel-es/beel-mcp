@@ -82,7 +82,6 @@ describe('chatgpt surface', () => {
       'beel_create_invoice',
       'beel_issue_invoice',
       'beel_create_customer',
-      'beel_validate_nif',
       'beel_send_invoice',
       'beel_get_fiscal_summary',
     ]) {
@@ -139,8 +138,8 @@ describe('chatgpt surface', () => {
 
   it('asks for a NIF only where a customer is registered or checked', () => {
     // OpenAI's scan flags any input that names a government identifier, down to
-    // a search filter described as "on NIF". Only these three need one.
-    const allowed = new Set(['beel_create_customer', 'beel_patch_customer', 'beel_validate_nif']);
+    // a search filter described as "on NIF". Only these two need one.
+    const allowed = new Set(['beel_create_customer', 'beel_patch_customer']);
     const strings = (node: unknown, out: string[] = []): string[] => {
       if (typeof node === 'string') out.push(node);
       else if (node && typeof node === 'object')
@@ -172,6 +171,7 @@ describe('chatgpt surface', () => {
       'beel_delete_company',
       'beel_create_invoice_batch',
       'beel_create_customers_bulk',
+      'beel_validate_nif',
     ]) {
       expect(names.has(name), name).toBe(false);
     }

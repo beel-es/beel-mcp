@@ -260,7 +260,9 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   // ── Identity ──────────────────────────────────────────────────────────────
   NIF_INVALID: {
     actor: 'request',
-    remedy: 'Check it with beel_validate_nif before using it on a customer or invoice.',
+    remedy:
+      'Correct the NIF: creating or editing the customer checks it against the AEAT census ' +
+      '(beel_validate_nif checks it on its own where this session offers it).',
     guardrail: 'nif-validation',
   },
   NIF_ALREADY_REGISTERED: {
