@@ -186,9 +186,9 @@ describe(`${RULES_LIST}`, () => {
     offline();
   });
 
-  it('is read-only and open-world, with a response_format switch', () => {
+  it('is read-only and confined to the published catalogue, with a response_format switch', () => {
     for (const tool of rulesTools) {
-      expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: true });
+      expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
       expect(tool.inputSchema.properties).toHaveProperty('response_format');
     }
   });
