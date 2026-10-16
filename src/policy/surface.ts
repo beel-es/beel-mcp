@@ -78,7 +78,7 @@ export const CHATGPT_REDACTED_PROPERTIES = new Set([
 ]);
 
 /** Removed, with the prose about them, outside `CHATGPT_IDENTIFIER_OPERATION_IDS`. */
-export const CHATGPT_IDENTIFIER_PROPERTIES = new Set(['nif']);
+export const CHATGPT_IDENTIFIER_PROPERTIES = new Set(['nif', 'recipient_nif']);
 
 /**
  * Phrases that mention the NIF only in passing, rewritten so the sentence that
@@ -88,6 +88,8 @@ const CHATGPT_PROSE_REWRITES: Array<[RegExp, string]> = [
   [/\s*— its identifier, not its NIF/g, ''],
   [/\bNIF, legal name or trade name\b/g, 'legal name or trade name'],
   [/\bname, NIF or email\b/g, 'name or email'],
+  [/\brecipient name, recipient NIF, and series code\b/g, 'recipient name and series code'],
+  [/`recipient_nif`,\s+/g, ''],
   [/\bNIF, legal name and trade name\b/g, 'legal name and trade name'],
 ];
 
@@ -148,7 +150,7 @@ const KEEPS_NIF: Redaction = {
 
 const DROPS_NIF: Redaction = {
   names: new Set([...CHATGPT_REDACTED_PROPERTIES, ...CHATGPT_IDENTIFIER_PROPERTIES]),
-  prose: /\b(iban|swift|passports?|pasaporte|nif|cif|dni|nie|tax id)\b/i,
+  prose: /\b(iban|swift|passports?|pasaporte|nif|cif|dni|nie|tax[\s-]id)\b/i,
   rewrites: CHATGPT_PROSE_REWRITES,
 };
 

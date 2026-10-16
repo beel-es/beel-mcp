@@ -146,7 +146,9 @@ describe('chatgpt surface', () => {
         Object.values(node).forEach((v) => strings(v, out));
       return out;
     };
-    const identifier = /\b(nif|cif|dni|nie|passports?|pasaporte|tax id)\b/i;
+    // `_` separates words here: `recipient_nif` is a NIF as much as `nif`.
+    const identifier =
+      /(^|[^a-z0-9])(nif|cif|dni|nie|passports?|pasaporte|tax[\s-]id)([^a-z0-9]|$)/i;
     const leaks = chatgpt
       .filter((t) => !allowed.has(t.tool.name))
       .flatMap((t) =>
