@@ -28,6 +28,7 @@ offer was rejected or withdrawn) or `EXPIRED` (its `valid_until` has passed).
 | Delete | `beel_delete_invoice` |
 | Issue | `beel_issue_invoice`, or create with `options.issue_directly` |
 | Schedule | `beel_set_invoice_schedule` |
+| Move a scheduled date or change its mode | `beel_patch_invoice_schedule` |
 | Mark sent / paid | `beel_set_invoice_status` |
 | Send by email | `beel_send_invoice` |
 | Void | `beel_void_invoice` |

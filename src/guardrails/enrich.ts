@@ -38,6 +38,7 @@ export const BY_OPERATION_ID: Record<string, string[]> = {
   createCompanySimplifiedExchange: ['simplified', 'records', 'verifactu-gates'],
   setCompanyInvoiceStatus: ['invoice-state-machine'],
   setCompanyInvoiceSchedule: ['lifecycle', 'invoice-state-machine'],
+  patchCompanyInvoiceSchedule: ['lifecycle', 'invoice-state-machine'],
   validateNif: ['nif-validation'],
   createCompanyCustomer: ['nif-validation'],
   createCompanyCustomersBulk: ['nif-validation'],

@@ -120,6 +120,7 @@ export const OPEN_WORLD_OPERATION_IDS = new Set([
   'createCompanyRecurringInvoice',
   'createCompanyRecurringInvoiceDerivation',
   'setCompanyInvoiceSchedule',
+  'patchCompanyInvoiceSchedule',
   'setCompanyRecurringInvoiceStatus',
   'patchCompanyRecurringInvoice',
   // Email to arbitrary recipients.
