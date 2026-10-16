@@ -413,7 +413,9 @@ function missingFor(
     );
   }
   if (payment.active === false) {
-    missing.push('No active payment connection; run beel_initiate_payment_connection to get paid.');
+    missing.push(
+      'No active payment connection; connect one in the BeeL app, or with beel_initiate_payment_connection where this session offers it, to get paid.',
+    );
   }
   return missing;
 }

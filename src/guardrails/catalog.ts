@@ -97,8 +97,8 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   NIF_REPRESENTATION_REQUIRED: {
     actor: 'configuration',
     remedy:
-      'Generate the representation with beel_generate_representation, then have ' +
-      'it signed. Only required in production.',
+      'Generate the representation in the BeeL app, or with beel_generate_representation ' +
+      'where this session offers it, then have it signed. Only required in production.',
     guardrail: 'verifactu-gates',
   },
   COMPANY_HAS_NO_NIF: { actor: 'configuration' },

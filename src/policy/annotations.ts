@@ -72,6 +72,12 @@ export const DESTRUCTIVE_OPERATION_IDS = new Set([
   'discardCompanyPaymentEvent',
   'resolveCompanyPaymentEvent',
   'skipCompanyRecurringInvoice',
+  // A recurring invoice is a schedule that issues to AEAT (and may email) on
+  // its own; creating one starts that job.
+  'createCompanyRecurringInvoice',
+  'createCompanyRecurringInvoiceDerivation',
+  // In Live it adds the NIF to the paid subscription.
+  'activateCompanyById',
 ]);
 
 /**
@@ -110,6 +116,11 @@ export const OPEN_WORLD_OPERATION_IDS = new Set([
   'convertCompanyProformaToInvoice',
   'generateCompanyRecurringInvoiceNow',
   'createCompanyInvoiceBatch',
+  // Schedules that issue to AEAT and may email the customer on their own.
+  'createCompanyRecurringInvoice',
+  'createCompanyRecurringInvoiceDerivation',
+  'setCompanyInvoiceSchedule',
+  'setCompanyRecurringInvoiceStatus',
   // Email to arbitrary recipients.
   'sendCompanyInvoice',
   'createCompanyInvoiceDelivery',

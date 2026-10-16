@@ -7,6 +7,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
   type CallToolResult,
+  type Prompt,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { resolveConfig, type ResolvedConfig } from './config.js';
@@ -31,7 +32,7 @@ import { isRecord } from './shared/guards.js';
 import { GuardrailError } from './guardrails/validate.js';
 import { explainErrorWithRules } from './guardrails/explain.js';
 import { SERVER_NAME } from './shared/defaults.js';
-import { apiToolsFor, type ToolSurface } from './policy/surface.js';
+import { apiToolsFor, promptsFor, type ToolSurface } from './policy/surface.js';
 
 export interface ServerInfo {
   name: string;
@@ -251,7 +252,7 @@ export const SERVER_INSTRUCTIONS = [
   '2. How the API, a field or a flow works: beel_docs_search, then beel_docs_get with the page ' +
     'and section of the result that answers, not the whole page. Not for which fiscal rule ' +
     'applies; that is step 1.',
-  '3. To act: the API tool for the operation. Use a test key (beel_sk_test_) unless the user ' +
+  '3. To act: the API tool for the operation. Work in the Test environment unless the user ' +
     'asks for Live. Send an Idempotency-Key on every create, issue, correct or void, and reuse ' +
     'it only to retry the same request.',
   '4. A 4xx with a fiscal error.code: beel_rules_get with that error_code, fix the request, ' +
@@ -321,10 +322,15 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     readResource(request.params.uri),
   );
 
-  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts }));
+  const surfacePrompts = (): Prompt[] => promptsFor(prompts, options.getSurface?.() ?? 'full');
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: surfacePrompts() }));
 
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    if (!surfacePrompts().some((p) => p.name === name)) {
+      throw new Error(`Unknown prompt: ${name}`);
+    }
     return getPrompt(name, (args ?? {}) as Record<string, string>);
   });
 

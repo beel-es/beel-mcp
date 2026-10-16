@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer } from '../src/server.js';
+import { createServer, SERVER_INSTRUCTIONS } from '../src/server.js';
+import { getPrompt, prompts } from '../src/prompts/workflows.js';
+import { docsTools } from '../src/tools/docs-tools.js';
+import { rulesTools } from '../src/tools/rules-tools.js';
+import { schemaTools } from '../src/tools/schema-tools.js';
+import { workflowTools } from '../src/tools/workflow-tools.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
 import {
   apiToolsFor,
-  CHATGPT_EXCLUDED_OPERATION_IDS,
   CHATGPT_EXCLUDED_TAGS,
+  CHATGPT_PROMPTS,
   CHATGPT_REDACTED_PROPERTIES,
   surfaceForClient,
   type ToolSurface,
@@ -48,9 +53,9 @@ describe('chatgpt surface', () => {
 
   it('names only tags and operations that exist', () => {
     const tags = new Set(apiTools.flatMap((t) => t.operation.tags));
-    const ids = new Set(apiTools.map((t) => t.operation.operationId));
     expect([...CHATGPT_EXCLUDED_TAGS].filter((t) => !tags.has(t))).toEqual([]);
-    expect([...CHATGPT_EXCLUDED_OPERATION_IDS].filter((id) => !ids.has(id))).toEqual([]);
+    const names = new Set(prompts.map((p) => p.name));
+    expect([...CHATGPT_PROMPTS].filter((p) => !names.has(p))).toEqual([]);
   });
 
   it('drops credential, people-administration, representation and payment-provider tools', () => {
@@ -66,6 +71,9 @@ describe('chatgpt surface', () => {
       'beel_generate_representation',
       'beel_initiate_payment_connection',
       'beel_list_payment_events',
+      'beel_get_email_delivery',
+      'beel_list_accounts',
+      'beel_get_usage',
     ]) {
       expect(names.has(name), name).toBe(false);
     }
@@ -93,6 +101,42 @@ describe('chatgpt surface', () => {
     expect(apiTools.some((t) => propertyNames(t.tool.inputSchema).has('iban'))).toBe(true);
   });
 
+  it('publishes no definition, description or example about bank details or the representative', () => {
+    const leaks = chatgpt
+      .filter((t) =>
+        /iban|swift|legal_representative|LegalRepresentative/i.test(
+          JSON.stringify(t.tool.inputSchema),
+        ),
+      )
+      .map((t) => t.tool.name);
+    expect(leaks).toEqual([]);
+  });
+
+  it('only references $defs it publishes', () => {
+    for (const t of chatgpt) {
+      const json = JSON.stringify(t.tool.inputSchema);
+      const defs = Object.keys((t.tool.inputSchema as { $defs?: object }).$defs ?? {});
+      for (const [, ref] of json.matchAll(/"\$ref":"#\/\$defs\/([^"]+)"/g)) {
+        expect(defs, `${t.tool.name} -> ${ref}`).toContain(ref);
+      }
+    }
+  });
+
+  it('names in its prompts and instructions only tools the session has, and no API key', () => {
+    const available = new Set([
+      ...chatgpt.map((t) => t.tool.name),
+      ...[...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => t.name),
+    ]);
+    const texts = [
+      SERVER_INSTRUCTIONS,
+      ...[...CHATGPT_PROMPTS].map((name) => JSON.stringify(getPrompt(name, {}))),
+    ];
+    const missing = texts.flatMap((text) =>
+      [...text.matchAll(/\bbeel_[a-z0-9_]+/g)].map((m) => m[0]).filter((n) => !available.has(n)),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it('keeps the customer NIF, which a full invoice requires', () => {
     const create = chatgpt.find((t) => t.tool.name === 'beel_create_customer')!;
     expect(propertyNames(create.tool.inputSchema).has('nif')).toBe(true);
@@ -103,6 +147,10 @@ describe('chatgpt surface', () => {
     const { tools } = await client.listTools();
     expect(tools.some((t) => t.name === 'beel_rotate_webhook_secret')).toBe(false);
     expect(tools.some((t) => t.name === 'beel_docs_search')).toBe(true);
+
+    const listed = (await client.listPrompts()).prompts.map((p) => p.name).sort();
+    expect(listed).toEqual([...CHATGPT_PROMPTS].sort());
+    await expect(client.getPrompt({ name: 'setup-representation' })).rejects.toThrow();
 
     const result = await client.callTool({ name: 'beel_create_claim_token', arguments: {} });
     expect(result.isError).toBe(true);
