@@ -127,6 +127,19 @@ interface Redaction {
 
 const BANK_AND_DOCUMENTS = /\b(iban|swift|passports?|pasaporte)\b/i;
 
+/** Tool descriptions: the removed fields go, the NIF as "a company" stays. */
+const TOOL_DESCRIPTION: Redaction = {
+  names: CHATGPT_REDACTED_PROPERTIES,
+  prose: BANK_AND_DOCUMENTS,
+  rewrites: [
+    [
+      / together with `payment_iban`, `payment_swift`\s+and `payment_term_days`/g,
+      ' together with `payment_term_days`',
+    ],
+    [/ \(with `payment_iban` and `payment_swift`\)/g, ''],
+  ],
+};
+
 const KEEPS_NIF: Redaction = {
   names: CHATGPT_REDACTED_PROPERTIES,
   prose: BANK_AND_DOCUMENTS,
@@ -276,10 +289,12 @@ export function apiToolsFor(tools: ApiTool[], surface: ToolSurface): ApiTool[] {
       tool: {
         ...t.tool,
         // The description explains the tool, including what BeeL calls a
-        // company (a NIF): only the phrases about searching by NIF change.
-        description: r.rewrites.reduce(
-          (d, [from, to]) => d.replace(from, to),
-          t.tool.description ?? '',
+        // company (a NIF): the phrases about searching by NIF are rewritten,
+        // and what it says about removed fields goes, so it claims nothing
+        // the schema does not offer.
+        description: redactProse(
+          r.rewrites.reduce((d, [from, to]) => d.replace(from, to), t.tool.description ?? ''),
+          TOOL_DESCRIPTION,
         ),
         inputSchema: pruneDefs(
           r === DROPS_NIF
