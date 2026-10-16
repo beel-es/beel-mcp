@@ -26,7 +26,7 @@ const OUT = resolve(here, '../openapi/public-api.yaml');
 const DEFAULT_SOURCE = resolve(
   here,
   // Sibling checkout of the contract source. Override with BEEL_BACKEND_PATH.
-  process.env.BEEL_BACKEND_PATH ?? '../../backend/src/main/resources/openapi/public-api.yaml',
+  process.env.BEEL_BACKEND_PATH ?? '../../backend/api/src/main/resources/openapi/public-api.yaml',
 );
 
 const source = process.argv[2] ? resolve(process.argv[2]) : DEFAULT_SOURCE;
