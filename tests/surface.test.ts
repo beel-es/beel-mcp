@@ -182,6 +182,25 @@ describe('chatgpt surface', () => {
     expect(tool.tool.annotations?.openWorldHint).toBe(true);
   });
 
+  it('describes no field or tool the session does not have', () => {
+    // A description promising a removed field reads to the review as claiming
+    // capabilities the tool does not have.
+    const available = new Set([
+      ...chatgpt.map((t) => t.tool.name),
+      ...[...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => t.name),
+    ]);
+    const problems = chatgpt.flatMap((t) => {
+      const text = t.tool.description ?? '';
+      return [
+        ...[...CHATGPT_REDACTED_PROPERTIES].filter((p) => text.includes(`\`${p}\``)),
+        ...[...text.matchAll(/\bbeel_[a-z0-9_]+/g)]
+          .map((m) => m[0])
+          .filter((n) => !available.has(n)),
+      ].map((p) => `${t.tool.name}: ${p}`);
+    });
+    expect(problems).toEqual([]);
+  });
+
   it('keeps the customer NIF, which a full invoice requires', () => {
     const create = chatgpt.find((t) => t.tool.name === 'beel_create_customer')!;
     expect(propertyNames(create.tool.inputSchema).has('nif')).toBe(true);
