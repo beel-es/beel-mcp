@@ -9,7 +9,12 @@ import { createServer } from '../src/server.js';
  * read-only tool is never destructive). `idempotentHint` too: the review asks for every hint. Hand-written tools are the ones that
  * drift: the generated ones get all three from `annotationsFor`.
  */
-const REQUIRED_HINTS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const;
+const REQUIRED_HINTS = [
+  'readOnlyHint',
+  'destructiveHint',
+  'idempotentHint',
+  'openWorldHint',
+] as const;
 
 describe('tool annotations', () => {
   it('every tool sets each safety hint explicitly as a boolean', async () => {

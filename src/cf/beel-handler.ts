@@ -37,6 +37,7 @@ import {
   SERVER_NAME,
 } from '../shared/defaults.js';
 import { readEnv } from '../shared/env.js';
+import { surfaceForClient } from '../policy/surface.js';
 import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
 import { pdfProxyHandler } from './pdf-proxy.js';
 
@@ -433,6 +434,16 @@ async function completeCallback(
   const userId = subjectFromAccessToken(tokens.access_token);
   if (!userId) return c.text('BeeL returned a token with no identity in it.', 502);
 
+  // Fixed for the life of the grant: refreshes carry the props over unchanged.
+  const surface = surfaceForClient(
+    await resolveClientIdentity(
+      c.env.OAUTH_PROVIDER,
+      pending.oauthReqInfo.clientId,
+      pending.oauthReqInfo.redirectUri,
+      parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
+    ),
+  );
+
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
     request: pending.oauthReqInfo,
     userId,
@@ -442,6 +453,7 @@ async function completeCallback(
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       scopes,
+      surface,
     },
   });
   return finalRedirect(redirectTo);

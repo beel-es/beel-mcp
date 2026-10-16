@@ -31,6 +31,7 @@ import { isRecord } from './shared/guards.js';
 import { GuardrailError } from './guardrails/validate.js';
 import { explainErrorWithRules } from './guardrails/explain.js';
 import { SERVER_NAME } from './shared/defaults.js';
+import { apiToolsFor, type ToolSurface } from './policy/surface.js';
 
 export interface ServerInfo {
   name: string;
@@ -46,6 +47,12 @@ export interface CreateServerOptions {
   getConfig?: () => ResolvedConfig;
   /** Suppress the per-instance boot log (HTTP creates one server per request). */
   quiet?: boolean;
+  /**
+   * Which tool surface the session sees, read on every list and call because a
+   * remote session only knows its client once the grant is loaded. `full` when
+   * omitted.
+   */
+  getSurface?: () => ToolSurface;
 }
 
 function textResult(text: string, isError = false): CallToolResult {
@@ -174,7 +181,7 @@ async function errorResult(name: string, err: unknown, ms: number): Promise<Call
  * API tool, and turn every failure into a result the model can act on.
  */
 function createCallToolHandler(
-  apiByName: Map<string, ApiTool>,
+  apiByNameFor: () => Map<string, ApiTool>,
   syntheticByName: Map<string, Tool>,
   getConfig: () => ResolvedConfig,
 ): (request: { params: { name: string; arguments?: unknown } }) => Promise<CallToolResult> {
@@ -195,7 +202,7 @@ function createCallToolHandler(
         logToolCall(name, 'ok', Date.now() - startedAt);
         return result;
       }
-      const apiTool = apiByName.get(name);
+      const apiTool = apiByNameFor().get(name);
       if (!apiTool) {
         logToolCall(name, 'error', Date.now() - startedAt, { code: 'unknown_tool' });
         return textResult(`Unknown tool: ${name}`, true);
@@ -266,7 +273,17 @@ export const SERVER_INSTRUCTIONS = [
 /** Build and wire the BeeL MCP server (transport-agnostic). */
 export function createServer(info: ServerInfo, options: CreateServerOptions = {}): Server {
   const { tools: apiTools, policy } = buildApiTools();
-  const apiByName = new Map<string, ApiTool>(apiTools.map((t) => [t.tool.name, t]));
+  const surfaces = new Map<ToolSurface, { tools: ApiTool[]; byName: Map<string, ApiTool> }>();
+  const surfaceOf = (): { tools: ApiTool[]; byName: Map<string, ApiTool> } => {
+    const surface = options.getSurface?.() ?? 'full';
+    let entry = surfaces.get(surface);
+    if (!entry) {
+      const tools = apiToolsFor(apiTools, surface);
+      entry = { tools, byName: new Map(tools.map((t) => [t.tool.name, t])) };
+      surfaces.set(surface, entry);
+    }
+    return entry;
+  };
 
   // Resolve credentials lazily so the server starts (and can list tools) without
   // an API key; we only need it the first time an API tool actually runs. HTTP
@@ -281,7 +298,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
-      ...apiTools.map((t) => t.tool),
+      ...surfaceOf().tools.map((t) => t.tool),
       ...docsTools,
       ...rulesTools,
       ...schemaTools,
@@ -292,7 +309,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   const syntheticByName = new Map<string, Tool>(
     [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => [t.name, t]),
   );
-  const callTool = createCallToolHandler(apiByName, syntheticByName, getConfig);
+  const callTool = createCallToolHandler(() => surfaceOf().byName, syntheticByName, getConfig);
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => callTool(request));
 
