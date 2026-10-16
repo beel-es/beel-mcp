@@ -47,6 +47,26 @@ export const PDFJS_WORKER_URL = `${PDFJS_CDN_ORIGIN}/ajax/libs/pdf.js/${PDFJS_VE
 /** Hosts allowed to embed the viewer (`frame-ancestors`). */
 export const APP_HOST_ORIGINS = ['https://claude.ai', 'https://chatgpt.com'] as const;
 
+/**
+ * Domains under which a host serves MCP Apps from per-app subdomains, so the
+ * viewer's `Origin` is one of them rather than `null`. Claude renders each app
+ * at `https://<id>.claudemcpcontent.com`, a subdomain that changes per server.
+ */
+export const APP_SANDBOX_DOMAINS = ['claudemcpcontent.com'] as const;
+
+/** Whether `origin` is an HTTPS subdomain of a host's MCP Apps sandbox domain. */
+export function isAppSandboxOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.origin !== origin) return false;
+  const host = url.hostname.toLowerCase();
+  return APP_SANDBOX_DOMAINS.some((domain) => host.endsWith(`.${domain}`));
+}
+
 /** The viewer's ui:// resource and its mimetype (the MCP Apps profile). */
 export const INVOICE_PDF_APP_URI = 'ui://beel/invoice-pdf.html';
 export const MCP_APP_MIME = 'text/html;profile=mcp-app';

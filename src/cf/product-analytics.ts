@@ -1,7 +1,6 @@
 /**
  * Product analytics for the remote MCP server: which tools agents call, which
- * fail, from which client, and — through the `context` argument the SDK adds to
- * every tool — what the agent was trying to do.
+ * fail, from which client, and how long they take.
  *
  * With no project token configured nothing is sent, so deploying before the
  * secret exists is inert rather than broken. Error reporting stays in
@@ -49,9 +48,12 @@ export function createProductAnalytics(env: EnvRecord): PostHog | null {
  * Capture this server's MCP traffic under the id of the person whose token the
  * session holds — the same id the API attributes their actions to.
  *
- * Only the intent argument is injected. The model and conversation-id arguments
- * would add two more fields to every tool an agent reads on each turn, and the
- * session is already stable: each one lives in its own Durable Object.
+ * No argument is injected into the tools. The SDK can add one asking the agent
+ * why it called the tool, but that is conversation content the tool does not
+ * need to do its job, and an instruction to the model in every tool definition
+ * the agent reads on each turn. The model and conversation-id arguments are off
+ * for the same reason; the session is already stable, since each one lives in
+ * its own Durable Object.
  */
 export function instrumentProductAnalytics(
   server: unknown,
@@ -66,6 +68,7 @@ export function instrumentProductAnalytics(
     },
     beforeSend: (event) => redactMcpEvent(event),
     enableExceptionAutocapture: false,
+    context: false,
     captureModel: false,
     enableConversationId: false,
   });

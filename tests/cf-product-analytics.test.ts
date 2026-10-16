@@ -106,12 +106,16 @@ describe('an instrumented server', () => {
     expect(call?.properties).not.toHaveProperty('$mcp_response');
   });
 
-  it('asks the agent for its intent and nothing else', async () => {
+  it('adds no argument to any tool', async () => {
+    // An injected argument would ask the agent for conversation content the
+    // tool does not need, in every tool definition it reads.
     const { client } = await connect(accessToken({ user_id: USER_ID }));
     const { tools } = await client.listTools();
-    const properties = Object.keys(tools[0]?.inputSchema.properties ?? {});
-    expect(properties).toContain('context');
-    expect(properties).not.toContain('llm_model');
-    expect(properties).not.toContain('conversation_id');
+    for (const tool of tools) {
+      const properties = Object.keys(tool.inputSchema.properties ?? {});
+      expect(properties, tool.name).not.toContain('context');
+      expect(properties, tool.name).not.toContain('llm_model');
+      expect(properties, tool.name).not.toContain('conversation_id');
+    }
   });
 });

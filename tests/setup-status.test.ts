@@ -115,6 +115,16 @@ describe('beel_get_setup_status', () => {
     expect(status.next_action).toContain('beel_create_invoice');
   });
 
+  it("states readiness for the session's environment, not for Live", async () => {
+    // Readiness is evaluated in the environment of the request, so a Test
+    // session that reported "can issue Live" would claim something unchecked.
+    const test = await getSetupStatus(config, {}, fakeCaller(HEALTHY));
+    expect(test.next_action).toContain('can issue in Test');
+    expect(JSON.stringify(test)).not.toMatch(/\bLive\b/);
+    const live = await getSetupStatus({ ...config, env: 'live' }, {}, fakeCaller(HEALTHY));
+    expect(live.next_action).toContain('can issue in Live');
+  });
+
   it('reads the listing envelope the API actually returns', async () => {
     const caller = fakeCaller({
       ...HEALTHY,
@@ -247,8 +257,8 @@ describe('a failure is never reported as a positive answer', () => {
     expect(co.ready).toBeNull();
     expect(co.error).toContain('FORBIDDEN');
     expect(co.next_action).toMatch(/unknown/i);
-    expect(co.next_action).not.toMatch(/Ready to issue Live/);
-    expect(status.next_action).not.toMatch(/All companies can issue Live/);
+    expect(co.next_action).not.toMatch(/Ready to issue/);
+    expect(status.next_action).not.toMatch(/All companies can issue/);
   });
 
   it('carries the reason on each section that could not be read', async () => {

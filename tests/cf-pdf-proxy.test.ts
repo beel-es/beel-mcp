@@ -173,6 +173,25 @@ describe('only the viewer may read the bytes', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe(APP_ORIGIN);
   });
 
+  it("allows the viewer served from Claude's per-app sandbox subdomain", async () => {
+    stub(() => pdf());
+    const origin = 'https://0123456789abcdef.claudemcpcontent.com';
+    const response = await get('https://storage.example.com/a.pdf', { origin });
+    expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+  });
+
+  it('does not take a look-alike of the sandbox domain for it', async () => {
+    stub(() => pdf());
+    for (const origin of [
+      'https://claudemcpcontent.com.evil.example',
+      'https://evilclaudemcpcontent.com',
+      'http://0123456789abcdef.claudemcpcontent.com',
+    ]) {
+      const response = await get('https://storage.example.com/a.pdf', { origin });
+      expect(response.headers.get('access-control-allow-origin'), origin).toBeNull();
+    }
+  });
+
   it('does not let any other origin read them', async () => {
     stub(() => pdf());
     const response = await get('https://storage.example.com/a.pdf', {
