@@ -10,7 +10,7 @@ import type { ApiTool } from '../tools/api-tools.js';
  * The plugin's stated function is invoicing: invoices, customers, products,
  * series, recurring invoices, sending them and the fiscal summary. A customer's
  * NIF stays, but only where the customer is registered or checked
- * (`CHATGPT_IDENTIFIER_OPERATION_IDS`): a full invoice cannot be issued without
+ * (`CHATGPT_IDENTIFIER_OPERATION_IDS`), which also check it against the AEAT census: a full invoice cannot be issued without
  * it (art. 6.1.d RD 1619/2012). Invoices then name the customer by
  * `customer_id`. What the function does not need goes:
  *
@@ -50,13 +50,15 @@ export const CHATGPT_EXCLUDED_OPERATION_IDS = new Set([
   'deleteCompanyById',
   'createCompanyCustomersBulk',
   'createCompanyInvoiceBatch',
+  // Creating or editing a customer already checks its NIF against the AEAT
+  // census; a tool whose only input is the NIF adds nothing here.
+  'validateNif',
 ]);
 
 /** The only operations whose input carries a NIF on the `chatgpt` surface. */
 export const CHATGPT_IDENTIFIER_OPERATION_IDS = new Set([
   'createCompanyCustomer',
   'patchCompanyCustomer',
-  'validateNif',
 ]);
 
 /** Prompts a ChatGPT session lists: the invoicing flows. */
