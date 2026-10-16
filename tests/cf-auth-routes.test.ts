@@ -368,6 +368,28 @@ describe('/callback records what the session really holds', () => {
     expect(grant?.userId).toBe('user-1');
     expect(grant?.props).toMatchObject({ accessToken: ACCESS_TOKEN, refreshToken: 'rt' });
   });
+
+  it('puts a session from the verified ChatGPT callback on the chatgpt surface', async () => {
+    const { grant } = await connect({ access_token: ACCESS_TOKEN });
+    // The default fake request returns to claude.ai.
+    expect(grant?.props).toMatchObject({ surface: 'full' });
+
+    const { env, kv } = fakeEnv();
+    env.OAUTH_PROVIDER.parseAuthRequest = async () => ({
+      clientId: 'client-1',
+      redirectUri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+      scope: ['invoices:read'],
+      responseType: 'code',
+      state: 'client-state',
+    });
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ access_token: ACCESS_TOKEN })),
+    );
+    await call(env, WORKER_PATH.authorize);
+    await call(env, WORKER_PATH.callback, `?state=${storedState(kv)}&code=abc`);
+    expect(completed.at(-1)?.props).toMatchObject({ surface: 'chatgpt' });
+  });
 });
 
 describe('the interstitial that ends the flow', () => {
@@ -408,5 +430,22 @@ describe('/healthz', () => {
     const response = await call(fakeEnv().env, WORKER_PATH.health);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: 'ok', runtime: 'cloudflare' });
+  });
+});
+
+describe('/.well-known/openai-apps-challenge', () => {
+  it('answers with the configured token as bare text, nothing around it', async () => {
+    const response = await call(
+      fakeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: ' token-123 ' }).env,
+      WORKER_PATH.openaiAppsChallenge,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toMatch(/^text\/plain/);
+    expect(await response.text()).toBe('token-123');
+  });
+
+  it('is a 404 when no token is configured', async () => {
+    const response = await call(fakeEnv().env, WORKER_PATH.openaiAppsChallenge);
+    expect(response.status).toBe(404);
   });
 });

@@ -37,6 +37,7 @@ import {
   SERVER_NAME,
 } from '../shared/defaults.js';
 import { readEnv } from '../shared/env.js';
+import { surfaceForClient } from '../policy/surface.js';
 import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
 import { pdfProxyHandler } from './pdf-proxy.js';
 
@@ -134,6 +135,13 @@ const app = new Hono<{ Bindings: Env }>();
 app.get(WORKER_PATH.health, (c) =>
   c.json({ status: 'ok', name: SERVER_NAME, runtime: 'cloudflare' }),
 );
+
+// OpenAI's plugin portal proves we own the MCP host by fetching its token here,
+// bare, with no JSON around it. Unset, the path does not exist.
+app.get(WORKER_PATH.openaiAppsChallenge, (c) => {
+  const token = readEnv(c.env, ENV_VAR.openaiAppsChallengeToken);
+  return token ? c.text(token) : c.notFound();
+});
 
 // The PDF relay for the viewer: inline + CORS, restricted to an allowlist.
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
@@ -426,6 +434,16 @@ async function completeCallback(
   const userId = subjectFromAccessToken(tokens.access_token);
   if (!userId) return c.text('BeeL returned a token with no identity in it.', 502);
 
+  // Fixed for the life of the grant: refreshes carry the props over unchanged.
+  const surface = surfaceForClient(
+    await resolveClientIdentity(
+      c.env.OAUTH_PROVIDER,
+      pending.oauthReqInfo.clientId,
+      pending.oauthReqInfo.redirectUri,
+      parseKnownClients(readEnv(c.env, ENV_VAR.verifiedClients)),
+    ),
+  );
+
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
     request: pending.oauthReqInfo,
     userId,
@@ -435,6 +453,7 @@ async function completeCallback(
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       scopes,
+      surface,
     },
   });
   return finalRedirect(redirectTo);

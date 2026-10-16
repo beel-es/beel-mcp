@@ -55,6 +55,82 @@ export const DESTRUCTIVE_OPERATION_IDS = new Set([
   'submitCompanyRepresentation',
   // Invalidates the existing secret immediately, breaking every live receiver.
   'rotateAccountWebhookSecret',
+  // With `options.issue_directly` it numbers the invoice and sends it to AEAT.
+  'createCompanyInvoice',
+  // Issues a full invoice registered with AEAT in exchange for simplified ones.
+  'createCompanySimplifiedExchange',
+  // Sends an email to arbitrary addresses: a send is not recalled.
+  'sendCompanyInvoice',
+  'createCompanyInvoiceDelivery',
+  'createAccountInvitation',
+  'createAccountClaimToken',
+  // Delivers a request to an arbitrary URL.
+  'testAccountWebhookSubscription',
+  'retryAccountWebhookDelivery',
+  // Close a payment event or an occurrence; a later restore does not make the
+  // first call harmless.
+  'discardCompanyPaymentEvent',
+  'resolveCompanyPaymentEvent',
+  'skipCompanyRecurringInvoice',
+  // A recurring invoice is a schedule that issues to AEAT (and may email) on
+  // its own; creating one starts that job.
+  'createCompanyRecurringInvoice',
+  'createCompanyRecurringInvoiceDerivation',
+  // In Live it adds the NIF to the paid subscription.
+  'activateCompanyById',
+]);
+
+/**
+ * Writes over a PUT or a PATCH that only add: they create what is missing and
+ * leave what exists untouched. Every other PUT and PATCH overwrites state, which
+ * is what a host is told to confirm.
+ */
+export const ADDITIVE_OPERATION_IDS = new Set([
+  // Creates the default series that are missing; existing ones are not touched.
+  'ensureCompanyDefaultSeries',
+]);
+
+/**
+ * Non-GET operations that only read or compute: they change nothing anywhere.
+ */
+export const READ_ONLY_OPERATION_IDS = new Set([
+  // Looks the NIF up in the AEAT register; creates nothing.
+  'validateNif',
+]);
+
+/**
+ * Operations that reach outside the user's own BeeL account: a fiscal record
+ * sent to or looked up at AEAT, an email to any address, a request to any URL.
+ * Everything else is confined to the account the token belongs to, which is
+ * what `openWorldHint: false` means: being hosted remotely does not make a tool
+ * open-world.
+ */
+export const OPEN_WORLD_OPERATION_IDS = new Set([
+  // AEAT: register lookups and VeriFactu records.
+  'validateNif',
+  'createCompanyInvoice',
+  'issueCompanyInvoice',
+  'voidCompanyInvoice',
+  'createCompanyCorrectiveInvoice',
+  'createCompanySimplifiedExchange',
+  'convertCompanyProformaToInvoice',
+  'generateCompanyRecurringInvoiceNow',
+  'createCompanyInvoiceBatch',
+  // Schedules that issue to AEAT and may email the customer on their own.
+  'createCompanyRecurringInvoice',
+  'createCompanyRecurringInvoiceDerivation',
+  'setCompanyInvoiceSchedule',
+  'setCompanyRecurringInvoiceStatus',
+  // Email to arbitrary recipients.
+  'sendCompanyInvoice',
+  'createCompanyInvoiceDelivery',
+  'createAccountInvitation',
+  'createAccountClaimToken',
+  // Requests to arbitrary URLs.
+  'createAccountWebhookSubscription',
+  'patchAccountWebhookSubscription',
+  'testAccountWebhookSubscription',
+  'retryAccountWebhookDelivery',
 ]);
 
 function titleCase(operationId: string): string {
@@ -67,12 +143,24 @@ function claimsIrreversible(op: OperationSpec): boolean {
   return IRREVERSIBLE_PHRASES.some((phrase) => prose.includes(phrase));
 }
 
+function isReadOnly(op: OperationSpec): boolean {
+  return op.method === 'GET' || READ_ONLY_OPERATION_IDS.has(op.operationId);
+}
+
+/**
+ * OpenAI's review reads `destructiveHint` as "deletes, overwrites, cancels,
+ * revokes access or sends irreversibly", and allows `false` only for writes that
+ * purely add. So a PUT or PATCH counts: it replaces what was there.
+ */
 function isDestructive(op: OperationSpec): boolean {
   // The contract is the author: an explicit verdict, either way, ends it.
   if (op.irreversible !== undefined) return op.irreversible;
   // A read never destroys anything, whatever its prose describes.
-  if (op.method === 'GET') return false;
+  if (isReadOnly(op)) return false;
   if (op.method === 'DELETE') return true;
+  if (op.method === 'PUT' || op.method === 'PATCH') {
+    return !ADDITIVE_OPERATION_IDS.has(op.operationId);
+  }
   return claimsIrreversible(op) || DESTRUCTIVE_OPERATION_IDS.has(op.operationId);
 }
 
@@ -83,6 +171,7 @@ function isDestructive(op: OperationSpec): boolean {
  * Idempotency-Key, which is exactly the promise the verb withholds.
  */
 function isIdempotent(op: OperationSpec): boolean {
+  if (isReadOnly(op)) return true;
   if (op.method === 'GET' || op.method === 'PUT' || op.method === 'DELETE') return true;
   if (op.method === 'PATCH') return false;
   return op.headerParams.some((p) => p.name === BEEL_HEADER.idempotencyKey);
@@ -91,9 +180,9 @@ function isIdempotent(op: OperationSpec): boolean {
 export function annotationsFor(op: OperationSpec): ToolAnnotations {
   return {
     title: titleCase(op.operationId),
-    readOnlyHint: op.method === 'GET',
+    readOnlyHint: isReadOnly(op),
     destructiveHint: isDestructive(op),
     idempotentHint: isIdempotent(op),
-    openWorldHint: true, // every tool talks to the live BeeL API
+    openWorldHint: OPEN_WORLD_OPERATION_IDS.has(op.operationId),
   };
 }

@@ -47,6 +47,7 @@ setInvoicePdfAppHtml(invoicePdfHtml);
 class BeelMcpAgentBase extends McpAgent<Env, Record<string, never>, SessionProps> {
   server = createServer(SERVER_INFO, {
     quiet: true,
+    getSurface: () => this.props?.surface ?? 'full',
     getConfig: (): ResolvedConfig => {
       const props = this.props;
       if (!props) throw new Error('No authenticated session — reconnect the BeeL MCP.');

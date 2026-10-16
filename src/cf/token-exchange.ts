@@ -1,3 +1,4 @@
+import type { ToolSurface } from '../policy/surface.js';
 /**
  * Keeping the upstream BeeL token alive across refreshes.
  *
@@ -28,6 +29,8 @@ export interface SessionProps extends Record<string, unknown> {
   accessToken: string;
   refreshToken?: string;
   scopes: string[];
+  /** Tool surface fixed when the grant was made; absent on older grants (`full`). */
+  surface?: ToolSurface;
 }
 
 /** A grant with no refresh token can never be renewed; say so in OAuth terms. */

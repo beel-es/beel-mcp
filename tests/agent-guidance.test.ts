@@ -59,9 +59,9 @@ describe('the server instructions', () => {
     expect(SERVER_INSTRUCTIONS).toContain(DOCS_GET);
   });
 
-  it('hold the general rules: when not to, test key, idempotency, integrator rules, citing', () => {
+  it('hold the general rules: when not to, Test environment, idempotency, integrator rules, citing', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/Skip the rules for questions/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/beel_sk_test_/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/Test environment/);
     expect(SERVER_INSTRUCTIONS).toMatch(/Idempotency-Key/);
     expect(SERVER_INSTRUCTIONS).toMatch(/enforced_by "integrator"/);
     expect(SERVER_INSTRUCTIONS).toMatch(/cite its id with its link/);
@@ -125,7 +125,7 @@ describe('the tool descriptions', () => {
   });
 
   it('do not repeat the general guidance of the instructions', () => {
-    const general = [/Idempotency-Key/, /beel_sk_test_/, /If it fails with a fiscal error/];
+    const general = [/Idempotency-Key/, /Test environment/, /If it fails with a fiscal error/];
     const repeats = [...SYNTHETIC, ...API]
       .filter(
         (t) => SYNTHETIC.includes(t) || /If it fails with a fiscal error/.test(t.description ?? ''),
