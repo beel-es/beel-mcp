@@ -3,6 +3,48 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.10.0](https://github.com/beel-es/beel-mcp/compare/v0.9.0...v0.10.0) (2026-10-16)
+
+
+### Novedades
+
+* **cf:** a ChatGPT surface without restricted data ([38de47f](https://github.com/beel-es/beel-mcp/commit/38de47fb3414f56bcd890cfb76959a8096c70c29))
+* **cf:** record MCP tool usage in product analytics ([dbd9eec](https://github.com/beel-es/beel-mcp/commit/dbd9eec1e232cbb1784f72464b6e144d4e317a9e))
+* **cf:** record MCP tool usage in product analytics ([c98d623](https://github.com/beel-es/beel-mcp/commit/c98d623ee1af833ae532d0c6fd185f7094816af8))
+* **cf:** serve OpenAI's plugin domain challenge ([093c063](https://github.com/beel-es/beel-mcp/commit/093c063b93829404d30e3628273a8d5f2b5b0c78))
+* **cf:** serve OpenAI's plugin domain challenge ([d70f449](https://github.com/beel-es/beel-mcp/commit/d70f44921b089ad2e9ef10e6c404453e5737daad))
+* **spec:** sincroniza el contrato con la API en producción ([fc47844](https://github.com/beel-es/beel-mcp/commit/fc4784425c62c36693aaa27c52597eeec12b3eae))
+* **spec:** sincroniza el contrato con la API en producción ([8a98c68](https://github.com/beel-es/beel-mcp/commit/8a98c6896b7273cec4b9fcbdb14a4edfdc085292))
+* **tools:** name the BeeL API and its reference in tool descriptions ([9cb4ae0](https://github.com/beel-es/beel-mcp/commit/9cb4ae09b725318e7f6f83b11f856efda2c8d0b1))
+* **tools:** name the BeeL API and its reference in tool descriptions ([dff0abc](https://github.com/beel-es/beel-mcp/commit/dff0abc357c0819834cc43435c229af5b24e8210))
+
+
+### Correcciones
+
+* accept the retired context argument from cached tool lists ([52bc284](https://github.com/beel-es/beel-mcp/commit/52bc284928f3e213e3ae8829df9dd1e8ad9f8769))
+* accept the retired context argument from cached tool lists ([8201b28](https://github.com/beel-es/beel-mcp/commit/8201b284210a402dee8e5a19402692fbf603b14e))
+* annotations and a ChatGPT surface for OpenAI's plugin review ([aa191e4](https://github.com/beel-es/beel-mcp/commit/aa191e4086b131c79a9f2a77441ce24250f39fb6))
+* **build:** verify:package admite la salida de tools/list del contrato actual ([0127817](https://github.com/beel-es/beel-mcp/commit/012781745ed109b860385326c1b191556a19ef3b))
+* **cf:** add no analytics argument to the tools ([c883dce](https://github.com/beel-es/beel-mcp/commit/c883dced7007f103acb1bda3f0b99d2a12ca9e9e))
+* **cf:** add no analytics argument to the tools ([b688e35](https://github.com/beel-es/beel-mcp/commit/b688e35005a438d23452d85854984d1fceb8aca6))
+* **cf:** close what an audit of the ChatGPT surface still found ([4a4029e](https://github.com/beel-es/beel-mcp/commit/4a4029e43233a01135e996e5f3f6d5f0d233cae5))
+* **cf:** no recipient NIF filter on the ChatGPT surface ([d0333f8](https://github.com/beel-es/beel-mcp/commit/d0333f871fe3adb7ea373ab3e3850a7963f95c99))
+* **cf:** no recipient NIF filter on the ChatGPT surface ([a87b74f](https://github.com/beel-es/beel-mcp/commit/a87b74fa7a0ea5a9a27576681d83aaa70580645a))
+* **cf:** no standalone NIF check on the ChatGPT surface ([486e8f7](https://github.com/beel-es/beel-mcp/commit/486e8f7aac0a30fce62672a17b3bfe3feee8f1bd))
+* **cf:** no standalone NIF check on the ChatGPT surface ([daa9fcb](https://github.com/beel-es/beel-mcp/commit/daa9fcb503e44a8b5bfdb10c24685e02586819cc))
+* **cf:** the ChatGPT surface asks for a NIF only to register a customer ([0f9961a](https://github.com/beel-es/beel-mcp/commit/0f9961ac91bcb9287b0ed323a0eaff4084a7d5d8))
+* **cf:** the ChatGPT surface asks for a NIF only to register a customer ([4b01e23](https://github.com/beel-es/beel-mcp/commit/4b01e23e28104dc2b1fe21685d50b91f2f7aba35))
+* **cf:** tool descriptions on the ChatGPT surface claim no removed field ([7276b2c](https://github.com/beel-es/beel-mcp/commit/7276b2ca87d1cd1b4264f4d5018396a11e073a1b))
+* **cf:** tool descriptions on the ChatGPT surface claim no removed field ([57c2bcf](https://github.com/beel-es/beel-mcp/commit/57c2bcf6e7b4f1b964ded615ba2c43349c174d6d))
+* **mcpapp:** let the invoice viewer read the PDF in Claude ([b49184d](https://github.com/beel-es/beel-mcp/commit/b49184d81d52a3307a9795192fd4ae7dd8216183))
+* **mcpapp:** let the invoice viewer read the PDF in Claude ([3ef62ff](https://github.com/beel-es/beel-mcp/commit/3ef62ff7f5829e5e815d409df71225c21f26a07d))
+* **spec:** state a type on every top-level tool argument ([f4bf6d9](https://github.com/beel-es/beel-mcp/commit/f4bf6d955c5194d9335b8d77dc4b415602eb300a))
+* **spec:** state a type on every top-level tool argument ([89202a8](https://github.com/beel-es/beel-mcp/commit/89202a82779c2aaf9f784720f42dea80a4150b41))
+* **tools:** annotations that match what each tool does ([5e76ab5](https://github.com/beel-es/beel-mcp/commit/5e76ab55e7e5b4726855baac798a625b24b10dbc))
+* **tools:** report setup readiness for the session's environment ([8b8eb2e](https://github.com/beel-es/beel-mcp/commit/8b8eb2e48f7ab6b7114cb8f58742ac75219becf2))
+* **tools:** report setup readiness for the session's environment ([7aeb214](https://github.com/beel-es/beel-mcp/commit/7aeb2143a582ece974183d9a4c9f9966176faa71))
+* **tools:** set destructiveHint on every hand-written tool ([97a52b1](https://github.com/beel-es/beel-mcp/commit/97a52b11f66375f3e9dc7c855f04466c35792b82))
+
 ## [0.9.0](https://github.com/beel-es/beel-mcp/compare/v0.8.0...v0.9.0) (2026-09-28)
 
 
