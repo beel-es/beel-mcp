@@ -137,6 +137,51 @@ describe('chatgpt surface', () => {
     expect(missing).toEqual([]);
   });
 
+  it('asks for a NIF only where a customer is registered or checked', () => {
+    // OpenAI's scan flags any input that names a government identifier, down to
+    // a search filter described as "on NIF". Only these three need one.
+    const allowed = new Set(['beel_create_customer', 'beel_patch_customer', 'beel_validate_nif']);
+    const strings = (node: unknown, out: string[] = []): string[] => {
+      if (typeof node === 'string') out.push(node);
+      else if (node && typeof node === 'object')
+        Object.values(node).forEach((v) => strings(v, out));
+      return out;
+    };
+    const identifier = /\b(nif|cif|dni|nie|passports?|pasaporte|tax id)\b/i;
+    const leaks = chatgpt
+      .filter((t) => !allowed.has(t.tool.name))
+      .flatMap((t) =>
+        [...propertyNames(t.tool.inputSchema), ...strings(t.tool.inputSchema)]
+          .filter((text) => identifier.test(text))
+          .map((text) => `${t.tool.name}: ${text.slice(0, 80)}`),
+      );
+    expect(leaks).toEqual([]);
+    // Nowhere, not even there, a passport or a foreign identity document.
+    const passports = chatgpt.filter((t) =>
+      /passport|alternative_id/i.test(JSON.stringify(t.tool.inputSchema)),
+    );
+    expect(passports.map((t) => t.tool.name)).toEqual([]);
+  });
+
+  it('exposes no company set-up and no tool that bundles several operations', () => {
+    const names = new Set(chatgpt.map((t) => t.tool.name));
+    for (const name of [
+      'beel_create_company',
+      'beel_patch_company',
+      'beel_activate_company',
+      'beel_delete_company',
+      'beel_create_invoice_batch',
+      'beel_create_customers_bulk',
+    ]) {
+      expect(names.has(name), name).toBe(false);
+    }
+  });
+
+  it('marks editing a recurring invoice as open-world: it reschedules AEAT submissions', () => {
+    const tool = chatgpt.find((t) => t.tool.name === 'beel_patch_recurring_invoice')!;
+    expect(tool.tool.annotations?.openWorldHint).toBe(true);
+  });
+
   it('keeps the customer NIF, which a full invoice requires', () => {
     const create = chatgpt.find((t) => t.tool.name === 'beel_create_customer')!;
     expect(propertyNames(create.tool.inputSchema).has('nif')).toBe(true);
@@ -161,14 +206,15 @@ describe('chatgpt surface', () => {
   it('rejects a redacted field instead of forwarding it', async () => {
     const client = await connect('chatgpt');
     const result = await client.callTool({
-      name: 'beel_patch_company',
+      name: 'beel_patch_customer',
       arguments: {
         company_id: '00000000-0000-0000-0000-000000000000',
-        body: { default_iban: 'ES9121000418450200051332' },
+        customer_id: '00000000-0000-0000-0000-000000000000',
+        body: { alternative_id: { type: 'PASSPORT', number: 'X1234567' } },
       },
     });
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toContain('default_iban');
+    expect(JSON.stringify(result.content)).toContain('alternative_id');
     await client.close();
   });
 });
