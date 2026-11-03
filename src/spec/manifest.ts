@@ -31,10 +31,22 @@ export interface ParamSpec {
   style?: string;
 }
 
+/**
+ * One part of a multipart body: a file (`format: binary`), a JSON document (an
+ * object, or a part whose `encoding` declares a JSON content type), or a plain
+ * form field.
+ */
+export interface MultipartPart {
+  name: string;
+  kind: 'file' | 'json' | 'field';
+}
+
 export interface RequestBodySpec {
   required: boolean;
   contentType: string;
   schema?: SpecNode;
+  /** Multipart only: how each property of `schema` travels. */
+  parts?: MultipartPart[];
 }
 
 export interface OperationSpec {
@@ -126,11 +138,32 @@ function buildRequestBody(doc: SpecNode, operation: SpecNode): RequestBodySpec |
     Object.keys(content).find((ct) => ct.includes('json')) ?? Object.keys(content)[0];
   if (!contentType) return undefined;
   const media = asNode(content[contentType]);
+  const schema = asNode(media?.schema);
   return {
     required: Boolean(body.required),
     contentType,
-    schema: asNode(media?.schema),
+    schema,
+    ...(contentType.includes('multipart')
+      ? { parts: multipartParts(doc, resolveRef(doc, schema) ?? schema, media) }
+      : {}),
   };
+}
+
+function multipartParts(
+  doc: SpecNode,
+  schema: SpecNode | undefined,
+  media: SpecNode | undefined,
+): MultipartPart[] {
+  const properties = asNode(schema?.properties) ?? {};
+  const encoding = asNode(media?.encoding) ?? {};
+  return Object.entries(properties).map(([name, raw]): MultipartPart => {
+    const prop = resolveRef(doc, raw) ?? asNode(raw) ?? {};
+    const declared = asNode(encoding[name])?.contentType;
+    if (prop.format === 'binary') return { name, kind: 'file' };
+    if (prop.type === 'object' || (typeof declared === 'string' && declared.includes('json')))
+      return { name, kind: 'json' };
+    return { name, kind: 'field' };
+  });
 }
 
 function buildResponseInfo(

@@ -1,7 +1,7 @@
 import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { BEEL_HEADER } from '../shared/defaults.js';
-import { resolvePointer } from './refs.js';
+import { resolvePointer, resolveRef } from './refs.js';
 
 /** A minimal JSON Schema object — what MCP tools expose as `inputSchema`. */
 export interface JsonSchema {
@@ -260,6 +260,32 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
   }
   if (op.requestBody && op.requestBody.contentType.includes('json')) {
     properties.body = withDescription(projector.project(op.requestBody.schema));
+    if (op.requestBody.required) required.push('body');
+  } else if (op.requestBody?.parts) {
+    // Only the CSV imports reach here (tool-policy). Each file part is asked for
+    // as its text; the client turns it back into a file part of the request.
+    const form = resolveRef(doc, op.requestBody.schema) ?? op.requestBody.schema;
+    const fields = (form?.properties ?? {}) as Record<string, unknown>;
+    const body: Record<string, object> = {};
+    for (const part of op.requestBody.parts) {
+      const projected = projector.project(fields[part.name]) as Record<string, unknown>;
+      body[part.name] =
+        part.kind === 'file'
+          ? {
+              type: 'string',
+              description:
+                'Content of the CSV file as text (UTF-8, header row first). ' +
+                String(projected.description ?? ''),
+            }
+          : projected;
+    }
+    const bodyRequired = (form?.required ?? []) as string[];
+    properties.body = {
+      type: 'object',
+      properties: body,
+      additionalProperties: false,
+      ...(bodyRequired.length > 0 ? { required: bodyRequired } : {}),
+    };
     if (op.requestBody.required) required.push('body');
   }
   // The caller's escape hatch from the derived idempotency key. Without one, the

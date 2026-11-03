@@ -3,7 +3,7 @@ import { loadSpec } from '../src/spec/load.js';
 import { buildManifest } from '../src/spec/manifest.js';
 import { applyToolPolicy } from '../src/policy/tool-policy.js';
 import { requiredScopes } from '../src/policy/scopes.js';
-import { DEFAULT_EXCLUDED_TAGS } from '../src/policy/tool-policy.js';
+import { DEFAULT_EXCLUDED_TAGS, TEXT_UPLOAD_OPERATION_IDS } from '../src/policy/tool-policy.js';
 import { tags as specTags } from '../src/spec/tags.js';
 
 const manifest = buildManifest(loadSpec());
@@ -57,9 +57,13 @@ describe('tool policy', () => {
     expect(reasonFor('previewCompanyInvoicePdf')).toBe('binary-response');
   });
 
-  it('excludes multipart uploads', () => {
-    expect(reasonFor('createCompanyCustomerImport')).toBe('multipart-upload');
+  it('excludes binary multipart uploads', () => {
     expect(reasonFor('submitCompanyRepresentation')).toBe('multipart-upload');
+    expect(reasonFor('importHoldedContacts')).not.toBeNull();
+  });
+
+  it('includes the CSV imports, whose files an agent can send as text', () => {
+    for (const id of TEXT_UPLOAD_OPERATION_IDS) expect(includedIds.has(id)).toBe(true);
   });
 
   it('every operation is either included or excluded, never both', () => {

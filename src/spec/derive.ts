@@ -58,9 +58,16 @@ function joinDomainTerms(parts: string[]): string[] {
   return out;
 }
 
-/** Drop the owning resource, unless doing so would leave only the verb. */
+/**
+ * Objects that say nothing without their owner: `createAccountImport` imports
+ * accounts, and `create_import` would not tell a model that it does.
+ */
+const OWNER_DEPENDENT_OBJECTS = new Set(['import']);
+
+/** Drop the owning resource, unless doing so would leave only the verb or a bare generic object. */
 function dropScope(parts: string[]): string[] {
   const kept = parts.filter((w) => !SCOPE_WORDS.has(w));
+  if (kept.length === 2 && OWNER_DEPENDENT_OBJECTS.has(kept[1]!)) return parts;
   return kept.length >= 2 ? kept : parts;
 }
 

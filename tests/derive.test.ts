@@ -23,6 +23,11 @@ describe('derive', () => {
     expect(toolName('markInvoicePaid')).toBe('beel_mark_invoice_paid');
   });
 
+  it('keeps the owner when the object alone says nothing', () => {
+    expect(toolName('createAccountImport')).toBe('beel_create_account_import');
+    expect(toolName('previewCompanyCustomerImport')).toBe('beel_preview_customer_import');
+  });
+
   it('keeps the subject noun when the operation is addressed by id', () => {
     // `getCompanyById` names its subject with the very word the scope filter
     // removes. Dropping it leaves `get_by_id`: a verb, a preposition and the name

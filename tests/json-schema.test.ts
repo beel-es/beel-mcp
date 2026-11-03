@@ -309,3 +309,29 @@ describe('OpenAPI 3.0 → JSON Schema normalisation', () => {
     });
   });
 });
+
+describe('CSV import tools', () => {
+  it('ask for each file part as text and keep the JSON options typed', () => {
+    const schema = buildInputSchema(byId('createAccountImport'), doc) as {
+      properties: Record<
+        string,
+        { properties: Record<string, { type?: string; description?: string }>; required?: string[] }
+      >;
+      required: string[];
+    };
+    const body = schema.properties.body!;
+    expect(body.properties.accounts_file!.type).toBe('string');
+    expect(body.properties.accounts_file!.description).toContain('CSV file as text');
+    expect(body.properties.customers_file!.type).toBe('string');
+    expect(body.properties.options).toBeDefined();
+    expect(body.required).toContain('accounts_file');
+    expect(schema.required).toContain('body');
+  });
+
+  it('describe each multipart part of the customer import', () => {
+    expect(byId('createCompanyCustomerImport').requestBody?.parts).toEqual([
+      { name: 'file', kind: 'file' },
+      { name: 'source', kind: 'field' },
+    ]);
+  });
+});

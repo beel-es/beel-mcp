@@ -4,6 +4,7 @@ import { BEEL_HEADER, ENV_VAR, HTTP_DEFAULTS } from '../shared/defaults.js';
 import { ambientEnv, readEnvInt } from '../shared/env.js';
 import { isRecord, readString } from '../shared/guards.js';
 import { FetchTimeoutError, fetchWithTimeout } from '../shared/fetch.js';
+import type { MultipartPart } from '../spec/manifest.js';
 
 /** A normalised API error carrying BeeL's error envelope fields. */
 export class ApiError extends Error {
@@ -41,6 +42,11 @@ export interface ApiRequestOptions {
    * every header we invent is a header the API never promised to honour.
    */
   declaredHeaders?: readonly string[];
+  /**
+   * When set, `body` is sent as `multipart/form-data`: each file part's string
+   * value becomes a CSV file, each JSON part a JSON document, the rest plain fields.
+   */
+  multipart?: readonly MultipartPart[];
 }
 
 export interface ApiResult {
@@ -142,6 +148,25 @@ async function idempotencyKeyFor(
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** Build the multipart body of a CSV import from the tool's string arguments. */
+export function multipartBody(parts: readonly MultipartPart[], body: unknown): FormData {
+  const form = new FormData();
+  const values = isRecord(body) ? body : {};
+  for (const part of parts) {
+    const value = values[part.name];
+    if (value === undefined || value === null) continue;
+    if (part.kind === 'file') {
+      form.append(part.name, new Blob([String(value)], { type: 'text/csv' }), `${part.name}.csv`);
+    } else if (part.kind === 'json') {
+      const json = typeof value === 'string' ? value : JSON.stringify(value);
+      form.append(part.name, new Blob([json], { type: ContentType.Json }));
+    } else {
+      form.append(part.name, String(value));
+    }
+  }
+  return form;
+}
+
 function declaresHeader(declared: readonly string[] | undefined, name: string): boolean {
   return (declared ?? []).some((header) => header.toLowerCase() === name.toLowerCase());
 }
@@ -233,13 +258,21 @@ export async function apiRequest(
 
   const hasBody = BODY_METHODS.has(method) && opts.body !== undefined;
   const sendsIdempotencyKey = declaresHeader(opts.declaredHeaders, BEEL_HEADER.idempotencyKey);
-  const headers = await buildHeaders(config, method, opts, hasBody, sendsIdempotencyKey);
+  // A multipart body carries its own Content-Type with the boundary, set by fetch.
+  const multipart = hasBody && opts.multipart ? multipartBody(opts.multipart, opts.body) : null;
+  const headers = await buildHeaders(
+    config,
+    method,
+    opts,
+    hasBody && !multipart,
+    sendsIdempotencyKey,
+  );
 
   const timeoutMs = readEnvInt(ambientEnv(), ENV_VAR.requestTimeoutMs, HTTP_DEFAULTS.timeoutMs);
   const init: RequestInit = {
     method,
     headers,
-    body: hasBody ? JSON.stringify(opts.body) : undefined,
+    body: multipart ?? (hasBody ? JSON.stringify(opts.body) : undefined),
   };
 
   const send = async (): Promise<Response> => {

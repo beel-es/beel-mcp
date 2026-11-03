@@ -134,6 +134,7 @@ export async function executeApiTool(
     body,
     idempotencyKey,
     declaredHeaders: op.headerParams.map((p) => p.name),
+    multipart: op.requestBody?.parts,
   });
   return result.data;
 }
