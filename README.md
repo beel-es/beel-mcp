@@ -125,9 +125,10 @@ than a redirect; both point at the same npm package and the same hosted server.
   per domain, the API usage guides, and `beel://guardrails/errors`, a catalogue of every
   error code with the action it calls for. The domains and guides that apply are named in
   the description of every tool they constrain.
-- **7 workflow prompts** encoding the safe order of operations for the flows where the
+- **9 workflow prompts** encoding the safe order of operations for the flows where the
   order is what makes them safe: `issue-invoice` (validate NIF → choose F1/F2 → check the
-  VeriFactu gates → issue), `fix-invoice` (void vs correct), `onboard-nif`,
+  VeriFactu gates → issue), `fix-invoice` (void vs correct), `fix-rejection` (act on an
+  AEAT rejection by code family), `onboard-nif`, `go-live-checklist`,
   `setup-representation`, `invite-member`, `connect-payments` and `upgrade-integration`.
 - **Inline invoice PDF viewer** ([MCP Apps](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
   generating an invoice PDF opens it in a side panel in hosts that support it.

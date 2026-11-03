@@ -79,6 +79,46 @@ describe('guided workflow prompts', () => {
     expect(text).toContain('Node.js');
   });
 
+  it('fix-rejection decides by status and code family, never by the message', () => {
+    expect(prompts.map((p) => p.name)).toContain('fix-rejection');
+    const text = guidance('fix-rejection', { invoice: 'inv_123' });
+    for (const tool of [
+      'beel_get_invoice',
+      'beel_list_invoices',
+      'beel_list_invoice_verifactu_records',
+      'beel_validate_nif',
+      'beel_patch_customer',
+      'beel_create_corrective_invoice',
+    ]) {
+      expect(text).toContain(tool);
+    }
+    for (const code of ['1109', '4112', '4141', '3000', '1100', '4102'])
+      expect(text).toContain(code);
+    expect(text).toContain('never parse `error_message`');
+    expect(text).toContain('inv_123');
+  });
+
+  it('go-live-checklist covers every gate and asks before the billed activation', () => {
+    expect(prompts.map((p) => p.name)).toContain('go-live-checklist');
+    const text = guidance('go-live-checklist', {
+      company: 'B12345678',
+      last_number: 'A-2026-0412',
+    });
+    for (const tool of [
+      'beel_get_issuing_readiness',
+      'beel_get_representation',
+      'beel_get_verifactu_configuration',
+      'beel_list_series',
+      'beel_activate_company',
+      'beel_list_webhook_subscriptions',
+    ]) {
+      expect(text).toContain(tool);
+    }
+    expect(text).toContain('initial_number');
+    expect(text).toContain('Confirm with me before calling it');
+    expect(text).toContain('A-2026-0412');
+  });
+
   it('throws on an unknown prompt', () => {
     expect(() => getPrompt('nope', {})).toThrow();
   });
