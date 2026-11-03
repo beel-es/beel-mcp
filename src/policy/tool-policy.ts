@@ -8,8 +8,11 @@ import type { OperationSpec } from '../spec/manifest.js';
  *
  *  - binary downloads (PDF preview, bulk ZIP, Excel/CSV export) — an agent can't
  *    consume raw bytes; the JSON variants (e.g. a PDF *URL* endpoint) stay in.
- *  - multipart uploads (CSV/Holded import, signed-PDF submission) — file I/O
- *    that belongs to a human/UI flow, not a chat agent.
+ *  - multipart uploads (Holded import, signed-PDF submission, logo) — binary
+ *    file I/O that belongs to a human/UI flow, not a chat agent. The CSV imports
+ *    in `TEXT_UPLOAD_OPERATION_IDS` are the exception: a CSV is text an agent
+ *    can write, so the tool takes it as a string and the client builds the
+ *    multipart request.
  *  - excluded tags — whole families the agent neither receives nor operates,
  *    such as webhook subscription and delivery plumbing.
  *  - session-only operations — those whose `security` does not offer
@@ -49,6 +52,18 @@ export const DEFAULT_EXCLUDED_TAGS = new Set(['Webhooks']);
 /** Reserved: JSON operations that are technically callable but not agent-appropriate. */
 export const DEFAULT_EXCLUDED_OPERATION_IDS = new Set<string>();
 
+/**
+ * Multipart operations whose file parts are CSV, so the agent can send their
+ * content as text. Any other multipart upload (images, signed PDFs, xlsx) stays
+ * excluded: its bytes do not survive a round trip through a text argument.
+ */
+export const TEXT_UPLOAD_OPERATION_IDS = new Set([
+  'previewAccountImport',
+  'createAccountImport',
+  'previewCompanyCustomerImport',
+  'createCompanyCustomerImport',
+]);
+
 export interface PolicyResult {
   tools: OperationSpec[];
   excluded: Array<{ op: OperationSpec; reason: ExclusionReason }>;
@@ -61,7 +76,11 @@ function classify(op: OperationSpec, opts: Required<PolicyOptions>): ExclusionRe
   if (excludedTag) return `excluded-tag:${excludedTag}`;
   if (op.deprecated) return 'deprecated';
   if (op.binaryResponse) return 'binary-response';
-  if (op.requestBody && op.requestBody.contentType.includes('multipart')) return 'multipart-upload';
+  if (
+    op.requestBody?.contentType.includes('multipart') &&
+    !TEXT_UPLOAD_OPERATION_IDS.has(op.operationId)
+  )
+    return 'multipart-upload';
   if (!op.securitySchemes.includes(API_KEY_SECURITY_SCHEME)) return 'session-only';
   return null;
 }

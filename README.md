@@ -108,7 +108,7 @@ than a redirect; both point at the same npm package and the same hosted server.
 
 ## What it provides
 
-- **125 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
+- **129 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
 - **7 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
   `beel_docs_get`, `beel_docs_list` over the documentation (the docs site's search
@@ -138,11 +138,12 @@ A generated catalogue of every tool, with the scopes each requires, lives at
 
 ### What is deliberately not a tool
 
-Binary downloads (PDF preview, bulk ZIP, Excel/CSV export), multipart uploads (CSV/Holded
-import, signed-PDF submission), webhook infrastructure, operations that only a browser
-session can authenticate, and every `deprecated` operation. An agent cannot drive them,
-and each one costs context that a usable tool needs. The rules are in
-`src/policy/tool-policy.ts`.
+Binary downloads (PDF preview, bulk ZIP, Excel/CSV export), binary uploads (Holded
+import, signed-PDF submission, logo), webhook infrastructure, operations that only a
+browser session can authenticate, and every `deprecated` operation. An agent cannot drive
+them, and each one costs context that a usable tool needs. The CSV imports of managed
+accounts and customers are tools: the agent passes the CSV as text and the server sends
+the file. The rules are in `src/policy/tool-policy.ts`.
 
 ## The fiscal guardrails
 

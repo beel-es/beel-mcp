@@ -187,3 +187,50 @@ describe('the idempotency key covers the whole request', () => {
     expect(keyOf(calls[0])).toBe(keyOf(calls[1]));
   });
 });
+
+describe('multipart CSV imports', () => {
+  const parts = [
+    { name: 'accounts_file', kind: 'file' },
+    { name: 'customers_file', kind: 'file' },
+    { name: 'options', kind: 'json' },
+  ] as const;
+
+  it('sends each CSV string as a file part and options as a JSON part', async () => {
+    const calls = captureFetch();
+    const csv = 'external_ref,nif\nr-1,B00000000\n';
+    await apiRequest(config, {
+      method: 'POST',
+      path: '/v1/accounts/imports/preview',
+      body: { accounts_file: csv, options: { access_level: 'OPERATE' } },
+      multipart: parts,
+    });
+    const init = calls[0]!.init;
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    const form = init.body as FormData;
+    const file = form.get('accounts_file') as File;
+    expect(file.name).toBe('accounts_file.csv');
+    expect(file.type).toBe('text/csv');
+    expect(await file.text()).toBe(csv);
+    expect(form.has('customers_file')).toBe(false);
+    const options = form.get('options') as Blob;
+    expect(options.type).toBe('application/json');
+    expect(JSON.parse(await options.text())).toEqual({ access_level: 'OPERATE' });
+  });
+
+  it('keys a repeated import by its content, so a retry does not provision twice', async () => {
+    const calls = captureFetch();
+    const send = (csv: string) =>
+      apiRequest(config, {
+        method: 'POST',
+        path: '/v1/accounts/imports',
+        body: { accounts_file: csv },
+        multipart: parts,
+        declaredHeaders,
+      });
+    await send('external_ref\nr-1\n');
+    await send('external_ref\nr-1\n');
+    await send('external_ref\nr-2\n');
+    expect(keyOf(calls[0])).toBe(keyOf(calls[1]));
+    expect(keyOf(calls[2])).not.toBe(keyOf(calls[0]));
+  });
+});
