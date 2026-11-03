@@ -85,6 +85,39 @@ export const prompts: Prompt[] = [
     ],
   },
   {
+    name: 'fix-rejection',
+    description:
+      'Act on an invoice AEAT rejected or accepted with errors: read submission_status and ' +
+      'error_code, find who has to act (recipient data, issuer setup, content, records, ' +
+      'temporary) and apply the fix that family calls for.',
+    arguments: [
+      {
+        name: 'invoice',
+        description: 'The invoice ID, or its number, if known.',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: 'go-live-checklist',
+    description:
+      'Check a NIF before its first Live invoice: readiness blockers, signed representation, ' +
+      'VeriFactu enabled, series continuing the previous numbering, activation and Live ' +
+      'webhooks. Reports what is missing instead of guessing.',
+    arguments: [
+      {
+        name: 'company',
+        description: 'The NIF/company going Live, if known.',
+        required: false,
+      },
+      {
+        name: 'last_number',
+        description: 'The last invoice number issued with the previous system, if any.',
+        required: false,
+      },
+    ],
+  },
+  {
     name: 'upgrade-integration',
     description:
       'Update an existing BeeL API integration to current best practices: idempotency, API-key ' +
@@ -292,6 +325,94 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
               args.company
                 ? `Target NIF/company: ${args.company}`
                 : 'Tell me which NIF should collect the payments.',
+            ].join('\n'),
+          ),
+        ],
+      };
+    }
+    case 'fix-rejection': {
+      return {
+        description: 'Act on an AEAT rejection',
+        messages: [
+          userMessage(
+            [
+              'Help me resolve an invoice AEAT rejected or flagged. Rule REC-008 (`beel_rules_get`).',
+              'Decide from `submission_status` and `error_code` only: never parse `error_message`,',
+              'which is for humans. Follow this order:',
+              '',
+              '1. Read the invoice with `beel_get_invoice` (its `verifactu` block), or find the',
+              '   affected ones with `beel_list_invoices` filtered by `verifactu_status` REJECTED.',
+              '   `beel_list_invoice_verifactu_records` shows each record (registration and',
+              '   cancellation) with its own status.',
+              '2. PENDING: BeeL is still retrying a temporary AEAT error. Do nothing yet.',
+              '3. ACCEPTED with an `error_code`: the invoice is registered and valid; do not',
+              '   resubmit. Check the flagged data (usually the recipient NIF and legal name) and,',
+              '   if it was wrong, fix the customer with `beel_patch_customer` so the next invoices',
+              '   carry it right.',
+              '4. REJECTED: act by the family of `error_code`:',
+              '   - Recipient data (1109, 1110, 1123, 1193, 1149): check the NIF with',
+              '     `beel_validate_nif` and fix the customer. Not a corrective: the rejected invoice',
+              "     is not in AEAT's registry (COR-022, CNT-020).",
+              '   - Issuer setup (4104, 4107, 4109, 4112): the invoice is fine, the NIF is not set up',
+              '     with AEAT. Resolve it (register the NIF, or run the `setup-representation`',
+              '     prompt) and then contact BeeL support with the invoice ID.',
+              '   - Suspended access (4141): only AEAT can lift it; then contact BeeL support.',
+              '   - Records (3000 to 3003): do not reissue; contact BeeL support to reconcile.',
+              '   - Invoice content (1100, 1106, 1108, 1124, 1112, 1133, 1145, 1152): issue a',
+              '     corrective with `beel_create_corrective_invoice` (run `fix-invoice` to pick it).',
+              '   - Record format (4102, 4103, 4119): contact BeeL support with the invoice ID.',
+              '   - REJECTED with no `error_code`: read `error_message` to the user and contact',
+              '     BeeL support; for a number already taken, search `beel_docs_search`',
+              '     "handling rejections".',
+              '   - A code not listed here: `beel_docs_search` "handling rejections", and if it is',
+              '     not there either, contact BeeL support. Do not guess.',
+              '5. Never edit or delete the issued invoice (LIF-001).',
+              '',
+              args.invoice
+                ? `Invoice: ${args.invoice}`
+                : 'Tell me which invoice, or I will list the rejected ones.',
+            ].join('\n'),
+          ),
+        ],
+      };
+    }
+    case 'go-live-checklist': {
+      const ctx = [
+        args.company ? `NIF/company: ${args.company}` : null,
+        args.last_number
+          ? `Last number issued with the previous system: ${args.last_number}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      return {
+        description: 'Check a NIF before its first Live invoice',
+        messages: [
+          userMessage(
+            [
+              'Help me check a NIF before its first invoice in Live. Report each item as done or',
+              'missing, with the tool result that shows it; do not fix anything Live without my',
+              'confirmation. Order:',
+              '',
+              '1. Overview: `beel_get_setup_status`, then `beel_get_issuing_readiness` for the NIF.',
+              '   Its `blockers` list is the source of truth.',
+              '2. Representation (REC-011): `beel_get_representation` must be valid. If not, run',
+              '   the `setup-representation` prompt; the holder signs it, nobody else.',
+              '3. VeriFactu: `beel_get_verifactu_configuration` must be enabled in this Live',
+              '   session; `beel_update_verifactu_configuration` registers the NIF with AEAT.',
+              '4. Numbering (NUM-003, NUM-007): `beel_list_series` and `beel_get_default_series`.',
+              '   If the NIF issued invoices with another system, its series must continue that',
+              '   numbering (`initial_number`, `counter_reset`) before the first Live issue: a',
+              '   series cannot be renumbered afterwards. `beel_docs_search` "continuing a',
+              '   sequence" has the steps.',
+              '5. Activation: `beel_activate_company` switches the NIF on in Live, and every NIF',
+              '   on in Live is billed. Confirm with me before calling it.',
+              '6. Webhooks: `beel_list_webhook_subscriptions` from this Live session. Test',
+              '   subscriptions do not receive Live events.',
+              '7. When `beel_get_issuing_readiness` reports `ready`, the first Live invoice is a',
+              '   real fiscal document: issue only one I actually mean to send (LIF-003).',
+              '',
+              ctx || 'Tell me which NIF is going Live.',
             ].join('\n'),
           ),
         ],
