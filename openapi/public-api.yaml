@@ -16,7 +16,7 @@ info:
     the public contract at present. There is no dynamic client registration and no way for a third
     party to obtain a `client_id`, so the API key is the credential to integrate with.
 
-    POST endpoints, and the PUT/PATCH/DELETE operations that list it, accept an `Idempotency-Key` header (any unique client-generated string) to retry a request safely without repeating it. A retry with the same key within 24 hours replays the first response when it was a success (2xx) or a server error (5xx), with the header `Idempotency-Replay: true`; a 4xx is not stored, so the corrected request can reuse the key. See the header parameter for the details.
+    POST endpoints, and the PUT/PATCH/DELETE operations that list it, accept an `Idempotency-Key` header (any unique client-generated string) to retry a request safely without repeating it. A retry with the same key within 24 hours replays the first response when it was a success (2xx) or a server error (5xx), with the header `Idempotency-Replay: true`; a 4xx is not stored, so the corrected request can reuse the key. After a 503, retry with the same key: a response with `Idempotency-Replay: true` means the operation may have taken effect. See the header parameter for the details.
 
     **This specification is served live by the API itself**, at
     `https://app.beel.es/api/v1/openapi.yaml` (and `.json`) — the same document this reference is
@@ -150,6 +150,11 @@ info:
     `429`, honouring `Retry-After`.
     <!-- /generated:rate-limits -->
 
+    **Concurrent requests.** Apart from those rate limits, each account and each API key can have only a
+    limited number of requests in flight at once. A request over that cap returns `429` with the error code
+    `RATE_LIMIT_EXCEEDED` and only a `Retry-After: 1` header, with no `RateLimit-*` headers: retry once
+    that second has passed.
+
     ### Request body size
 
     A request body above **2 MB** is rejected with `413` and the error code
@@ -236,6 +241,10 @@ tags:
     description: Product and service catalog management
   - name: CompanyProducts
     description: 'The product/service catalog of a company as a sub-resource of the company itself, addressed by `/v1/companies/{company_id}/products`. The NIF in the path is the only source of context: the account that owns it is derived from it. It is the canonical form of the operations that `Products` still exposes under `/v1/products`, and searching is `?q=` on the collection instead of a path of its own.'
+  - name: CompanyCustomFields
+    description: |-
+      The invoice custom fields of a company, addressed by `/v1/companies/{company_id}/custom-fields`: labels a company adds to its invoices, such as a store, a project or a cost centre, so that people can see, filter and export them. Each field has a `key` you choose, which never changes, and a list of options: the values already used, per customer or common to every customer. Test and Live keep separate catalogues. Fields and options are never deleted, only archived, and an invoice keeps a copy of the label and value it was saved with, so renaming or archiving never changes an invoice already saved.
+      Custom fields are informational. They are not part of the VeriFactu record sent to the AEAT and do not enter its hash, and no mention the invoicing regulations require can be expressed through them. Use `metadata` for technical identifiers your integration needs and people do not see (order or tenant ids); use custom fields for what a person reads, filters or exports.
   - name: Members
     description: 'Account member management (multi-NIF). Members and their company grants are **shared between Test and Live**: a collaborator is the same person, with the same role and the same grants, in both environments — switching environment changes which data you see, not who may reach it. Reading them works with either API key; changing them requires a live API key or the dashboard (`403 LIVE_CREDENTIAL_REQUIRED` otherwise), because the change lands on the real account. **One exception**: handing the account over to another member (`PUT /v1/accounts/{account_id}/owner`) is the dashboard''s alone — no API key can do it, the live one included (`403 OPERATION_REQUIRES_SESSION`), so that a leaked key cannot take the account. An integration that provisions accounts hands ownership over with a claim token instead (`POST /v1/accounts/{account_id}/claim-tokens`).'
   - name: Invitations
@@ -262,6 +271,8 @@ tags:
     description: 'The company as a resource of its own, addressed by `/v1/companies/{company_id}`. The NIF in the path is the only source of context: the account that owns it is derived from it.'
   - name: CompanyBranding
     description: 'The invoice branding of a company as a sub-resource of the company itself, addressed by `/v1/companies/{company_id}/logo` and `/v1/companies/{company_id}/invoice-customization`. The NIF in the path is the only source of context: the account that owns it is derived from it.'
+  - name: CompanyEmailConfiguration
+    description: 'The email configuration of a company as a sub-resource of the company itself, addressed by `/v1/companies/{company_id}/email-configuration`. It sets the address the invoice emails of that company are sent from. The `company_id` in the path is the only source of context: the account that owns it is derived from it.'
   - name: CompanyVeriFactuConfiguration
     description: The VeriFactu configuration of a company as a sub-resource of the company itself, addressed by `/v1/companies/{company_id}/verifactu-configuration`. The NIF in the path is the only source of context. It is the canonical form of what `ConfigurationVeriFactu` still exposes under `/v1/configuration/verifactu`.
   - name: CompanyTaxConfiguration
@@ -326,6 +337,10 @@ tags:
       verification, onboarding, etc.). Read-only.
   - name: AccountEmails
     description: The sent-email history of an account, addressed by `/v1/accounts/{account_id}/emails` and `/v1/accounts/{account_id}/email-indicators`. The account in the path is the only source of context, instead of being derived from the credential. It is the canonical form of the operations that `Emails` still exposes under `/v1/emails`.
+  - name: AccountEmailDomains
+    description: The domains an account sends its emails from, addressed by `/v1/accounts/{account_id}/email-domains`. The account in the path is the only source of context, instead of being derived from the credential.
+  - name: EmailTemplateVariables
+    description: The variables the email templates accept, addressed by `/v1/email-template-variables`. The catalogue is the same for every credential and takes no identifier.
   - name: Identity
     description: 'Who am I (`GET /v1/me`): the authenticated principal — credential type, environment it operates on and the permissions it holds — so a client can adapt what it offers instead of discovering the limits through a `403`.'
   - name: Me
@@ -902,6 +917,11 @@ paths:
             - `INVOICE_DUPLICATE_EXTERNAL_REFERENCE`: a live invoice with the same
               `external_ref` already exists. Fetch it via
               `GET /v1/invoices?external_ref=...`. Deleting it lets you recreate.
+            - `CUSTOM_FIELD_ARCHIVED`: a `key` in `custom_fields` names a field the company has
+              archived. Nothing is created.
+            - `CONCURRENT_MODIFICATION`: another invoice of the same customer saved the same custom
+              field value written differently a moment earlier; nothing is created, send the request
+              again.
           content:
             application/json:
               schema:
@@ -954,6 +974,7 @@ paths:
             Other `error.code` values with this status:
 
             - `CORRECTIVE_INVOICE_INCOMPLETE` — `type: CORRECTIVE` is not accepted when creating an invoice; create correctives from the original with `POST …/invoices/{invoice_id}/corrective`.
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `DUE_DATE_BEFORE_ISSUE_DATE` — `due_date` is earlier than the issue date (today on create, the stored one on edit); send a due date on or after it.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
@@ -1218,6 +1239,15 @@ paths:
                 meta:
                   timestamp: '2025-01-15T10:30:00Z'
                   request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '409':
+          description: |
+            `CUSTOM_FIELD_ARCHIVED` — a `key` in `custom_fields` names a field the company has
+            archived, even one the draft already carries. Nothing changes. Also
+            `CONCURRENT_MODIFICATION`, `IDEMPOTENCY_KEY_PROCESSING` and `IDEMPOTENCY_KEY_MISMATCH`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: |
             Validation error.
@@ -1236,6 +1266,7 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `DUE_DATE_BEFORE_ISSUE_DATE` — `due_date` is earlier than the issue date (today on create, the stored one on edit); send a due date on or after it.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
@@ -1896,6 +1927,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`INVOICE_PDF_UNAVAILABLE`: the invoice needs its VeriFactu QR and BeeL. cannot produce its PDF because of a problem on our side. Answered immediately and without `Retry-After`: asking again does not help until support solves it. Contact support with the `meta.request_id`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -3558,6 +3595,30 @@ paths:
           schema:
             type: string
             format: date
+        - name: due_date_from
+          in: query
+          description: Due date from, inclusive (YYYY-MM-DD). Invoices without a due date are excluded.
+          schema:
+            type: string
+            format: date
+        - name: due_date_to
+          in: query
+          description: Due date to, inclusive (YYYY-MM-DD). Invoices without a due date are excluded.
+          schema:
+            type: string
+            format: date
+        - name: payment_date_from
+          in: query
+          description: Payment date from, inclusive (YYYY-MM-DD). Invoices without a payment date are excluded.
+          schema:
+            type: string
+            format: date
+        - name: payment_date_to
+          in: query
+          description: Payment date to, inclusive (YYYY-MM-DD). Invoices without a payment date are excluded.
+          schema:
+            type: string
+            format: date
         - name: invoice_number
           in: query
           description: Search by invoice number (e.g., 2025/0001)
@@ -3588,6 +3649,14 @@ paths:
           description: |
             Return the corrective invoices that correct this invoice. Accepts the id of an
             issued invoice; a single invoice can have several partial correctives.
+          schema:
+            type: string
+            format: uuid
+        - name: replaced_by_invoice_id
+          in: query
+          description: |
+            Return the simplified invoices replaced by this exchange invoice. Accepts the id of an
+            issued full invoice; it matches the ids in its `replaced_invoice_ids`.
           schema:
             type: string
             format: uuid
@@ -3638,6 +3707,7 @@ paths:
             Repeat the bracket-style param to filter on multiple keys.
             Max 50 pairs per request. Keys must match `^[A-Za-z0-9_\-.]{1,64}$`.
             Example: `?metadata[external_order_id]=ORD-42&metadata[tenant]=acme`
+            To filter by a custom field, use `custom_fields[<key>]`.
           required: false
           style: deepObject
           explode: true
@@ -3646,6 +3716,23 @@ paths:
             additionalProperties:
               type: string
             maxProperties: 50
+        - name: custom_fields
+          in: query
+          description: |
+            Filter by the custom fields saved on the invoice, written as `custom_fields[<key>]=<value>`.
+            The value is compared with the text stored on the invoice, exactly (case and accents
+            included); several keys are combined with AND, and with the other filters. Max 20 keys
+            per request. A key the company does not have matches no invoice.
+            Example: `?custom_fields[project]=North&custom_fields[cost_centre]=CC-12`
+          required: false
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+              maxLength: 255
+            maxProperties: 20
         - name: sort_by
           in: query
           description: |
@@ -3716,6 +3803,7 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_FILTER_TOO_MANY_KEYS` — the query sends more than 20 distinct `custom_fields[key]` filters; narrow the filter to 20 keys or fewer.
             - `METADATA_FILTER_TOO_MANY_KEYS` — the query sends more than 50 distinct `metadata[key]` filters; narrow the filter to 50 keys or fewer.
           content:
             application/json:
@@ -3917,6 +4005,12 @@ paths:
             - Idempotency key already processed, or duplicate invoice number.
             - `INVOICE_DUPLICATE_EXTERNAL_REFERENCE`: a live invoice with the same
               `external_ref` already exists.
+            - `CUSTOM_FIELD_ARCHIVED`: a `key` in `custom_fields` names a field the company has
+              archived. Archived fields cannot be added to invoices; reactivate the field or drop
+              it from the request. Nothing is created.
+            - `CONCURRENT_MODIFICATION`: another invoice of the same customer saved the same custom
+              field value written differently a moment earlier; nothing is created, send the request
+              again and the stored text will be the existing one.
           content:
             application/json:
               schema:
@@ -3983,6 +4077,7 @@ paths:
             Other `error.code` values with this status:
 
             - `CORRECTIVE_INVOICE_INCOMPLETE` — `type: CORRECTIVE` is not accepted when creating an invoice; create correctives from the original with `POST …/invoices/{invoice_id}/corrective`.
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `DUE_DATE_BEFORE_ISSUE_DATE` — `due_date` is earlier than the issue date (today on create, the stored one on edit); send a due date on or after it.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IVA_SURCHARGE_PAIR` — the equivalence surcharge does not match the line's VAT rate (21↔5.2, 10↔1.4, 5↔0.62, 4↔0.5); fix either rate.
@@ -4063,6 +4158,8 @@ paths:
         - **`mode`:** the only value is `DUPLICATE`, which copies the source into a fresh draft. Recipient, lines,
           payment method, series and observations are copied; number, status, dates, VeriFactu
           data and PDF are reset.
+        - **Custom fields:** copied from the source, each with the label the field has now. A
+          field the company has archived since is left out instead of failing the call.
         - **Series:** the one sent in `series_id`, or the source's when omitted. It is validated
           against the type of the copy, which is not always the source's: the copy of a
           `CORRECTIVE` is born `STANDARD`. An incompatible series fails with
@@ -4621,6 +4718,15 @@ paths:
         - **Values:** the status, payment method, tax type and line type columns carry the same
           values the API returns (`ISSUED`, `BANK_TRANSFER`, `IVA`, `SUPLIDO`…). A proforma past
           its validity is exported as `ACTIVE`, not `EXPIRED`.
+        - **Custom fields:** the `SUMMARY` and `ITEMS` sheets get one extra column per custom
+          field `key` carried by at least one exported invoice, after the fixed columns and
+          ordered by `key`, so the position of the fixed columns never changes. The header is
+          the label saved on the invoices; when the same `key` was saved under different labels
+          (the field was renamed between invoices), the label of the most recently created of
+          them is used. A cell is empty when its invoice does not carry that field, and every
+          line of an invoice repeats the invoice's values in `ITEMS`. The `Suplidos` sheet has
+          no custom field columns. With no custom fields on any exported invoice the workbook is
+          the same as without them.
         - **Limit:** up to 50000 invoices per export. Going over it is rejected with
           `422 EXPORT_LIMIT_EXCEEDED` — narrow the date range or split the selection. The
           export is never silently truncated.
@@ -4667,6 +4773,13 @@ paths:
                 value:
                   filters:
                     status: PAID
+              export_customer_and_custom_field:
+                summary: Export one customer's invoices for one store
+                value:
+                  filters:
+                    customer_id: 550e8400-e29b-41d4-a716-446655440010
+                    custom_fields:
+                      store: Gran Vía 12
       responses:
         '200':
           description: Export generated successfully
@@ -4703,7 +4816,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          description: |
+            The body parses but the export cannot be produced as asked. Nothing is exported.
+
+            - `VALIDATION_ERROR` — a field fails validation; `error.details` maps each offending
+              property to what is wrong with it.
+            - `EXPORT_LIMIT_EXCEEDED` — the selection matches more than 50000 invoices; narrow the
+              date range or split the selection.
+            - `CUSTOM_FIELD_FILTER_TOO_MANY_KEYS` — `filters.custom_fields` has more than 20 keys;
+              narrow the filter to 20 keys or fewer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CUSTOM_FIELD_FILTER_TOO_MANY_KEYS
+                  message: The custom fields filter accepts at most 20 keys per request
+                meta:
+                  timestamp: '2026-10-18T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -4913,7 +5046,30 @@ paths:
                   timestamp: '2025-01-15T10:30:00Z'
                   request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '409':
-          $ref: '#/components/responses/StateConflict'
+          description: |
+            The request is well formed but collides with the state that is already there, told
+            apart by `error.code`:
+
+            - `CUSTOM_FIELD_ARCHIVED` — a `key` in `custom_fields` names a field the company has
+              archived, even one the draft already carries. Reactivate the field, or send
+              `custom_fields` without it. Nothing changes.
+            - `CONCURRENT_MODIFICATION` — another write changed the invoice first; read it again
+              and retry.
+            - `IDEMPOTENCY_KEY_PROCESSING` — the `Idempotency-Key` you sent is still in flight;
+              retry after a moment. `IDEMPOTENCY_KEY_MISMATCH` — it was already used for a
+              different body; use a new key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CUSTOM_FIELD_ARCHIVED
+                  message: The custom field store is archived and cannot be added to an invoice.
+                meta:
+                  timestamp: '2026-10-17T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '422':
           description: |
             Validation error.
@@ -4945,6 +5101,7 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `DUE_DATE_BEFORE_ISSUE_DATE` — `due_date` is earlier than the issue date (today on create, the stored one on edit); send a due date on or after it.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IVA_SURCHARGE_PAIR` — the equivalence surcharge does not match the line's VAT rate (21↔5.2, 10↔1.4, 5↔0.62, 4↔0.5); fix either rate.
@@ -5159,6 +5316,10 @@ paths:
           invoice's registration. An invoice whose registration was rejected before reaching the
           AEAT, or that was voided without ever being registered, has no PDF and answers
           `400 INVOICE_NOT_REGISTERED_NO_PDF` immediately. Its `verifactu.error_message` says why.
+        - **Unavailable on our side:** when the invoice needs its VeriFactu QR and BeeL. cannot
+          produce the PDF, the answer is `409 INVOICE_PDF_UNAVAILABLE` immediately instead of a
+          `202` that would never end. Asking again does not help: contact support with the
+          `meta.request_id`. Once it is solved, the same request returns the PDF.
         - **Never modified:** the PDF of an issued invoice is generated once — with its VeriFactu QR
           when it applies — and stays the document you delivered. Voiding the invoice or issuing
           a corrective against it does not change the PDF: read the invoice's `status` to know it.
@@ -5228,6 +5389,23 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`INVOICE_PDF_UNAVAILABLE`: the invoice needs its VeriFactu QR and BeeL. cannot produce its PDF because of a problem on our side, not in your request. Answered immediately and without `Retry-After`: asking again does not help until support solves it. Contact support with the `meta.request_id`; once it is solved, the same request returns the PDF.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                pdf_unavailable:
+                  summary: The PDF cannot be produced until support steps in
+                  value:
+                    success: false
+                    error:
+                      code: INVOICE_PDF_UNAVAILABLE
+                      message: 'We cannot generate the PDF of this invoice because of a problem on our side. Asking again will not solve it: contact support and include the request_id.'
+                    meta:
+                      timestamp: '2026-10-26T10:30:00Z'
+                      request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -5263,7 +5441,8 @@ paths:
         PDF does not exist yet — right after issuing (whether or not the invoice goes through
         VeriFactu, since the PDF is generated asynchronously) or, for a VeriFactu invoice
         specifically, while it waits for the QR of its registration — the answer is `202`, as for
-        the PDF download.
+        the PDF download. When BeeL. cannot produce that PDF, the answer is
+        `409 INVOICE_PDF_UNAVAILABLE`, also as for the PDF download.
       x-required-scopes:
         - invoices:read
       security:
@@ -5305,6 +5484,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`INVOICE_PDF_UNAVAILABLE`: the invoice needs its VeriFactu QR and BeeL. cannot produce its PDF, so there is no preview image either. Asking again does not help until support solves it; contact support with the `meta.request_id`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -5697,6 +5882,8 @@ paths:
             - `OPERATION_DATE_AFTER_ISSUE_DATE` — `operation_date` is later than the issue date (today when issuing); send today or a past date.
             - `OPERATION_DATE_TOO_OLD` — `operation_date` is more than twenty years before the issue date; AEAT does not accept it. Send a more recent date.
             - `PROFORMA_NOT_ISSUABLE` — a proforma is never issued; convert it with `convert-to-invoice` (optionally with `issue: true`).
+            - `RECIPIENT_ADDRESS_REQUIRED` — a standard invoice needs the recipient's address (RD 1619/2012 art. 6.1.e); complete it on the draft before issuing.
+            - `RECIPIENT_FISCAL_NAME_REQUIRED` — a standard invoice needs the recipient's legal name; a draft parked without it (for example, a Stripe payment with a tax ID and no name) must be completed before issuing.
             - `RECIPIENT_ID_REQUIRED` — a standard invoice needs an identified recipient: a `customer_id`, or inline data with `nif` or `alternative_id`.
             - `REGIME_KEY_CLASSIFICATION_NOT_ACCEPTED` — AEAT does not accept that `exemption_reason` (or its absence) with the line's `regime_key`; the message lists the reasons it admits.
             - `REGIME_KEY_NOT_SUPPORTED` — BeeL. cannot declare that `regime_key` to AEAT (e.g. `06`, `14`); use another key.
@@ -6116,6 +6303,9 @@ paths:
         - **Original rejected by the AEAT:** when VeriFactu rejected the original's record and it
           has not been resubmitted, the original is not in the AEAT's books: fix and resubmit it
           first. Until then the request fails with `422 CORRECTIVE_ORIGINAL_RECORD_REJECTED`.
+        - **Custom fields:** the corrective carries those of the original, each with the label the
+          field has now; a field the company has archived since is left out. Like on any invoice,
+          they are not part of its VeriFactu record.
         - **Exchange invoice recorded as F3:** correcting a full invoice issued in exchange for
           simplified invoices is not available yet: `422 EXCHANGE_INVOICE_NOT_CORRECTABLE`.
           Contact support.
@@ -6425,6 +6615,8 @@ paths:
           includes `400 SERIES_NUMBER_COLLISION`: the number the series would assign is already
           used by another invoice of the same company, and the series needs review, so contact
           support.
+        - **Custom fields:** the new invoice copies those of the proforma, each with the label
+          the field has now; a field the company has archived since is left out.
         - **Errors:** `422 CONVERSION_REQUIRES_PROFORMA` when the document is not a proforma,
           `422 PROFORMA_NOT_CONVERTIBLE` when it is not `ACTIVE`, and
           `409 PROFORMA_ALREADY_CONVERTED` when it has already been converted — a second call
@@ -6846,6 +7038,8 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `RECIPIENT_ADDRESS_REQUIRED` — a standard invoice needs the recipient's address; complete it before scheduling.
+            - `RECIPIENT_FISCAL_NAME_REQUIRED` — a standard invoice needs the recipient's legal name; complete it before scheduling.
             - `RECIPIENT_ID_REQUIRED` — a standard invoice needs an identified recipient: a `customer_id`, or inline data with `nif` or `alternative_id`.
           content:
             application/json:
@@ -7100,6 +7294,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `CUSTOM_FIELD_ARCHIVED` — a `key` in `custom_fields` names a field the company has
+            archived. Nothing is created. Also `CONCURRENT_MODIFICATION`,
+            `IDEMPOTENCY_KEY_PROCESSING` and `IDEMPOTENCY_KEY_MISMATCH`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: |
             Validation error.
@@ -7130,9 +7333,13 @@ paths:
             Also: `series_id` (explicit or resolved by default) numbering against a series that is
             inactive is rejected with `error.code` `SERIES_INACTIVE` — no template is created.
             Activate the series, or send a `series_id` for one that is already active.
+            Also: with no `series_id` and no default standard series for a `STANDARD` template, the
+            call is rejected with `error.code` `SERIES_DEFAULT_NOT_FOUND`. Create a standard series
+            and mark it as default, or send a `series_id`.
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IRPF` — the `irpf_rate` is not a withholding rate in force (see `IrpfPercentage`); send one of the published rates.
@@ -7694,6 +7901,7 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IRPF` — the `irpf_rate` is not a withholding rate in force (see `IrpfPercentage`); send one of the published rates.
@@ -8580,6 +8788,9 @@ paths:
         - **VeriFactu:** the template does not carry it. Whether each generated invoice is
           registered with AEAT is decided when that invoice is issued, against the company's
           regime at that moment.
+        - **`custom_fields`:** copied to every invoice the template generates. A field archived
+          later is left out of the invoices generated from then on, and the template keeps
+          generating.
       x-required-scopes:
         - invoices:write
       security:
@@ -8678,6 +8889,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            The request is well formed but collides with the state that is already there, told
+            apart by `error.code`:
+
+            - `CUSTOM_FIELD_ARCHIVED` — a `key` in `custom_fields` names a field the company has
+              archived. Reactivate the field, or send `custom_fields` without it. No template is
+              created.
+            - `CONCURRENT_MODIFICATION` — another write changed the template first; read it again
+              and retry.
+            - `IDEMPOTENCY_KEY_PROCESSING` — the `Idempotency-Key` you sent is still in flight;
+              retry after a moment. `IDEMPOTENCY_KEY_MISMATCH` — it was already used for a
+              different body; use a new key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CUSTOM_FIELD_ARCHIVED
+                  message: The custom field project is archived and cannot be added to an invoice
+                meta:
+                  timestamp: '2026-10-17T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
         '422':
           description: |
             Validation error.
@@ -8714,9 +8950,13 @@ paths:
             Also: `series_id` (explicit or resolved by default) numbering against a series that is
             inactive is rejected with `error.code` `SERIES_INACTIVE` — no template is created.
             Activate the series, or send a `series_id` for one that is already active.
+            Also: with no `series_id` and no default standard series for a `STANDARD` template, the
+            call is rejected with `error.code` `SERIES_DEFAULT_NOT_FOUND`. Create a standard series
+            and mark it as default, or send a `series_id`.
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IRPF` — the `irpf_rate` is not a withholding rate in force (see `IrpfPercentage`); send one of the published rates.
@@ -8911,6 +9151,8 @@ paths:
           the ones already in effect changes nothing. Changing `frequency` recalculates it on
           the new grid and discards a pending skip. `start_date` is only editable while the
           template has not generated any invoice yet.
+        - **`custom_fields`:** replaced as a whole; omit it to keep the current ones, send `null`
+          or `[]` to remove them all. Invoices already generated keep theirs.
       x-required-scopes:
         - invoices:write
       security:
@@ -9088,6 +9330,7 @@ paths:
 
             Other `error.code` values with this status:
 
+            - `CUSTOM_FIELD_UNKNOWN` — a `key` in `custom_fields` is not a custom field of this company in this environment; create it with `PUT …/custom-fields/{key}` or fix the key.
             - `EXEMPTION_NOT_FOR_ISSUED_INVOICE` — `EXENTA_ART_26` exempts the buyer's intra-community acquisition, not a sale you invoice; use `EXENTA_ART_25` for the intra-community supply.
             - `EXEMPT_ZERO_RATE_REQUIRES_REASON` — a 0 % IVA or IPSI line is the exemption sentinel and needs an `exemption_reason`; add one or use a real rate.
             - `INVALID_IRPF` — the `irpf_rate` is not a withholding rate in force (see `IrpfPercentage`); send one of the published rates.
@@ -9408,7 +9651,8 @@ paths:
       description: |
         Returns the invoice that would be produced by the next generation of this recurring
         template, computed from the current issuer, recipient and series data. Nothing is
-        persisted and no numbering is consumed.
+        persisted and no numbering is consumed. Its `custom_fields` are the ones the generated
+        invoice would carry, so a field archived since the template was saved is already left out.
       x-required-scopes:
         - invoices:read
       security:
@@ -9617,8 +9861,9 @@ paths:
         - CompanyRecurringInvoices
       summary: Derive a recurring invoice from an existing invoice
       description: |
-        Creates a recurring invoice template of this company taking its lines, recipient, series
-        and payment data from an existing invoice, so only the recurrence has to be described.
+        Creates a recurring invoice template of this company taking its lines, recipient, series,
+        payment data and custom fields from an existing invoice, so only the recurrence has to be
+        described.
 
         - **`from_invoice_id`:** the source invoice. It must belong to the company in the path,
           and one you cannot reach is reported the same way as one that does not exist. It is
@@ -9630,6 +9875,9 @@ paths:
           It governs the step from the first invoice onwards, not where that first one lands.
         - **VeriFactu:** not inherited from the source invoice. Each generated invoice is
           registered with AEAT, or not, according to the company's regime when it is issued.
+        - **`custom_fields`:** the template takes those of the source invoice, each with the label
+          the field has now; a field the company has archived since is left out instead of
+          failing the call.
       x-required-scopes:
         - invoices:write
       security:
@@ -9813,6 +10061,9 @@ paths:
           invoice, or derive a draft from one the template already generated with
           `POST /v1/companies/{company_id}/invoices/derivations`. Either way the schedule stays
           where it was.
+        - **Custom fields:** the invoice copies those of the template, each with the label the
+          field has now. A field archived since the template was saved is left out; it does not
+          make the generation fail.
       x-required-scopes:
         - invoices:write
       security:
@@ -13301,6 +13552,539 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         default:
           $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/custom-fields:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on — its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listCompanyCustomFields
+      tags:
+        - CompanyCustomFields
+      summary: List the custom fields of a company
+      description: |
+        Returns the invoice custom fields of this company, each one with the options that apply
+        to the query, ordered by `key`. A field with `suggest_values: false` carries no options.
+
+        - **Options per customer:** with `customer_id`, each field carries the common options and
+          those of that customer, which is what an invoice for that customer can offer. Without
+          it, only the common options. To page through every option of a field, use
+          `GET /v1/companies/{company_id}/custom-fields/{key}/options`.
+        - **Archived:** archived fields and options are left out unless `include_archived=true`.
+
+        **Closed catalogue.** A company defines a small set of fields: this collection carries no
+        `pagination`, takes no `page`/`limit`, and every response holds the whole set.
+      x-closed-catalogue: true
+      x-required-scopes:
+        - custom-fields:read
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: customer_id
+          in: query
+          required: false
+          description: 'Adds the options of this customer to the common ones. A value that names no customer of this company is not an error: only the common options come back.'
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived fields and archived options.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Custom fields of the company.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/custom-fields/{key}:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on — its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+      - name: key
+        in: path
+        required: true
+        description: 'Key of the custom field: lowercase letters, digits and `_`, up to 64 characters. A key outside that format answers `422`.'
+        schema:
+          $ref: '#/components/schemas/CustomFieldKey'
+    get:
+      operationId: getCompanyCustomField
+      tags:
+        - CompanyCustomFields
+      summary: Get a custom field of a company
+      description: 'Returns one custom field of this company, archived or not, with the options that apply to the query: the common ones plus, with `customer_id`, those of that customer. Archived options are left out unless `include_archived=true`. A field with `suggest_values: false` carries no options; list them with `GET /v1/companies/{company_id}/custom-fields/{key}/options`.'
+      x-required-scopes:
+        - custom-fields:read
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: customer_id
+          in: query
+          required: false
+          description: 'Adds the options of this customer to the common ones. A value that names no customer of this company is not an error: only the common options come back.'
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived options.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The custom field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: '`CUSTOM_FIELD_NOT_FOUND` — this company has no custom field with this `key` in the environment of the credential. Test and Live keep separate catalogues.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CUSTOM_FIELD_NOT_FOUND
+                  message: 'Custom field not found: store'
+                meta:
+                  timestamp: '2026-10-17T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '422':
+          $ref: '#/components/responses/UnprocessableQueryParameter'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    put:
+      operationId: upsertCompanyCustomField
+      tags:
+        - CompanyCustomFields
+      summary: Create or update a custom field of a company
+      description: |
+        Creates the custom field with this `key`, or updates it if the company already has one.
+        Repeating the request leaves the same state, so it is safe to run on every deployment to
+        seed a catalogue.
+
+        - **Status:** `201` when the field is created, `200` when it already existed.
+        - **Key:** it is the path, never the body, and it never changes. To stop using a field,
+          archive it (`is_archived: true`); fields are never deleted.
+        - **Archive state:** omitting `is_archived` keeps the current one, so repeating the
+          request never reactivates a field someone archived.
+        - **Suggestions:** omitting `suggest_values` keeps the current setting; a new field starts
+          with `true`. Use `false` for a value that changes on every invoice, such as an order
+          number: invoices store the text as sent and no options are created. Turning it off
+          deletes no option, and turning it back on offers them again.
+        - **Options:** the response carries the common options of the field, or none when
+          `suggest_values` is `false`.
+      x-required-scopes:
+        - custom-fields:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertCustomFieldRequest'
+      responses:
+        '200':
+          description: The custom field already existed and was updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldResponse'
+        '201':
+          description: The custom field was created.
+          headers:
+            Location:
+              $ref: '#/components/headers/CreatedResourceLocation'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/StateConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/custom-fields/{key}/options:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on — its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+      - name: key
+        in: path
+        required: true
+        description: 'Key of the custom field: lowercase letters, digits and `_`, up to 64 characters. A key outside that format answers `422`.'
+        schema:
+          $ref: '#/components/schemas/CustomFieldKey'
+    get:
+      operationId: listCompanyCustomFieldOptions
+      tags:
+        - CompanyCustomFields
+      summary: List the options of a custom field
+      description: |
+        Returns a paginated list of the options of this custom field, ordered by `value`.
+
+        - **Customer:** without `customer_id`, every option of the field, common and of every
+          customer. With it, the common options and those of that customer.
+        - **Archived:** archived options are left out unless `include_archived=true`.
+        - **Suggestions off:** the options of a field with `suggest_values: false` are listed
+          too. They are not offered on invoices while the setting is off.
+      x-required-scopes:
+        - custom-fields:read
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: customer_id
+          in: query
+          required: false
+          description: 'Limits the list to the common options and those of this customer. A value that names no customer of this company is not an error: only the common options come back.'
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived options.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Options of the custom field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldOptionListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: '`CUSTOM_FIELD_NOT_FOUND` — this company has no custom field with this `key` in the environment of the credential. Test and Live keep separate catalogues.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableQueryParameter'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    post:
+      operationId: createCompanyCustomFieldOption
+      tags:
+        - CompanyCustomFields
+      summary: Add an option to a custom field
+      description: |
+        Adds a value to the options of this custom field, for one customer or, without
+        `customer_id`, common to every customer. Use it to seed a catalogue before the first
+        invoice; values used on invoices are added on their own.
+
+        - **Equivalent values:** two values are equivalent when they match ignoring case, accents
+          and repeated spaces. If the field already has an equivalent option — of that customer
+          or a common one — no option is created: the response is `200` with the existing option,
+          and its text is kept. Only when nothing equivalent exists is the option created, with
+          `201`.
+        - **Archived options:** an equivalent archived option counts as existing. It comes back
+          with `200` and stays archived; reactivate it with
+          `PATCH /v1/companies/{company_id}/custom-fields/{key}/options/{option_id}`.
+        - **Suggestions off:** a field with `suggest_values: false` accepts options in the same
+          way, so a catalogue can be prepared before turning suggestions on. They are not
+          offered on invoices while the setting is off.
+      x-required-scopes:
+        - custom-fields:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomFieldOptionRequest'
+      responses:
+        '200':
+          description: An equivalent option already existed; this is that option, unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldOptionResponse'
+        '201':
+          description: The option was created.
+          headers:
+            Location:
+              $ref: '#/components/headers/CreatedResourceLocation'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldOptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 'Two causes, told apart by `error.code`: `CUSTOM_FIELD_NOT_FOUND` (this company has no custom field with this `key`) and `INVOICE_CLIENT_NOT_FOUND` (the `customer_id` of the body is not a customer of this company, or was deleted).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/StateConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/custom-fields/{key}/options/{option_id}:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on — its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+      - name: key
+        in: path
+        required: true
+        description: 'Key of the custom field: lowercase letters, digits and `_`, up to 64 characters. A key outside that format answers `422`.'
+        schema:
+          $ref: '#/components/schemas/CustomFieldKey'
+      - name: option_id
+        in: path
+        required: true
+        description: Unique identifier of the option.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCompanyCustomFieldOption
+      tags:
+        - CompanyCustomFields
+      summary: Get an option of a custom field
+      description: Returns one option of this custom field, archived or not.
+      x-required-scopes:
+        - custom-fields:read
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: The option.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldOptionResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 'Two causes, told apart by `error.code`: `CUSTOM_FIELD_NOT_FOUND` (this company has no custom field with this `key`) and `CUSTOM_FIELD_OPTION_NOT_FOUND` (the field has no option with this `option_id`; an option of another field answers the same way).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableQueryParameter'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    patch:
+      operationId: patchCompanyCustomFieldOption
+      tags:
+        - CompanyCustomFields
+      summary: Rename, archive or reactivate an option
+      description: |
+        Updates only the properties present in the body. Invoices already saved keep the text
+        they were saved with: renaming or archiving an option never changes an invoice.
+
+        - **Rename:** `value` replaces the text. If another option of the field in the same scope
+          — the same customer, or the common options for a common one — is equivalent to the new
+          text (ignoring case, accents and repeated spaces), the answer is `409` with
+          `CUSTOM_FIELD_OPTION_DUPLICATE` and nothing changes.
+        - **Archive or reactivate:** `is_archived`. Options are never deleted.
+      x-required-scopes:
+        - custom-fields:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCustomFieldOptionRequest'
+      responses:
+        '200':
+          description: The option, updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomFieldOptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, or does not hold the required
+            access over it. A company that does not exist answers the same way.
+            That case answers `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 'Two causes, told apart by `error.code`: `CUSTOM_FIELD_NOT_FOUND` (this company has no custom field with this `key`) and `CUSTOM_FIELD_OPTION_NOT_FOUND` (the field has no option with this `option_id`; an option of another field answers the same way).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `CUSTOM_FIELD_OPTION_DUPLICATE` — another option of this field in the same scope is
+            equivalent to the new `value`, archived or not; nothing changed. Use that option
+            instead, reactivating it if it is archived.
+            The idempotency codes of `StateConflict` (`IDEMPOTENCY_KEY_PROCESSING`,
+            `IDEMPOTENCY_KEY_MISMATCH`) and `CONCURRENT_MODIFICATION` share this status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CUSTOM_FIELD_OPTION_DUPLICATE
+                  message: This field already has an equivalent option
+                  details: {}
+                meta:
+                  timestamp: '2026-10-17T10:30:00Z'
+                  request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
   /v1/accounts/{account_id}/members:
     parameters:
       - $ref: '#/components/parameters/AccountIdPath'
@@ -14237,8 +15021,8 @@ paths:
           ownership you may keep or lower your access, but only they can raise it.
         - **Billing:** the level never affects it — you pay for the account's subscription at any
           level.
-        - **`OPERATE`:** issuing invoices on the holder's behalf additionally requires a signed
-          fiscal representation from them.
+        - **`OPERATE`:** issuing invoices on the holder's behalf in Live additionally requires a
+          signed fiscal representation from them. In Test you can issue from the start.
         - **Entitlement:** requires `manage_accounts`.
       operationId: changeManagedAccountAccessLevel
       x-required-scopes:
@@ -15351,6 +16135,7 @@ paths:
 
             - `SERIES_FORMAT_INVALID_PADDING` — the padding in `{NUM:X}` must be a whole number from 1 to 20 (e.g. `{NUM:4}` → `0001`).
             - `SERIES_FORMAT_NUM_REQUIRED` — the series `format` has no `{NUM}` or `{NUM:X}`, so it cannot number invoices. Add the counter.
+            - `SERIES_FORMAT_MULTIPLE_NUM` — the series `format` has more than one `{NUM}` or `{NUM:X}`. The invoice number carries a single counter, so a second one would appear literally. Keep one.
             - `SERIES_FORMAT_UNRECOGNIZED_VARS` — the `format` uses a variable BeeL. does not know. Allowed: `{CODIGO}`, `{YYYY}`, `{YY}`, `{MM}`, `{NUM}`, `{NUM:X}`.
           content:
             application/json:
@@ -15983,6 +16768,13 @@ paths:
         - **`legal_name_verified`:** tells those two cases apart.
         - **`census_status`:** says whether an identified NIF is also deregistered or revoked.
 
+        ## In sandbox
+
+        With a `beel_sk_test_` key the AEAT register is not queried. Syntax is still checked: a
+        well-formed NIF comes back `VALID` with the `legal_name` you sent, `legal_name_verified: false`
+        and no `census_status`; a malformed one comes back `INVALID`. Use a Live key to check the real
+        register.
+
         ## Invalid input
 
         - **Bad syntax is an answer, not an error:** it comes back `200` with `status: INVALID`, so
@@ -16372,6 +17164,7 @@ paths:
             - `IRPF_RATE_ONLY_FOR_CORPORATE_ISSUER` — the rate (e.g. 9.5 % Ceuta/Melilla) only applies to corporate issuers; an individual issuer must use a personal-income-tax rate.
             - `SERIES_FORMAT_INVALID_PADDING` — the padding in `{NUM:X}` must be a whole number from 1 to 20 (e.g. `{NUM:4}` → `0001`).
             - `SERIES_FORMAT_NUM_REQUIRED` — the series `format` has no `{NUM}` or `{NUM:X}`, so it cannot number invoices. Add the counter.
+            - `SERIES_FORMAT_MULTIPLE_NUM` — the series `format` has more than one `{NUM}` or `{NUM:X}`. The invoice number carries a single counter, so a second one would appear literally. Keep one.
             - `SERIES_FORMAT_UNRECOGNIZED_VARS` — the `format` uses a variable BeeL. does not know. Allowed: `{CODIGO}`, `{YYYY}`, `{YY}`, `{MM}`, `{NUM}`, `{NUM:X}`.
           content:
             application/json:
@@ -16887,6 +17680,15 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          description: |
+            `PROFILE_INCOMPLETE` — the company's fiscal identity is not complete enough to produce
+            the document; `error.details` names each missing field, as in
+            `POST /v1/companies/{company_id}/representation`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
         default:
@@ -17214,7 +18016,8 @@ paths:
           `GET /v1/companies/{company_id}/representation/document`, sign it digitally and return
           it through `POST /v1/companies/{company_id}/representation/submit`.
         - **Fiscal identity:** must be complete before the document can be produced. An incomplete
-          one is rejected with `400` naming what is missing.
+          one is rejected with `422` `PROFILE_INCOMPLETE` naming what is missing. The street number
+          is not required.
         - **Existing representation:** a company that already holds an active one is rejected too.
           Cancel it first.
       tags:
@@ -17239,8 +18042,6 @@ paths:
               generated on top of it; contact support.
             * `REPRESENTATION_DOCUMENT_GENERATION_FAILED` — the provider could not produce the
               document. Nothing was stored; repeat the request later.
-
-            An incomplete fiscal identity is also answered with `400`, naming what is missing.
           content:
             application/json:
               schema:
@@ -17257,7 +18058,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          description: |
+            `PROFILE_INCOMPLETE` — the company's fiscal identity is not complete enough to produce
+            the document. `error.details` has one entry per missing field, keyed by its name:
+            `entity_type`, `nif`, `legal_name`, `address` and, for a legal entity, `legal_form` and
+            `legal_representative`. Nothing was generated. Complete the company and repeat the
+            request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -17689,6 +18499,266 @@ paths:
           $ref: '#/components/responses/StateConflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/companies/{company_id}/email-configuration:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        description: 'Unique identifier (UUID) of the company the operation acts on: its identifier, not its NIF. It is the only source of context: the account that owns it is derived from it, and the `BeeL-Active-Company` header plays no part. A company you do not reach answers `403`, and so does a company that does not exist, so the existence of a company in another account is never disclosed.'
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCompanyEmailConfiguration
+      x-required-scopes:
+        - companies:read
+      security:
+        - ApiKeyAuth: []
+      summary: Get the email configuration of a company
+      description: |
+        Returns the address the invoice emails of the company are sent from and the defaults that
+        apply when an invoice is sent by email. It applies only to invoice emails.
+
+        - **`sender.source`, `sender.email_domain_id` and `sender.local_part`:** what the company
+          chose. A `local_part` that is `null` means `facturas`.
+        - **`sender.effective`:** the address the next invoice email will go out from, and why
+          (`reason`). With `source` `BEEL` it is the address of BeeL. Otherwise it is resolved in
+          this order: the email domain chosen by the company and the default email domain of the
+          account, then the address of BeeL. Only email domains that are verified, and only while
+          the account holds the custom email domain add-on, count. The add-on is contracted with
+          BeeL. `email_domain_id` is present only when the address uses one of the account's email
+          domains.
+        - **`defaults`:** the content applied to an invoice email that does not specify its own. Each
+          property is `null` when it is not set.
+        - **Domain no longer verified:** invoice emails go out from BeeL. without interruption, and
+          `reason` reports it.
+        - **Environment:** the configuration belongs to the company and is the same in test and live.
+      tags:
+        - CompanyEmailConfiguration
+      responses:
+        '200':
+          description: Email configuration of the company
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CompanyEmailConfiguration'
+              example:
+                success: true
+                data:
+                  sender:
+                    source: ACCOUNT_DEFAULT
+                    email_domain_id: null
+                    local_part: null
+                    effective:
+                      from_address: facturas@facturas.ejemplo.com
+                      reason: CUSTOM_DOMAIN
+                      email_domain_id: 550e8400-e29b-41d4-a716-446655440000
+                  defaults:
+                    subject: Invoice {invoiceNumber}
+                    message: Dear {customerName}, please find attached invoice {invoiceNumber}.
+                    cc:
+                      - administracion@ejemplo.com
+                    additional_recipients: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company (`error.code`
+            `ACTIVE_COMPANY_NOT_ACCESSIBLE`), or the credential lacks the `companies:read` scope
+            (`INSUFFICIENT_SCOPE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    put:
+      operationId: updateCompanyEmailConfiguration
+      x-required-scopes:
+        - companies:write
+      security:
+        - ApiKeyAuth: []
+      summary: Replace the email configuration of a company
+      description: |
+        Replaces the sender chosen for the invoice emails of the company, and optionally their
+        defaults. It does not affect other emails. The sender is a replacement, not a merge: a
+        property that is omitted or `null` goes back to its default, which is to inherit the default
+        email domain of the account and to use `facturas` as the `local_part`. The response is the
+        configuration as it is after the change, including the address in effect.
+
+        - **`sender.source`:** when omitted it is `EMAIL_DOMAIN` if `email_domain_id` is sent and
+          `ACCOUNT_DEFAULT` otherwise. `email_domain_id` is accepted only with `EMAIL_DOMAIN`, and
+          `local_part` is not accepted with `BEEL`: any other combination answers `422`
+          `VALIDATION_ERROR`.
+        - **`defaults`:** omitted, the stored defaults stay as they are. `null` removes them. An
+          object replaces all of them, so a property left out of it is removed. Sending an object
+          requires the email customization plan: without it the call answers `403`
+          `FEATURE_NOT_AVAILABLE`, and the sender is not changed. The templates accept the variables
+          listed by `GET /v1/email-template-variables`.
+        - **`email_domain_id`:** an email domain of the account that has already been registered. A
+          domain that does not exist, belongs to another account or was removed answers `404`
+          `EMAIL_DOMAIN_NOT_FOUND`; one that is still being registered answers `409`
+          `EMAIL_DOMAIN_NOT_READY`. Choosing a domain that is not verified is allowed: until it is
+          verified, invoice emails go out from the default email domain of the account if that one is
+          verified, and from BeeL. otherwise.
+        - **`local_part`:** up to 64 characters: lowercase letters, digits and the symbols
+          `!#$%&'*+/=?^_\`{|}~-`, with single dots between groups. Any other value answers `422`
+          `VALIDATION_ERROR`.
+        - **Removed email domains:** when the email domain a company chose is removed, the company
+          goes back to `ACCOUNT_DEFAULT` and keeps its `local_part`.
+        - **Credentials:** it changes the address real invoices are sent from, so it requires a live
+          API key and the `companies:write` scope. A test API key answers `403`
+          `LIVE_CREDENTIAL_REQUIRED`. Send an `Idempotency-Key` so a retry does not repeat the
+          operation.
+        - **Environment:** the configuration belongs to the company and is the same in test and live.
+      tags:
+        - CompanyEmailConfiguration
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyEmailConfigurationRequest'
+            example:
+              sender:
+                source: EMAIL_DOMAIN
+                email_domain_id: 550e8400-e29b-41d4-a716-446655440000
+                local_part: cobros
+              defaults:
+                subject: Invoice {invoiceNumber}
+                message: Dear {customerName}, please find attached invoice {invoiceNumber}.
+                cc:
+                  - administracion@ejemplo.com
+      responses:
+        '200':
+          description: Email configuration of the company after the change
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CompanyEmailConfiguration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Your account does not own or manage this company, does not hold write access over it,
+            or the credential is a test one (`LIVE_CREDENTIAL_REQUIRED`). Not owning the company answers
+            `error.code` `ACTIVE_COMPANY_NOT_ACCESSIBLE`; a credential without the `companies:write`
+            scope answers `INSUFFICIENT_SCOPE`. Sending `defaults` without the email customization
+            plan answers `FEATURE_NOT_AVAILABLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: |
+            The email domain does not exist, belongs to another account or was removed
+            (`error.code` `EMAIL_DOMAIN_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            The email domain is still being registered and cannot be chosen yet
+            (`error.code` `EMAIL_DOMAIN_NOT_READY`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: |
+            A property is not valid, or the combination of `source`, `email_domain_id` and
+            `local_part` is not allowed (`error.code` `VALIDATION_ERROR`). Send values that follow
+            the format described for the operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/email-template-variables:
+    get:
+      operationId: listEmailTemplateVariables
+      x-required-scopes:
+        - configuration:read
+      x-closed-catalogue: true
+      security:
+        - ApiKeyAuth: []
+      summary: List the variables of the email templates
+      description: |
+        Returns the placeholders that the `subject` and `message` of the email templates accept,
+        such as `defaults.subject` in `GET /v1/companies/{company_id}/email-configuration`. Write a
+        placeholder, braces included, wherever the value should appear: it is replaced when the
+        email is sent.
+
+        - **Scope:** the catalogue is the same for every credential and does not depend on any
+          account or company, so the operation takes no identifier.
+        - **Unknown placeholders:** a placeholder that is not listed is sent as written.
+
+        **Closed catalogue.** This collection is fixed and bounded: it carries no `pagination`, it
+        takes no `page`/`limit`, and every response holds the whole set.
+      tags:
+        - EmailTemplateVariables
+      responses:
+        '200':
+          description: Variables of the email templates
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/EmailTemplateVariables'
+              example:
+                success: true
+                data:
+                  variables:
+                    - key: invoiceNumber
+                      placeholder: '{invoiceNumber}'
+                      description: Invoice number
+                    - key: customerName
+                      placeholder: '{customerName}'
+                      description: Customer name
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -18217,6 +19287,7 @@ paths:
 
             - `SERIES_FORMAT_INVALID_PADDING` — the padding in `{NUM:X}` must be a whole number from 1 to 20 (e.g. `{NUM:4}` → `0001`).
             - `SERIES_FORMAT_NUM_REQUIRED` — the series `format` has no `{NUM}` or `{NUM:X}`, so it cannot number invoices. Add the counter.
+            - `SERIES_FORMAT_MULTIPLE_NUM` — the series `format` has more than one `{NUM}` or `{NUM:X}`. The invoice number carries a single counter, so a second one would appear literally. Keep one.
             - `SERIES_FORMAT_UNRECOGNIZED_VARS` — the `format` uses a variable BeeL. does not know. Allowed: `{CODIGO}`, `{YYYY}`, `{YY}`, `{MM}`, `{NUM}`, `{NUM:X}`.
           content:
             application/json:
@@ -19003,6 +20074,10 @@ paths:
           under the NIF it was sealed with. To move it, first
           `DELETE /v1/companies/{company_id}/payment-connections/{connection_id}` on the NIF
           that holds it, then open a new authorization on the NIF you want it under.
+          A provider account that was disconnected but already has payments recorded under a NIF
+          cannot be moved to another NIF: the callback fails with
+          `OAUTH_ACCOUNT_HAS_HISTORY_IN_OTHER_COMPANY`, and the way forward is to connect a new
+          provider account for the other NIF. Without recorded payments the move is allowed.
       tags:
         - CompanyPaymentConnections
       parameters:
@@ -21768,6 +22843,534 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         default:
           $ref: '#/components/responses/UnexpectedError'
+  /v1/accounts/{account_id}/email-domains:
+    parameters:
+      - name: account_id
+        in: path
+        required: true
+        description: Your own account, or an account you provisioned. The account in the path, not the credential, decides which account the operation acts on. A `403` is returned when you do not reach it, the same response an account that does not exist gets.
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - AccountEmailDomains
+      summary: List the email domains
+      description: |
+        Returns the domains the account sends its emails from, each with the DNS records to publish
+        and the verification status of the domain and of every record. It only reads; it does not
+        register or verify anything.
+
+        - **Without the add-on:** the list is still returned, so you can see what the account
+          holds, and `max_email_domains` is `0`.
+        - **`max_email_domains`:** the maximum number of domains the custom email domain add-on allows the
+          account; `null` when the add-on sets no explicit limit. The add-on is contracted with
+          BeeL.
+        - **`verified_at` and `last_checked_at`:** absent until the domain is verified or checked
+          for the first time.
+        - **Environment:** domains belong to the account and are the same in test and live.
+
+        **Closed catalogue.** The domains of an account are a short, bounded set: the response
+        carries no `pagination`, the operation takes no paging parameters, and every response holds the
+        whole set.
+      operationId: listAccountEmailDomains
+      x-closed-catalogue: true
+      x-required-scopes:
+        - email-domains:read
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Email domains retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDomainListResponse'
+              example:
+                success: true
+                data:
+                  email_domains:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      domain: facturas.ejemplo.com
+                      status: PENDING
+                      is_default: true
+                      dns_records:
+                        - type: MX
+                          name: send
+                          value: mail.example.com
+                          priority: 10
+                          status: PENDING
+                        - type: TXT
+                          name: send
+                          value: v=spf1 include:example.com ~all
+                          status: PENDING
+                      created_at: '2025-01-20T14:30:00Z'
+                  max_email_domains: 3
+                meta:
+                  timestamp: '2025-01-20T15:00:00Z'
+                  request_id: req_123
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, or lacks the `email-domains:read` scope.
+            An account you cannot reach and an account that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    post:
+      tags:
+        - AccountEmailDomains
+      summary: Register an email domain
+      description: |
+        Registers a domain to send your account's emails from and returns the DNS records you have to
+        publish for it. The domain starts `PENDING`; publish the records and ask for the check with
+        `POST /v1/accounts/{account_id}/email-domains/{email_domain_id}/verify`. A domain that is not
+        `VERIFIED` 72 hours after it was registered is removed and its name is freed.
+
+        - **Add-on:** requires the custom email domain add-on, which is contracted with BeeL. Without
+          it the call answers `403 FEATURE_NOT_AVAILABLE`.
+        - **Default:** the first domain of an account, or the new one when the account has no default
+          domain, becomes the default; otherwise the default does not change.
+        - **`EMAIL_DOMAIN_INVALID` (`422`):** the text is not a full domain name. Internationalised names
+          are accepted and stored in their ASCII form.
+        - **`EMAIL_DOMAIN_RESERVED` (`422`):** the domain cannot be used as a sending domain, for example because it belongs to BeeL
+          or to a public mailbox provider.
+        - **`EMAIL_DOMAIN_UNAVAILABLE` (`409`):** the domain is already in use: registered by your account,
+          by another account, or already held in the sending service BeeL uses. The answer is the same in
+          every case and says nothing about who holds it.
+        - **While it registers:** a domain that is still registering shows `status: PENDING` with
+          `dns_records: []`. Read it again in a few seconds; if it stays that way, remove it with `DELETE`
+          and register it again.
+        - **`EMAIL_DOMAIN_LIMIT_REACHED` (`409`):** the account already holds as many domains as the
+          add-on allows; `error.details.limit` carries that number.
+        - **Unpaid billing:** when the billing of the account is unpaid the call answers `402 PAYMENT_REQUIRED`.
+        - **Credentials:** it changes the real account, so it requires a live API key or a dashboard
+          session. A test API key answers `403 LIVE_CREDENTIAL_REQUIRED`. Send an `Idempotency-Key` so a retry
+          does not repeat the operation.
+      operationId: createAccountEmailDomain
+      x-required-scopes:
+        - email-domains:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailDomainRequest'
+            example:
+              domain: facturas.ejemplo.com
+      responses:
+        '201':
+          headers:
+            Location:
+              $ref: '#/components/headers/CreatedResourceLocation'
+          description: Email domain registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDomainResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  domain: facturas.ejemplo.com
+                  status: PENDING
+                  is_default: true
+                  dns_records:
+                    - type: MX
+                      name: send
+                      value: mail.example.com
+                      priority: 10
+                      status: PENDING
+                    - type: TXT
+                      name: send
+                      value: v=spf1 include:example.com ~all
+                      status: PENDING
+                  created_at: '2025-01-20T14:30:00Z'
+                meta:
+                  timestamp: '2025-01-20T14:30:00Z'
+                  request_id: req_123
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: '`PAYMENT_REQUIRED` — the billing of your account is unpaid (payment retries are exhausted), so the operation is refused until the outstanding invoice is settled.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, lacks the `email-domains:write` scope,
+            is a test API key (`LIVE_CREDENTIAL_REQUIRED`), or the account does not have the custom
+            email domain add-on (`FEATURE_NOT_AVAILABLE`). An account you cannot reach and an account
+            that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `EMAIL_DOMAIN_UNAVAILABLE` or `EMAIL_DOMAIN_LIMIT_REACHED`; `error.code` tells them apart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: |
+            `EMAIL_DOMAIN_INVALID` or `EMAIL_DOMAIN_RESERVED`; `error.code` tells them apart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: |
+            `EXTERNAL_SERVICE_ERROR` — the domain could not be registered with the email sending service.
+            Nothing was registered. It is transient; repeat the request later.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/accounts/{account_id}/email-domains/{email_domain_id}:
+    parameters:
+      - name: account_id
+        in: path
+        required: true
+        description: Your own account, or an account you provisioned. The account in the path, not the credential, decides which account the operation acts on. A `403` is returned when you do not reach it, the same response an account that does not exist gets.
+        schema:
+          type: string
+          format: uuid
+      - name: email_domain_id
+        in: path
+        required: true
+        description: Identifier of the email domain.
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - AccountEmailDomains
+      summary: Get an email domain
+      description: |
+        Returns one domain of your account with the DNS records to publish and the verification
+        status of the domain and of every record. It only reads; it does not verify anything. A domain
+        still registering shows `status: PENDING` with `dns_records: []`.
+
+        It works without the custom email domain add-on, so you can inspect what the account holds.
+        A domain of another account, or one already removed, answers `404`.
+      operationId: getAccountEmailDomain
+      x-required-scopes:
+        - email-domains:read
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Email domain retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDomainResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  domain: facturas.ejemplo.com
+                  status: PENDING
+                  is_default: true
+                  dns_records:
+                    - type: MX
+                      name: send
+                      value: mail.example.com
+                      priority: 10
+                      status: PENDING
+                  created_at: '2025-01-20T14:30:00Z'
+                meta:
+                  timestamp: '2025-01-20T15:00:00Z'
+                  request_id: req_123
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, or lacks the `email-domains:read` scope.
+            An account you cannot reach and an account that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/EmailDomainNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    delete:
+      tags:
+        - AccountEmailDomains
+      summary: Remove an email domain
+      description: |
+        Removes the domain from your account and from the email sending service, which frees the name so
+        it can be registered again. The account's emails stop being sent from it.
+
+        - **Without the add-on:** it works, so you can clean up what the account still holds.
+        - **Default domain:** removing the default leaves the account without one; its emails go out
+          from BeeL until you set another.
+        - **Name:** the name is free for a new registration as soon as the call returns. If the removal in
+          the sending service fails afterwards, an immediate new registration of the same name may answer
+          `EMAIL_DOMAIN_UNAVAILABLE` for a while.
+        - **Still registering:** a domain that stays `PENDING` with `dns_records: []` is removed this way.
+        - **Credentials:** it changes the real account, so it requires a live API key or a dashboard
+          session. A test API key answers `403 LIVE_CREDENTIAL_REQUIRED`. Send an `Idempotency-Key` so a
+          retry does not repeat the operation.
+      operationId: deleteAccountEmailDomain
+      x-required-scopes:
+        - email-domains:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      responses:
+        '204':
+          description: Email domain removed successfully
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, lacks the `email-domains:write` scope,
+            or is a test API key (`LIVE_CREDENTIAL_REQUIRED`). An account you cannot reach and an
+            account that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/EmailDomainNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/accounts/{account_id}/email-domains/{email_domain_id}/verify:
+    parameters:
+      - name: account_id
+        in: path
+        required: true
+        description: Your own account, or an account you provisioned. The account in the path, not the credential, decides which account the operation acts on. A `403` is returned when you do not reach it, the same response an account that does not exist gets.
+        schema:
+          type: string
+          format: uuid
+      - name: email_domain_id
+        in: path
+        required: true
+        description: Identifier of the email domain.
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags:
+        - AccountEmailDomains
+      summary: Verify an email domain
+      description: |
+        Asks for the DNS records of the domain to be checked, once you have published them. The check
+        is asynchronous: the call returns `202` with the domain as it is now, usually still `PENDING`,
+        and its `status` changes to `VERIFIED` or `FAILED` when the check finishes. Read the domain with
+        `GET` to see the result. A domain that is not `VERIFIED` 72 hours after it was registered is
+        removed and its name is freed.
+
+        - **Add-on:** requires the custom email domain add-on, which is contracted with BeeL. Without
+          it the call answers `403 FEATURE_NOT_AVAILABLE`.
+        - **`EMAIL_DOMAIN_NOT_READY` (`409`):** the domain is still registering (`dns_records: []`); repeat
+          the call in a few seconds.
+        - **Sending service failure:** if the check cannot be requested the call fails with `502` and nothing changes.
+        - **Unpaid billing:** when the billing of the account is unpaid the call answers `402 PAYMENT_REQUIRED`.
+        - **Credentials:** it requires a live API key or a dashboard session. A test API key answers
+          `403 LIVE_CREDENTIAL_REQUIRED`. Send an `Idempotency-Key` so a retry does not repeat the operation.
+      operationId: verifyAccountEmailDomain
+      x-required-scopes:
+        - email-domains:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      responses:
+        '202':
+          description: Verification requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDomainResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  domain: facturas.ejemplo.com
+                  status: PENDING
+                  is_default: false
+                  dns_records:
+                    - type: MX
+                      name: send
+                      value: mail.example.com
+                      priority: 10
+                      status: PENDING
+                  created_at: '2025-01-20T14:30:00Z'
+                meta:
+                  timestamp: '2025-01-20T15:30:00Z'
+                  request_id: req_123
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: '`PAYMENT_REQUIRED` — the billing of your account is unpaid (payment retries are exhausted), so the operation is refused until the outstanding invoice is settled.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, lacks the `email-domains:write` scope,
+            is a test API key (`LIVE_CREDENTIAL_REQUIRED`), or the account does not have the custom
+            email domain add-on (`FEATURE_NOT_AVAILABLE`). An account you cannot reach and an account
+            that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/EmailDomainNotFound'
+        '409':
+          description: |
+            `EMAIL_DOMAIN_NOT_READY` — the domain is still registering with the email sending service (`dns_records: []`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: |
+            `EXTERNAL_SERVICE_ERROR` — the verification could not be requested from the email sending service.
+            Nothing changed. It is transient; repeat the request later.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /v1/accounts/{account_id}/email-domains/{email_domain_id}/default:
+    parameters:
+      - name: account_id
+        in: path
+        required: true
+        description: Your own account, or an account you provisioned. The account in the path, not the credential, decides which account the operation acts on. A `403` is returned when you do not reach it, the same response an account that does not exist gets.
+        schema:
+          type: string
+          format: uuid
+      - name: email_domain_id
+        in: path
+        required: true
+        description: Identifier of the email domain.
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags:
+        - AccountEmailDomains
+      summary: Set the default email domain
+      description: |
+        Makes this domain the one the account's emails are sent from by default, and clears the
+        flag on the domain that had it, so the account always has at most one default.
+
+        - **Repeatable:** it states the desired default rather than performing a change, so
+          repeating the call on the domain that already is the default returns the same `200`.
+        - **Any status:** a domain can be the default while it is still `PENDING` or `FAILED`.
+          Emails only leave from it once it is `VERIFIED`; until then they go out from BeeL.
+        - **Without the add-on:** it works, so an account can still choose among the domains it holds.
+        - **Credentials:** it changes the real account, so it requires a live API key or a dashboard
+          session. A test API key answers `403 LIVE_CREDENTIAL_REQUIRED`. Send an `Idempotency-Key` so a
+          retry does not repeat the operation.
+      operationId: setAccountEmailDomainDefault
+      x-required-scopes:
+        - email-domains:write
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      responses:
+        '200':
+          description: Default email domain set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDomainResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  domain: facturas.ejemplo.com
+                  status: VERIFIED
+                  is_default: true
+                  dns_records:
+                    - type: MX
+                      name: send
+                      value: mail.example.com
+                      priority: 10
+                      status: VERIFIED
+                  created_at: '2025-01-20T14:30:00Z'
+                  verified_at: '2025-01-20T15:10:00Z'
+                  last_checked_at: '2025-01-20T15:10:00Z'
+                meta:
+                  timestamp: '2025-01-20T15:30:00Z'
+                  request_id: req_123
+        '400':
+          $ref: '#/components/responses/InvalidRequestTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            The credential cannot reach the account in the path, lacks the `email-domains:write` scope,
+            or is a test API key (`LIVE_CREDENTIAL_REQUIRED`). An account you cannot reach and an
+            account that does not exist answer identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/EmailDomainNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
   /v1/emails:
     get:
       tags:
@@ -22009,7 +23612,10 @@ components:
         - Allowed characters: letters, digits, `_` and `-` (max 255 chars)
         - Retrying with the same key replays the first response when it was a success (2xx) or a
           server error (5xx): same status and body, plus the header `Idempotency-Replay: true`.
-          After a 5xx, check whether the operation took effect before retrying with a **new** key
+          After a 5xx other than 503, check whether the operation took effect before retrying with a **new** key
+        - After a `503`, retry first with the **same** key. If the response carries `Idempotency-Replay: true`,
+          the operation may have taken effect: check the resource before using a new key. Without that header,
+          the retry runs the operation once
         - A 4xx is not stored: the key is released, so the corrected request can reuse it
         - Stored responses expire 24 hours after processing
 
@@ -22052,7 +23658,8 @@ components:
         The company does **not** have to belong to the API key's own account: one you manage works
         too, which is what makes the `company_id` returned by `POST /v1/accounts` usable here to
         invoice on a provisioned account's behalf. What you may do with it is then decided by your
-        access level over that account, and issuing also requires a signed fiscal representation.
+        access level over that account, and issuing in Live also requires a signed fiscal
+        representation.
 
         This header is how you **operate** on a company, never how you find one: a value you do not
         reach answers `403`, the same as one that does not exist, so guessing reveals nothing. Get
@@ -22749,6 +24356,7 @@ components:
             - id
             - created_at
             - updated_at
+            - custom_fields
           properties:
             id:
               type: string
@@ -22761,6 +24369,21 @@ components:
             updated_at:
               type: string
               format: date-time
+            custom_fields:
+              type: array
+              maxItems: 20
+              description: |
+                The company's custom fields saved on this invoice, each with the label and value it
+                was saved with; an empty array when it carries none. They are informational: they
+                are not part of the VeriFactu record sent to the AEAT and do not enter its hash.
+                Unlike `metadata`, which holds identifiers for your integration, they are what a
+                person reads, filters and exports.
+              items:
+                $ref: '#/components/schemas/InvoiceCustomField'
+              example:
+                - key: store
+                  label: Store
+                  value: Gran Vía 12
     SeriesInfo:
       type: object
       required:
@@ -23705,6 +25328,23 @@ components:
             send `external_ref`.
         metadata:
           $ref: '#/components/schemas/InvoiceMetadata'
+        custom_fields:
+          type: array
+          maxItems: 20
+          description: |
+            Values for the company's custom fields, at most one per `key`; a repeated `key` answers
+            `422 VALIDATION_ERROR`. A `key` the company does not have answers
+            `422 CUSTOM_FIELD_UNKNOWN`, and an archived field answers `409 CUSTOM_FIELD_ARCHIVED`;
+            in both cases nothing is created. Omit it for an invoice without custom fields.
+
+            They are informational: they are not part of the VeriFactu record sent to the AEAT,
+            do not enter its hash and cannot express any mention the invoicing regulations require.
+            Use `metadata` for identifiers your integration needs and people do not see.
+          items:
+            $ref: '#/components/schemas/InvoiceCustomFieldInput'
+          example:
+            - key: store
+              value: Gran Vía 12
         options:
           $ref: '#/components/schemas/InvoiceProcessingOptions'
       example:
@@ -23792,7 +25432,8 @@ components:
             - $ref: '#/components/schemas/EmailConfiguration'
           description: |
             Only applies when `send_automatically` is `true`.
-            Overrides default email settings. If it names no recipients, the email goes to the
+            Overrides the `defaults` of the company's email configuration: its `subject`, `message`
+            and `cc` are sent with the email. If it names no recipients, the email goes to the
             customer's `billing_emails`, or to the customer's `email` when there are none.
       example:
         issue_directly: true
@@ -23982,6 +25623,27 @@ components:
             Omit to keep the current payment info.
         notes:
           type: string
+        custom_fields:
+          type: array
+          nullable: true
+          maxItems: 20
+          description: |
+            Replaces the custom fields of the invoice as a whole: the list sent becomes the new
+            list. Omit it to keep the current ones; send `null` or `[]` to remove them all. The
+            same rules as on creation apply: at most one value per `key`, a `key` the company does
+            not have answers `422 CUSTOM_FIELD_UNKNOWN` and an archived field answers
+            `409 CUSTOM_FIELD_ARCHIVED`, even when the draft already carries it. Every field in
+            the list is saved again with the label it has now. Only a draft, a scheduled invoice
+            or an active proforma can change them; any other status answers
+            `422 STATUS_NOT_MODIFIABLE`.
+
+            When the request changes the recipient and omits `custom_fields`, the saved fields are
+            carried over to the new customer; one archived since is left out, with no error.
+
+            They are informational: they are not part of the VeriFactu record sent to the AEAT and
+            do not enter its hash.
+          items:
+            $ref: '#/components/schemas/InvoiceCustomFieldInput'
         options:
           type: object
           description: |
@@ -24026,13 +25688,19 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-          description: Custom email subject (optional, if not specified uses a default)
+          description: |
+            Custom email subject (optional). Priority: the request that sends the email > this
+            `email_config.subject` > the `defaults.subject` of the company's email configuration >
+            the standard subject.
           example: Invoice 2025/0001 - Web development services
         message:
           type: string
           minLength: 1
           maxLength: 2000
-          description: Custom message (optional, added to email body)
+          description: |
+            Custom message (optional, added to the email body). It is sent with the email.
+            Priority: the request that sends the email > this `email_config.message` > the
+            `defaults.message` of the company's email configuration > the standard message.
           example: Dear customer, please find attached the invoice for the services provided. Thank you for your trust.
       example:
         recipients:
@@ -24058,18 +25726,18 @@ components:
           description: |
             CC recipients. Copied addresses count as recipients of the message: they are subject
             to the same sending restrictions and to the same quota as the addresses in `recipients`.
-            When omitted, the CC addresses configured in the sender's email defaults apply; send an
-            empty array to deliver the message without any copy.
+            When omitted, the invoice's `email_config.cc` applies, then the CC addresses in the `defaults` of the
+            company's email configuration; send an empty array to deliver the message without any copy.
         subject:
           type: string
           minLength: 1
           maxLength: 200
-          description: Email subject (optional, if not specified uses a default)
+          description: Email subject. When omitted, the invoice's `email_config.subject` applies, then the `defaults.subject` of the company's email configuration, then the standard subject.
         message:
           type: string
           minLength: 1
           maxLength: 2000
-          description: Custom message (optional, added before standard message)
+          description: Custom message, added before the standard message. When omitted, the invoice's `email_config.message` applies, then the `defaults.message` of the company's email configuration, then the standard message.
         attach_pdf:
           type: boolean
           default: true
@@ -25299,7 +26967,7 @@ components:
         - {NUM}: Sequential number without padding (e.g., "1")
         - {NUM:X}: Sequential number with padding (e.g., {NUM:4} → "0001")
 
-        **REQUIRED**: Must contain at least {NUM} or {NUM:X}
+        **REQUIRED**: Must contain exactly one {NUM} or {NUM:X}
         **IMPORTANT**: Only uppercase (rejects {yy}, {mm}, {codigo}, etc.)
 
         Valid examples:
@@ -26602,6 +28270,8 @@ components:
           example: 2
     RecurringInvoiceResponse:
       type: object
+      required:
+        - custom_fields
       properties:
         id:
           type: string
@@ -26776,6 +28446,24 @@ components:
         notes:
           type: string
           nullable: true
+        custom_fields:
+          type: array
+          maxItems: 20
+          description: |
+            The company's custom fields saved on this template, each with the label and value it was
+            saved with; an empty array when it carries none.
+
+            Every invoice the template generates copies them. The generated invoice saves each field
+            with the label it has at that moment; a field archived after the template was saved stays
+            listed here, but the invoices generated from then on are created without it and the
+            template keeps generating: it is not paused for that reason. They are informational: they
+            are not part of the VeriFactu record sent to the AEAT and do not enter its hash.
+          items:
+            $ref: '#/components/schemas/InvoiceCustomField'
+          example:
+            - key: project
+              label: Project
+              value: Corporate website
         send_automatically:
           type: boolean
         email_configuration:
@@ -26920,6 +28608,10 @@ components:
         `payment_swift` and `payment_term_days`), `notes` and `email_configuration` are
         cleared when you leave them out. To change a few fields and keep the rest
         untouched, use `PATCH /v1/recurring-invoices/{recurring_invoice_id}`.
+
+        `custom_fields` is not part of this request: a replacement keeps the template's custom
+        fields as they are. Change them with
+        `PATCH /v1/companies/{company_id}/recurring-invoices/{recurring_invoice_id}`.
       properties:
         name:
           type: string
@@ -27094,7 +28786,6 @@ components:
         - name
         - day_of_month
         - start_date
-        - series_id
         - invoice_type
         - lines
       properties:
@@ -27165,6 +28856,10 @@ components:
         series_id:
           type: string
           format: uuid
+          description: |
+            Series the generated invoices are numbered in. Omit it to use the company's default
+            series for `invoice_type`. With no default standard series the call answers `422`
+            `SERIES_DEFAULT_NOT_FOUND`; the default simplified series is created on first use.
         invoice_type:
           $ref: '#/components/schemas/RecurringInvoiceType'
         max_invoices:
@@ -27216,6 +28911,24 @@ components:
         notes:
           type: string
           nullable: true
+        custom_fields:
+          type: array
+          maxItems: 20
+          description: |
+            Values for the company's custom fields that every generated invoice copies, at most one
+            per `key`; a repeated `key` answers `422 VALIDATION_ERROR`. A `key` the company does not
+            have answers `422 CUSTOM_FIELD_UNKNOWN`, and an archived field answers
+            `409 CUSTOM_FIELD_ARCHIVED`; in both cases no template is created. Each value follows the
+            same rules as on an invoice, with the template's `customer_id` as the customer. Omit it
+            for a template without custom fields.
+
+            They are informational: they are not part of the VeriFactu record sent to the AEAT, do
+            not enter its hash and cannot express any mention the invoicing regulations require.
+          items:
+            $ref: '#/components/schemas/InvoiceCustomFieldInput'
+          example:
+            - key: project
+              value: Corporate website
         send_automatically:
           type: boolean
           default: false
@@ -27860,8 +29573,8 @@ components:
           allOf:
             - $ref: '#/components/schemas/AccountState'
           description: |
-            Account-level lifecycle, identical for every company of the account. AEAT emission
-            additionally requires the per-NIF representation to be signed.
+            Account-level lifecycle, identical for every company of the account. AEAT emission in
+            Live additionally requires the per-NIF representation to be signed.
         address:
           type: object
           nullable: true
@@ -28266,6 +29979,8 @@ components:
             (the provider rejected the code exchange), `ACCESS_DENIED` (the account holder declined
             at the provider), `OAUTH_ACCOUNT_CONNECTED_TO_OTHER_COMPANY` (the provider account is
             already connected to another NIF; disconnect it there first),
+            `OAUTH_ACCOUNT_HAS_HISTORY_IN_OTHER_COMPANY` (the provider account has payments recorded
+            under another NIF; connect a new provider account for this NIF),
             `PROVIDER_ERROR` (any other provider-reported failure) or
             `OAUTH_UNEXPECTED`. When omitted, the callback redirects to BeeL's default integrations
             screen. A `return_url` that is not an absolute `https://` URL with a host is rejected
@@ -28375,11 +30090,13 @@ components:
         simplificada_threshold:
           type: number
           format: double
-          deprecated: true
           description: |
-            Deprecated. No longer affects auto-invoicing: a buyer with a tax ID and full address
-            always gets an ordinary invoice; without them, a simplified one up to 3,000 EUR.
-            Still accepted and returned.
+            Amount in EUR up to which a charge whose buyer has no complete fiscal data (tax ID, name
+            and address) is invoiced as a simplified invoice. Above it, the charge is not issued: it
+            waits as a draft standard invoice until the buyer's fiscal data is completed. A buyer with
+            complete fiscal data always gets a standard invoice, whatever the amount. Up to 400.00 is
+            the general limit; a higher value, up to 3000.00, is the issuer's statement that its
+            activity is one of those in article 4.2 of RD 1619/2012 (rule SIM-002).
           example: 400
         filter_config:
           $ref: '#/components/schemas/CompanyPaymentConnectionFilters'
@@ -28451,11 +30168,14 @@ components:
           format: double
           minimum: 0.01
           maximum: 3000
-          deprecated: true
           description: |
-            Deprecated. No longer affects auto-invoicing: a buyer with a tax ID and full address
-            always gets an ordinary invoice; without them, a simplified one up to 3,000 EUR.
-            Still accepted; between 0.01 and 3000.00.
+            Amount in EUR up to which a charge whose buyer has no complete fiscal data (tax ID, name
+            and address) is invoiced as a simplified invoice. Above it, the charge is not issued: it
+            waits as a draft standard invoice until the buyer's fiscal data is completed. A buyer with
+            complete fiscal data always gets a standard invoice, whatever the amount. Up to 400.00 is
+            the general limit; a higher value, up to 3000.00, is the issuer's statement that its
+            activity is one of those in article 4.2 of RD 1619/2012 (rule SIM-002). Omit to keep
+            the current value.
         filter_config:
           allOf:
             - $ref: '#/components/schemas/CompanyPaymentConnectionFilters'
@@ -28474,6 +30194,7 @@ components:
         - external_event_id
         - status
         - needs_action
+        - outcome
         - draft_available
         - retry_available
         - discard_available
@@ -28510,9 +30231,11 @@ components:
           type: string
           nullable: true
           description: |
-            Canonical identity of the payment at the provider. On Stripe this is always the
-            PaymentIntent id (`pi_…`), so every event of the same payment carries the same value
-            and can be grouped by it. Null while the identity is not yet resolved.
+            Canonical identity of the payment at the provider. On Stripe this is the
+            PaymentIntent id (`pi_…`); for a charge without a PaymentIntent, the Charge id
+            (`ch_…`); for a Stripe invoice paid outside Stripe, the payment record id (`pr_…`).
+            Every event of the same payment carries the same value and can be grouped by it.
+            Null while the identity is not yet resolved.
             To trace the event back to the object that delivered it, use `source_object_id`.
           example: pi_1234567890
         source_object_id:
@@ -28576,12 +30299,14 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Invoice generated from the event, when there is one.
+          description: |
+            The invoice currently in force for this payment: when the simplified invoice it generated
+            was exchanged, the full invoice that replaced it. `null` when the event produced no invoice.
         invoice_number:
           type: string
           nullable: true
           description: |
-            Number of the invoice generated from the event. `null` while that invoice is still a
+            Number of the invoice in `invoice_id`. `null` while that invoice is still a
             draft — a draft has no number yet — and `null` when the event produced no invoice.
           example: 2026/0042
         failure_category:
@@ -28605,6 +30330,8 @@ components:
           description: |
             Whether the event did not complete and is still worth acting on. Events that failed
             for reasons outside your control are excluded.
+        outcome:
+          $ref: '#/components/schemas/PaymentEventOutcome'
         draft_available:
           type: boolean
           description: |
@@ -29008,6 +30735,150 @@ components:
                 $ref: '#/components/schemas/EmailDeliveryIndicator'
         meta:
           $ref: '#/components/schemas/ResponseMeta'
+    EmailDomainStatus:
+      type: string
+      enum:
+        - PENDING
+        - VERIFIED
+        - FAILED
+      description: |
+        Verification status of an email domain, and of each of its DNS records.
+
+        - PENDING: the records have not been detected yet, or verification is in progress. A domain that
+          is not `VERIFIED` 72 hours after it was registered is removed
+        - VERIFIED: the records were detected and the domain can be used to send
+        - FAILED: verification did not succeed; check that the records are published as shown
+    DnsRecordType:
+      type: string
+      enum:
+        - MX
+        - TXT
+        - CNAME
+      description: Type of a DNS record.
+    DnsRecord:
+      type: object
+      description: A DNS record the domain owner has to publish for the domain to be verified.
+      required:
+        - type
+        - name
+        - value
+        - status
+      properties:
+        type:
+          $ref: '#/components/schemas/DnsRecordType'
+        name:
+          type: string
+          description: Host name of the record, relative to the domain.
+          example: send
+        value:
+          type: string
+          description: Content the record must have.
+          example: mail.example.com
+        priority:
+          type: integer
+          description: Priority of the record. Only present on `MX` records.
+          example: 10
+        status:
+          $ref: '#/components/schemas/EmailDomainStatus'
+    EmailDomain:
+      type: object
+      description: A domain an account sends its emails from.
+      required:
+        - id
+        - domain
+        - status
+        - is_default
+        - dns_records
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the email domain.
+          example: 550e8400-e29b-41d4-a716-446655440000
+        domain:
+          type: string
+          description: Fully qualified domain name, in lowercase.
+          example: facturas.ejemplo.com
+        status:
+          $ref: '#/components/schemas/EmailDomainStatus'
+        is_default:
+          type: boolean
+          description: Whether this is the domain the account's emails are sent from by default.
+          example: true
+        dns_records:
+          type: array
+          description: |
+            Records to publish in the domain's DNS, with the verification status of each. Empty (`[]`) while
+            the domain is still registering, with `status: PENDING`: read it again in a few seconds, or
+            remove it with `DELETE` if it stays empty.
+          items:
+            $ref: '#/components/schemas/DnsRecord'
+        created_at:
+          type: string
+          format: date-time
+          description: Moment the domain was registered.
+        verified_at:
+          type: string
+          format: date-time
+          description: Moment the domain was verified. Absent until it is.
+        last_checked_at:
+          type: string
+          format: date-time
+          description: Moment the records were last checked. Absent until the first check.
+    EmailDomainListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - email_domains
+            - max_email_domains
+          properties:
+            email_domains:
+              type: array
+              items:
+                $ref: '#/components/schemas/EmailDomain'
+            max_email_domains:
+              type: integer
+              nullable: true
+              description: |
+                Maximum number of email domains the account can have. `0` when the account does not
+                have the custom email domain add-on, which is contracted with BeeL. `null` when the
+                add-on sets no explicit limit.
+              example: 3
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    EmailDomainResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/EmailDomain'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    CreateEmailDomainRequest:
+      type: object
+      required:
+        - domain
+      properties:
+        domain:
+          type: string
+          description: |
+            Fully qualified domain name to send from. It is trimmed, lowercased and stored without a
+            trailing dot; internationalised names are stored in their ASCII form.
+          example: facturas.ejemplo.com
     QueriedPeriod:
       type: object
       description: Information about the queried period
@@ -29778,6 +31649,8 @@ components:
             Only on a full invoice issued in exchange for simplified invoices: the simplified
             invoices it replaces, each now `VOIDED` with `void_cause` `EXCHANGED`. With VeriFactu,
             the invoice is recorded as `F3` identifying them.
+            The invoice inherits the `metadata` of the simplified invoices; when there are several,
+            only the keys with the same value in all of them.
         void_cause:
           $ref: '#/components/schemas/VoidCause'
         void_reason:
@@ -29814,6 +31687,26 @@ components:
             the inverse of `source_proforma_id`, derived at read time (not persisted).
             Only present on the detail endpoint (`GET /v1/invoices/{invoice_id}`) for a proforma
             in `CONVERTED` status; never included in list rows.
+        replaced_by_invoice_id:
+          type: string
+          format: uuid
+          description: |
+            UUID of the full invoice that replaced this simplified invoice when it was exchanged
+            (`void_cause` is `EXCHANGED`), derived at read time (not persisted).
+            Only present on the detail endpoint
+            (`GET /v1/companies/{company_id}/invoices/{invoice_id}`) for an exchanged simplified
+            invoice; never included in list rows.
+        rectified_by_invoice_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            UUIDs of the live (non-deleted) corrective invoices that rectify this invoice, in
+            order of creation, including drafts, derived at read time (not persisted).
+            Only present in responses that return a single invoice, such as
+            `GET /v1/companies/{company_id}/invoices/{invoice_id}`, and only when at least one
+            exists; never included in list rows.
         rectification_reason:
           type: string
           maxLength: 500
@@ -29844,7 +31737,7 @@ components:
             Additional metadata in key-value format. Invoices auto-generated from a
             connected payment platform carry system keys you can filter on:
             - external_customer_id: Payment-platform customer (e.g. Stripe `cus_…`), present when the payment carried a customer (absent on flows with no customer, e.g. Terminal / payment links without customer collection)
-            - external_payment_id: Canonical payment reference. On Stripe this is always the PaymentIntent id (`pi_…`); the Charge, Stripe Invoice and Checkout Session ids are never used here, so every event of the same payment carries the same value.
+            - external_payment_id: Canonical payment reference. On Stripe this is the PaymentIntent id (`pi_…`); for a charge without a PaymentIntent, the Charge id (`ch_…`); for a Stripe invoice paid outside Stripe, the payment record id (`pr_…`). The Stripe Invoice and Checkout Session ids are never used here, so every event of the same payment carries the same value.
             - payment_intent_id: Stripe PaymentIntent id, when the payment has one
             - charge_id: Stripe Charge id, when the payment has one
             - payment_provider: Origin platform (e.g. STRIPE_CONNECT)
@@ -29868,7 +31761,8 @@ components:
             - $ref: '#/components/schemas/EmailConfiguration'
           nullable: true
           description: |
-            Email configuration used when `send_automatically` is true.
+            Email configuration used when `send_automatically` is true. Its `subject`, `message`
+            and `cc` take priority over the `defaults` of the company's email configuration.
             If it names no recipients, the email goes to the customer's `billing_emails`, or to
             the customer's `email` when there are none.
         pdf_download_url:
@@ -29912,6 +31806,39 @@ components:
           type: string
           format: date-time
           nullable: true
+    CustomFieldKey:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: ^[a-z0-9_]{1,64}$
+      description: 'Identifier of the custom field within the company, chosen when the field is created: lowercase letters, digits and `_`, up to 64 characters. It never changes. BeeL. gives it no meaning of its own.'
+      example: store
+    InvoiceCustomField:
+      type: object
+      description: 'A custom field as it was saved on an invoice or on a recurring invoice template: a copy of the field label and of the value at that moment. Renaming or archiving the field or its options later does not change it.'
+      required:
+        - key
+        - label
+        - value
+      properties:
+        key:
+          $ref: '#/components/schemas/CustomFieldKey'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Label of the field when the invoice was saved.
+          example: Store
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Text stored on the invoice. It is the text the `custom_fields` filter of the invoice list compares.
+          example: Gran Vía 12
+      example:
+        key: store
+        label: Store
+        value: Gran Vía 12
     PhoneInput:
       type: string
       minLength: 9
@@ -29945,10 +31872,30 @@ components:
         Your own key/value pairs to cross-reference this invoice with records in
         your system (order ids, tenants, internal codes). Namespace them to avoid
         clashing with the system keys BeeL adds on payment-generated invoices.
+        Metadata is not printed on the PDF; for values people read, filter or export,
+        such as a store or a cost centre, use `custom_fields`.
       example:
         external_order_id: ORD-2025-0042
         tenant: acme
         project_code: PROJ-123
+    InvoiceCustomFieldInput:
+      type: object
+      description: The value of one custom field of the company on an invoice. The field must exist in the company and be active; the label is taken from it when the invoice is saved.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          $ref: '#/components/schemas/CustomFieldKey'
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 'Text of the value. Leading and trailing spaces are removed; a value that is empty after that answers `422`. When an option of the field is equivalent (it matches ignoring case, accents and repeated spaces), the invoice stores the text of that option, archived options included. Otherwise the text is stored as sent and, when the invoice has a registered customer (`recipient.customer_id`), it is added as an option of that customer; with recipient data sent inline, no option is created. On a field with `suggest_values: false` the value is never compared with the options and never creates one: the invoice stores the text as sent, without the leading and trailing spaces.'
+          example: Gran Vía 12
+      example:
+        key: store
+        value: Gran Vía 12
     BulkOperationResult:
       type: object
       description: Outcome of a bulk operation processed invoice by invoice.
@@ -30182,15 +32129,25 @@ components:
           description: |
             CC recipients. Copied addresses count as recipients of the message: they are subject
             to the same sending restrictions and to the same quota as the addresses in `recipients`.
-            When omitted, the CC addresses configured in the sender's email defaults apply; send an
+            When omitted, the CC addresses in the `defaults` of the company's email configuration apply
+            (the `email_config.cc` of the invoice applies only when the delivery carries one invoice); send an
             empty array to deliver the message without any copy.
         subject:
           type: string
-          description: Custom email subject. Defaults to the standard template.
+          description: |
+            Custom email subject. When omitted, the `email_config.subject` of the invoice applies if the
+            delivery carries one invoice, then the `defaults.subject` of the company's email
+            configuration, then the standard subject. Variables resolve per delivery (see `message`).
           maxLength: 200
         message:
           type: string
-          description: Custom message body. Defaults to the standard template.
+          description: |
+            Custom message body. When omitted, the `email_config.message` of the invoice applies if the
+            delivery carries one invoice, then the `defaults.message` of the company's email
+            configuration, then the standard message. Variables in `subject` and `message` resolve per
+            delivery, which is one email: `{invoiceNumber}` is the list of invoice numbers separated by
+            ", ", `{customerName}` only when every invoice has the same customer, `{issuerName}` is the
+            issuer, and the others (total, dates) are empty.
           maxLength: 2000
         language:
           allOf:
@@ -30221,7 +32178,9 @@ components:
           format: date
           description: Issue date to (inclusive).
         customer_id:
-          $ref: '#/components/schemas/UUID'
+          allOf:
+            - $ref: '#/components/schemas/UUID'
+          description: Only the invoices of this customer. Combines with the other filters, including `custom_fields`.
         recipient_name:
           type: string
           description: Partial match on the recipient name.
@@ -30231,6 +32190,21 @@ components:
         series_code:
           type: string
           description: Exact series code.
+        custom_fields:
+          type: object
+          description: |
+            Filter by the custom fields saved on the invoice, as an object from field `key` to
+            value. It behaves like the `custom_fields` filter of the invoice list: the value is
+            compared with the text stored on the invoice, exactly (case and accents included), and
+            several keys are combined with AND, and with the other filters. Max 20 keys; more
+            answers `422 CUSTOM_FIELD_FILTER_TOO_MANY_KEYS`. A key the company does not have
+            matches no invoice. An empty object filters nothing and does not count as a selection
+            criterion.
+          additionalProperties:
+            type: string
+            maxLength: 255
+          example:
+            store: Gran Vía 12
     CreateInvoiceExportRequest:
       type: object
       description: |
@@ -30770,6 +32744,28 @@ components:
           type: string
           nullable: true
           description: Notes printed on the generated invoices. Send `null` to clear them.
+        custom_fields:
+          type: array
+          nullable: true
+          maxItems: 20
+          description: |
+            Replaces the custom fields of the template as a whole: the list sent becomes the new
+            list. Omit it to keep the current ones; send `null` or `[]` to remove them all. The same
+            rules as on an invoice apply: at most one value per `key` (a repeated `key` answers
+            `422 VALIDATION_ERROR`), a `key` the company does not have answers
+            `422 CUSTOM_FIELD_UNKNOWN` and an archived field answers `409 CUSTOM_FIELD_ARCHIVED`,
+            even when the template already carries it; in every case nothing is written. Every field
+            in the list is saved again with the label it has now, and each value follows the same
+            rules as on an invoice, with the template's `customer_id` as the customer.
+
+            When the request changes `customer_id` and omits `custom_fields`, the saved fields are
+            carried over to the new customer; one archived since is left out, with no error.
+
+            Invoices already generated keep the fields they were created with; the change applies
+            from the next generation. They are informational: they are not part of the VeriFactu
+            record sent to the AEAT and do not enter its hash.
+          items:
+            $ref: '#/components/schemas/InvoiceCustomFieldInput'
         send_automatically:
           type: boolean
         email_configuration:
@@ -30790,6 +32786,8 @@ components:
       allOf:
         - $ref: '#/components/schemas/InvoiceBase'
         - type: object
+          required:
+            - custom_fields
           properties:
             invoice_number:
               type: string
@@ -30802,6 +32800,16 @@ components:
               nullable: true
               description: |
                 Always `null` here, for the same reason as `invoice_number`.
+            custom_fields:
+              type: array
+              maxItems: 20
+              description: |
+                The custom fields the generated invoice would carry: those of the template, each
+                with the label the field has now. A field archived after the template was saved is
+                left out, as it will be on the generated invoice. An empty array when there are
+                none.
+              items:
+                $ref: '#/components/schemas/InvoiceCustomField'
     RecurringInvoiceHistoryEntryType:
       type: string
       description: |
@@ -30892,11 +32900,11 @@ components:
     CreateRecurringInvoiceDerivationRequest:
       type: object
       description: |
-        Derives a recurring invoice template from an existing invoice: lines, recipient, series and
-        payment data are taken from it, so only the recurrence is described here. The source invoice
-        is not modified.
+        Derives a recurring invoice template from an existing invoice: lines, recipient, series,
+        payment data and custom fields are taken from it, so only the recurrence is described here.
+        The source invoice is not modified.
 
-        Deliberately not a variant of `CreateRecurringInvoiceRequest`: that one requires `series_id`,
+        Deliberately not a variant of `CreateRecurringInvoiceRequest`: that one requires
         `invoice_type` and `lines`, which this call does not carry. Relaxing them there would let a
         template be created from scratch with no lines at all.
       required:
@@ -31750,6 +33758,203 @@ components:
             - $ref: '#/components/schemas/ProductBulkCreateLegacySummary'
           deprecated: true
           description: '**Deprecated.** Read `statistics`.'
+    CustomFieldOption:
+      type: object
+      description: A value of a custom field, offered when filling it in. An option belongs to one customer or, without `customer_id`, is common to every customer of the company.
+      required:
+        - id
+        - value
+        - customer_id
+        - is_archived
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the option.
+          example: c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Text of the option, exactly as it is shown and copied onto an invoice.
+          example: Gran Vía 12
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Customer the option belongs to, or `null` for an option common to every customer. It is set when the option is created and never changes.
+          example: 4f244735-980b-4d9c-80e8-6331fa0b1958
+        is_archived:
+          type: boolean
+          description: An archived option is no longer offered and is left out of listings unless `include_archived=true`. Invoices that already carry its text keep it.
+          example: false
+    CustomField:
+      type: object
+      description: A custom field of the company's invoices, with the options that apply to the query that returned it.
+      required:
+        - id
+        - key
+        - label
+        - show_on_pdf
+        - suggest_values
+        - is_archived
+        - options
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the custom field.
+          example: 7d2f8a40-3c1e-4b6a-9f0d-2e5b8c1a4d77
+        key:
+          $ref: '#/components/schemas/CustomFieldKey'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name people see next to the value, on screen and, if `show_on_pdf`, on the PDF.
+          example: Store
+        show_on_pdf:
+          type: boolean
+          description: 'Whether the PDF of the invoice prints this field, in a block of its own under the notes. It applies to invoices saved from then on: an invoice keeps the setting it was saved with.'
+          example: true
+        suggest_values:
+          type: boolean
+          description: 'Whether the field offers the values already used as options. With `true`, saving an invoice reuses an equivalent option or adds the value as a new one. With `false`, for a value that changes on every invoice such as an order number, the invoice stores the text as sent (without leading and trailing spaces), no option is created, and `options` comes back empty. Turning it off deletes no option: the existing ones are kept, can still be listed and managed under `GET /v1/companies/{company_id}/custom-fields/{key}/options`, and are offered again when it is turned back on.'
+          example: true
+        is_archived:
+          type: boolean
+          description: An archived field cannot be added to new invoices and is left out of listings unless `include_archived=true`. Invoices that already carry it keep it.
+          example: false
+        options:
+          type: array
+          description: 'The options of this field that apply to the query: the common ones plus, when the query names a `customer_id`, the ones of that customer. Archived options appear only with `include_archived=true`. Always empty when `suggest_values` is `false`. To page through every option of the field, of every customer, use `GET /v1/companies/{company_id}/custom-fields/{key}/options`.'
+          items:
+            $ref: '#/components/schemas/CustomFieldOption'
+      example:
+        id: 7d2f8a40-3c1e-4b6a-9f0d-2e5b8c1a4d77
+        key: store
+        label: Store
+        show_on_pdf: true
+        suggest_values: true
+        is_archived: false
+        options:
+          - id: 0b6c1e2f-5a4d-4c3b-8e7f-1a2b3c4d5e6f
+            value: Online store
+            customer_id: null
+            is_archived: false
+          - id: c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f
+            value: Gran Vía 12
+            customer_id: 4f244735-980b-4d9c-80e8-6331fa0b1958
+            is_archived: false
+    CustomFieldListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required:
+                - custom_fields
+              properties:
+                custom_fields:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CustomField'
+    CustomFieldResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CustomField'
+    UpsertCustomFieldRequest:
+      type: object
+      description: 'The state of the custom field. `label` and `show_on_pdf` are always replaced. `suggest_values` and `is_archived`, when omitted, keep their current value (a new field is created with `suggest_values: true` and active), so repeating a request never undoes a change someone made to them.'
+      required:
+        - label
+        - show_on_pdf
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name people see next to the value. Leading and trailing spaces are removed; a label that is empty after that answers `422`.
+          example: Store
+        show_on_pdf:
+          type: boolean
+          description: Whether the PDF of invoices saved from now on prints this field.
+          example: true
+        suggest_values:
+          type: boolean
+          description: '`true` offers the values already used as options and adds new ones as invoices are saved; `false` stores each value as sent and creates no options. Omit it to keep the current setting; a new field starts with `true`. Turning it off deletes no option.'
+          example: true
+        is_archived:
+          type: boolean
+          description: '`true` archives the field, `false` reactivates it. Omit it to keep the current state.'
+          example: false
+      example:
+        label: Store
+        show_on_pdf: true
+    CustomFieldOptionListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required:
+                - options
+                - pagination
+              properties:
+                options:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CustomFieldOption'
+                pagination:
+                  $ref: '#/components/schemas/Pagination'
+    CreateCustomFieldOptionRequest:
+      type: object
+      description: A value to add to the options of the field, for one customer or, without `customer_id`, common to every customer.
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Text of the option. Leading and trailing spaces are removed; a value that is empty after that answers `422`. Two values are equivalent when they match ignoring case, accents and repeated spaces (`Gran  Via 12` and `gran vía 12`).
+          example: Gran Vía 12
+        customer_id:
+          type: string
+          format: uuid
+          description: Customer of the company the option belongs to. Omit it for an option common to every customer.
+          example: 4f244735-980b-4d9c-80e8-6331fa0b1958
+      example:
+        value: Gran Vía 12
+        customer_id: 4f244735-980b-4d9c-80e8-6331fa0b1958
+    CustomFieldOptionResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CustomFieldOption'
+    PatchCustomFieldOptionRequest:
+      type: object
+      description: 'JSON Merge Patch of an option: an omitted property is left as it is. Neither property can be cleared. The customer an option belongs to cannot be changed.'
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: New text of the option. Leading and trailing spaces are removed. Invoices already saved keep the text they were saved with.
+          example: Gran Vía 12, Madrid
+        is_archived:
+          type: boolean
+          description: '`true` archives the option, `false` reactivates it.'
+          example: true
+      example:
+        value: Gran Vía 12, Madrid
     AccountRole:
       type: string
       description: |-
@@ -31993,7 +34198,7 @@ components:
 
         `NONE` — no access to the data.
         `VIEW` — read invoices, customers, products, series and fiscal data.
-        `OPERATE` — everything in `VIEW`, plus creating and editing them. Issuing invoices for an account you manage additionally requires a signed fiscal representation from the account holder (see `/v1/accounts/{account_id}/companies/{company_id}/representation`).
+        `OPERATE` — everything in `VIEW`, plus creating and editing them. In Live, issuing invoices for an account you manage additionally requires a signed fiscal representation from the account holder (see `/v1/companies/{company_id}/representation`). In Test you can issue from the start.
 
         Access level never affects billing: whoever provisioned an account pays for its subscription regardless of the level they keep over it.
       enum:
@@ -32757,8 +34962,9 @@ components:
           type: string
           description: |
             Size the request declared in its `Content-Length` header. Present
-            when the whole body was measured, absent when the limit was reached
-            while reading an individual uploaded file.
+            when the whole body was measured. Absent when the limit was reached
+            while reading an individual uploaded file, or when the request did
+            not declare a `Content-Length` and was stopped while being read.
           example: '5242880'
     ExemptionReasonCatalogEntry:
       type: object
@@ -33333,6 +35539,227 @@ components:
           $ref: '#/components/schemas/IssuingReadinessData'
         meta:
           $ref: '#/components/schemas/ResponseMeta'
+    CompanyEmailSenderSource:
+      type: string
+      enum:
+        - ACCOUNT_DEFAULT
+        - EMAIL_DOMAIN
+        - BEEL
+      description: |
+        What the company chose as the sender of its invoice emails.
+
+        - ACCOUNT_DEFAULT: no choice; it inherits the default email domain of the account.
+        - EMAIL_DOMAIN: one of the email domains of the account, in `email_domain_id`.
+        - BEEL: the address of BeeL.
+    EmailSenderReason:
+      type: string
+      enum:
+        - CUSTOM_DOMAIN
+        - ADDON_INACTIVE
+        - DOMAIN_NOT_VERIFIED
+        - NO_DOMAIN
+        - BEEL_SELECTED
+      description: |
+        Why invoice emails go out from the address they go out from.
+
+        - CUSTOM_DOMAIN: from a verified email domain of the account. Nothing to do.
+        - ADDON_INACTIVE: the company or the account has an email domain but the account does not
+          hold the custom email domain add-on, so emails go out from BeeL. Contract the add-on with
+          BeeL. to use the domain.
+        - DOMAIN_NOT_VERIFIED: the email domains that apply are not verified, so emails go out from
+          BeeL. Verify the domain with `POST /v1/accounts/{account_id}/email-domains/{email_domain_id}/verify`
+          once its DNS records are published.
+        - NO_DOMAIN: neither the company nor the account has an email domain, so emails go out from
+          BeeL. Register one with `POST /v1/accounts/{account_id}/email-domains`.
+        - BEEL_SELECTED: the company chose the address of BeeL. (`source` `BEEL`). Nothing to do.
+    EffectiveEmailSender:
+      type: object
+      description: The address the invoice emails of a company go out from, and why.
+      required:
+        - from_address
+        - reason
+      properties:
+        from_address:
+          type: string
+          format: email
+          description: Address shown as the sender of the invoice emails.
+          example: facturas@facturas.ejemplo.com
+        reason:
+          $ref: '#/components/schemas/EmailSenderReason'
+        email_domain_id:
+          type: string
+          format: uuid
+          description: The email domain of the account the address belongs to. Absent when the address is BeeL.'s.
+          example: 550e8400-e29b-41d4-a716-446655440000
+    CompanyEmailSender:
+      type: object
+      description: The sender chosen for the invoice emails of a company, and the one in effect.
+      required:
+        - source
+        - email_domain_id
+        - local_part
+        - effective
+      properties:
+        source:
+          $ref: '#/components/schemas/CompanyEmailSenderSource'
+        email_domain_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The email domain of the account the company chose; `null` unless `source` is `EMAIL_DOMAIN`.
+        local_part:
+          type: string
+          nullable: true
+          description: Part of the address before the `@`. `null` means `facturas`, and it is always `null` when `source` is `BEEL`.
+          example: cobros
+        effective:
+          $ref: '#/components/schemas/EffectiveEmailSender'
+    CompanyEmailDefaults:
+      type: object
+      description: The content applied to an invoice email that does not specify its own. The additional recipients are always added.
+      required:
+        - subject
+        - message
+        - cc
+        - additional_recipients
+      properties:
+        subject:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: Subject template, with the variables of `GET /v1/email-template-variables`.
+          example: Invoice {invoiceNumber}
+        message:
+          type: string
+          nullable: true
+          maxLength: 5000
+          description: Message template, with the variables of `GET /v1/email-template-variables`.
+          example: Dear {customerName}, please find attached invoice {invoiceNumber}.
+        cc:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Email'
+          description: CC recipients, applied when the email request does not specify `cc`.
+        additional_recipients:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Email'
+          description: Recipients added to those of every invoice email.
+    CompanyEmailConfiguration:
+      type: object
+      required:
+        - sender
+        - defaults
+      properties:
+        sender:
+          $ref: '#/components/schemas/CompanyEmailSender'
+        defaults:
+          $ref: '#/components/schemas/CompanyEmailDefaults'
+    UpdateCompanyEmailSender:
+      type: object
+      properties:
+        source:
+          $ref: '#/components/schemas/CompanyEmailSenderSource'
+        email_domain_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: An email domain of the account. Accepted only with `source` `EMAIL_DOMAIN`.
+        local_part:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 64
+          pattern: ^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*$
+          description: Part of the address before the `@`. Not accepted with `source` `BEEL`.
+          example: cobros
+    UpdateCompanyEmailDefaults:
+      type: object
+      properties:
+        subject:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 500
+          description: Subject template.
+          example: Invoice {invoiceNumber}
+        message:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 5000
+          description: Message template.
+          example: Dear {customerName}, please find attached invoice {invoiceNumber}.
+        cc:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Email'
+          description: CC recipients.
+        additional_recipients:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Email'
+          description: Additional recipients.
+    UpdateCompanyEmailConfigurationRequest:
+      type: object
+      required:
+        - sender
+      properties:
+        sender:
+          $ref: '#/components/schemas/UpdateCompanyEmailSender'
+        defaults:
+          allOf:
+            - $ref: '#/components/schemas/UpdateCompanyEmailDefaults'
+          nullable: true
+          description: The defaults of the invoice emails. Omitted keeps them; `null` removes them.
+    EmailTemplateVariableKey:
+      type: string
+      enum:
+        - invoiceNumber
+        - customerName
+        - issueDate
+        - invoiceTotal
+        - dueDate
+        - issuerName
+      description: |
+        Name of a variable of the email templates.
+
+        - invoiceNumber: number of the invoice.
+        - customerName: name of the customer.
+        - issueDate: issue date of the invoice.
+        - invoiceTotal: total of the invoice.
+        - dueDate: due date of the invoice.
+        - issuerName: name of the company that issues the invoice.
+    EmailTemplateVariable:
+      type: object
+      required:
+        - key
+        - placeholder
+        - description
+      properties:
+        key:
+          $ref: '#/components/schemas/EmailTemplateVariableKey'
+        placeholder:
+          type: string
+          description: The text to write in a template, braces included.
+          example: '{invoiceNumber}'
+        description:
+          type: string
+          description: What the variable is replaced with.
+          example: Invoice number
+    EmailTemplateVariables:
+      type: object
+      required:
+        - variables
+      properties:
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmailTemplateVariable'
     BillingPeriod:
       type: string
       description: Nominal billing period of a subscription.
@@ -33670,6 +36097,31 @@ components:
         - `DISPUTE_OPENED`: the payer disputed a charge
         - `DISPUTE_CLOSED`: a dispute was settled, in favour of either party
         - `UNKNOWN`: the provider event does not fall in any of the above
+    PaymentEventOutcome:
+      type: string
+      enum:
+        - INVOICED
+        - IN_PROGRESS
+        - NOT_INVOICED
+        - RESOLVED
+        - INCIDENT
+        - NO_CHANGE
+      description: |
+        What this event means for its payment. Branch on this value instead of deriving it from
+        `status` and `failure_reason`.
+
+        - `INVOICED`: an invoice was generated from the event (`invoice_id` is set)
+        - `IN_PROGRESS`: the payment can still change, because the event is being processed or
+          retried, or the payer has yet to pay
+        - `NOT_INVOICED`: closed without an invoice and with nothing for you to do, for example a
+          zero-amount payment, or a payment settled from the payer's balance
+        - `RESOLVED`: marked as resolved outside BeeL
+        - `INCIDENT`: needs your action (`needs_action` is `true`)
+        - `NO_CHANGE`: the event does not change the tax position of the payment, such as a refund
+          that did not complete, a failed payment attempt, an event type BeeL does not handle, or a
+          dispute settled in your favour
+
+        `INCIDENT` takes precedence over the rest, then `INVOICED`.
     PaymentEventFailureReasonCount:
       type: object
       description: How many events share one failure reason.
@@ -33916,6 +36368,15 @@ components:
         - `account.claimed` — A provisioned account was claimed by its holder
         - `company.created` — A company was created inside a provisioned account
         - `representation.signed` — Fiscal representation signed for a NIF (production invoicing enabled)
+        - `email_domain.verified` — A sending domain of the account became `VERIFIED`; sent once per transition
+        - `email_domain.failed` — A sending domain of the account became `FAILED`; sent once per transition
+        - `email_domain.removed` — A sending domain of the account was removed, with a `reason` (`EXPIRED`,
+          `DELETED_BY_USER` or `DELETED_AT_PROVIDER`); sent once per removal
+        - `invoice.email.bounced` — The email of an invoice bounced or was marked as spam, with a `reason`
+          (`BOUNCED` or `COMPLAINED`); sent once per email
+
+        The `email_domain.*` events belong to the account: they are delivered only to its live
+        endpoints, never to the account that manages it, and `company_id` and `nif` are not set (absent or `null`).
 
         The `account.*` events are delivered only to the **provisioner** that created the
         account; a subscription on any other account never receives them.
@@ -33930,6 +36391,10 @@ components:
         - account.claimed
         - company.created
         - representation.signed
+        - email_domain.verified
+        - email_domain.failed
+        - email_domain.removed
+        - invoice.email.bounced
     CreateWebhookSubscriptionRequest:
       type: object
       required:
@@ -34315,6 +36780,141 @@ components:
           type: string
           format: date-time
           description: When the fiscal representation was signed (enabling production invoicing for this NIF).
+    WebhookEventDataEmailDomain:
+      type: object
+      description: |
+        Data payload for `email_domain.verified` and `email_domain.failed` events: the email domain as it
+        is after the change, plus its previous status. Sent once per transition. On `email_domain.failed`,
+        `previous_status` `PENDING` means the domain never verified and `VERIFIED` means it stopped passing
+        the check.
+      additionalProperties: false
+      required:
+        - email_domain_id
+        - domain
+        - status
+        - previous_status
+        - is_default
+        - dns_records
+        - created_at
+      properties:
+        email_domain_id:
+          type: string
+          format: uuid
+          description: Identifier of the email domain.
+        domain:
+          type: string
+          example: facturas.ejemplo.com
+        status:
+          $ref: '#/components/schemas/EmailDomainStatus'
+        previous_status:
+          $ref: '#/components/schemas/EmailDomainStatus'
+        is_default:
+          type: boolean
+        dns_records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DnsRecord'
+        created_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+    EmailDomainRemovalReason:
+      type: string
+      enum:
+        - EXPIRED
+        - DELETED_BY_USER
+        - DELETED_AT_PROVIDER
+      description: |
+        Why the domain was removed:
+
+        - EXPIRED: it expired before being verified, 72 hours after it was registered
+        - DELETED_BY_USER: a user of the account deleted it
+        - DELETED_AT_PROVIDER: it no longer existed in the email sending service, so BeeL. removed it from the account
+    WebhookEventDataEmailDomainRemoved:
+      type: object
+      description: |
+        Data payload for `email_domain.removed` events: the email domain as it was when it was removed, plus
+        the reason. Sent once per removal.
+      additionalProperties: false
+      required:
+        - email_domain_id
+        - domain
+        - status
+        - is_default
+        - dns_records
+        - created_at
+        - reason
+      properties:
+        email_domain_id:
+          type: string
+          format: uuid
+          description: Identifier of the email domain.
+        domain:
+          type: string
+          example: facturas.ejemplo.com
+        status:
+          $ref: '#/components/schemas/EmailDomainStatus'
+        is_default:
+          type: boolean
+        dns_records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DnsRecord'
+        created_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          $ref: '#/components/schemas/EmailDomainRemovalReason'
+    InvoiceEmailBounceReason:
+      type: string
+      enum:
+        - BOUNCED
+        - COMPLAINED
+      description: |
+        Why the email was not delivered: the recipient's server rejected it (`BOUNCED`) or the recipient
+        marked it as spam (`COMPLAINED`).
+    WebhookEventDataInvoiceEmailBounced:
+      type: object
+      description: Data payload for `invoice.email.bounced` events.
+      additionalProperties: false
+      required:
+        - invoice_id
+        - recipients
+        - reason
+        - bounced_at
+      properties:
+        invoice_id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+          nullable: true
+          example: 2025/0001
+        recipients:
+          type: array
+          items:
+            type: string
+          description: The addresses the invoice email was sent to (to and cc); at least one of them bounced or complained.
+        reason:
+          $ref: '#/components/schemas/InvoiceEmailBounceReason'
+        bounced_at:
+          type: string
+          format: date-time
     WebhookEvent:
       type: object
       description: Payload delivered to your endpoint on every webhook event.
@@ -34389,6 +36989,9 @@ components:
             - $ref: '#/components/schemas/WebhookEventDataAccountClaimed'
             - $ref: '#/components/schemas/WebhookEventDataCompanyCreated'
             - $ref: '#/components/schemas/WebhookEventDataRepresentationSigned'
+            - $ref: '#/components/schemas/WebhookEventDataEmailDomain'
+            - $ref: '#/components/schemas/WebhookEventDataEmailDomainRemoved'
+            - $ref: '#/components/schemas/WebhookEventDataInvoiceEmailBounced'
     UpdateWebhookSubscriptionRequest:
       type: object
       properties:
@@ -34813,9 +37416,10 @@ components:
           API key and no OAuth2 token can perform it, whatever scopes it holds.
         - `OPERATION_REQUIRES_API_KEY` — the reverse: the operation needs a scope that only an API
           key can hold (such as `accounts:write`), so a dashboard session never satisfies it.
-        - `API_KEY_LIVE_NOT_AVAILABLE` — the call came with a live API key (`beel_sk_live_…`) and
-          the account has no Live mode yet. It is never degraded to Test: use your test key, or
-          activate Live first.
+        - `API_KEY_LIVE_NOT_AVAILABLE` — the call came with a live credential (a `beel_sk_live_…`
+          API key, or an OAuth2 token issued without the `sandbox` scope) and the account has no
+          Live mode yet. It is never degraded to Test: use test credentials, or activate Live
+          first.
         - `ACCOUNT_REQUIRES_FOCUS_SWITCH` — dashboard session only: you are a member of the account
           in the path, but it is not the account in focus. Switch focus to it and retry.
         - `REQUEST_BLOCKED` — the edge security filter stopped the request before the API saw its
@@ -34935,7 +37539,8 @@ components:
           `MEMBER_ALREADY_IN_ACCOUNT`, `INVOICE_DUPLICATE_EXTERNAL_REFERENCE`).
         - **Lifecycle** — the transition does not apply from where the resource is
           (`INVOICE_ALREADY_VOIDED`, `PROFORMA_ALREADY_CONVERTED`, `CLIENT_HAS_INVOICES`,
-          `RECURRING_ALREADY_ENDED`, `RECURRING_OCCURRENCE_ALREADY_CONSUMED` — the occurrence the
+          `RECURRING_ALREADY_ENDED`, `CUSTOM_FIELD_ARCHIVED` — the custom field is archived and
+          cannot be assigned, `RECURRING_OCCURRENCE_ALREADY_CONSUMED` — the occurrence the
           recurring template points at has already been billed; read its history instead of
           retrying).
           Read the resource before retrying: the state you assumed is not its state.
@@ -35227,6 +37832,11 @@ components:
         contract's `snake_case`) to a message describing what is wrong with it, or follows
         `FieldDeserializationError` when the value is outside an enum's vocabulary. Otherwise it is
         one of the series rules, among them:
+        - `SERIES_FORMAT_NUM_REQUIRED` / `SERIES_FORMAT_MULTIPLE_NUM` — the format has no counter
+          (`{NUM}` or `{NUM:X}`), or more than one. It needs exactly one.
+        - `SERIES_FORMAT_INVALID_PADDING` / `SERIES_FORMAT_UNRECOGNIZED_VARS` — the padding in
+          `{NUM:X}` is not a whole number from 1 to 20, or the format uses a variable BeeL. does
+          not know. Allowed: `{CODIGO}`, `{YYYY}`, `{YY}`, `{MM}`, `{NUM}`, `{NUM:X}`.
         - `SERIES_MONTHLY_REQUIRES_MONTH_AND_YEAR` / `SERIES_ANNUAL_REQUIRES_YEAR` — the format
           cannot tell the counter reset periods apart.
         - `SERIES_INITIAL_NUMBER_OUT_OF_RANGE` — the initial number is out of range.
@@ -35351,6 +37961,20 @@ components:
             meta:
               timestamp: '2025-01-15T10:30:00Z'
               request_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    EmailDomainNotFound:
+      description: '`EMAIL_DOMAIN_NOT_FOUND` — no email domain with that id belongs to the account. A domain of another account, or one already removed, answers the same way.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: EMAIL_DOMAIN_NOT_FOUND
+              message: No email domain with that id belongs to your account.
+            meta:
+              timestamp: '2025-01-15T10:30:00Z'
+              request_id: 4bf92f3577b34da6a3ce929d0e0e4736
   examples:
     list-invoices-success:
       summary: List invoices (200)
@@ -35414,6 +38038,10 @@ components:
               pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
               created_at: '2025-01-20T09:00:00Z'
               updated_at: '2025-01-20T09:30:00Z'
+              custom_fields:
+                - key: store
+                  label: Store
+                  value: Gran Vía 12
             - id: 550e8400-e29b-41d4-a716-446655440002
               invoice_number: A/2025/0041
               series:
@@ -35472,6 +38100,7 @@ components:
               pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/550e8400-e29b-41d4-a716-446655440002/pdf
               created_at: '2025-01-15T10:00:00Z'
               updated_at: '2025-01-18T14:00:00Z'
+              custom_fields: []
             - id: 550e8400-e29b-41d4-a716-446655440003
               invoice_number: A/2025/0040
               series:
@@ -35527,6 +38156,7 @@ components:
               pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/550e8400-e29b-41d4-a716-446655440003/pdf
               created_at: '2024-12-10T11:00:00Z'
               updated_at: '2024-12-10T11:00:00Z'
+              custom_fields: []
           pagination:
             current_page: 1
             items_per_page: 20
@@ -36265,6 +38895,7 @@ components:
             enabled: false
           created_at: '2025-01-20T10:30:00Z'
           updated_at: '2025-01-20T10:30:00Z'
+          custom_fields: []
         meta:
           timestamp: '2025-01-20T10:30:00Z'
           request_id: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
@@ -36412,6 +39043,10 @@ components:
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
           created_at: '2025-01-20T10:30:00Z'
           updated_at: '2025-01-20T10:35:00Z'
+          custom_fields:
+            - key: store
+              label: Store
+              value: Gran Vía 12
         meta:
           timestamp: '2025-01-20T11:00:00Z'
           request_id: f4a5b6c7-d8e9-4f0a-1b2c-3d4e5f6a7b8c
@@ -36498,6 +39133,7 @@ components:
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/9d2fd4c2-29a1-4f65-90f7-78854adf69bc/pdf
           created_at: '2026-06-02T10:30:00Z'
           updated_at: '2026-06-02T10:35:00Z'
+          custom_fields: []
         meta:
           timestamp: '2026-06-02T11:00:00Z'
           request_id: f4a5b6c7-d8e9-4f0a-1b2c-3d4e5f6a7b8c
@@ -36786,6 +39422,7 @@ components:
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
           created_at: '2025-01-20T10:30:00Z'
           updated_at: '2025-01-20T10:35:00Z'
+          custom_fields: []
         meta:
           timestamp: '2025-01-20T10:35:00Z'
           request_id: e3f4a5b6-c7d8-4e9f-0a1b-2c3d4e5f6a7b
@@ -36853,6 +39490,7 @@ components:
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/b8a4d0f3-c2e5-49b7-d4f0-c3f2b9e6d1f5/pdf
           created_at: '2025-01-25T11:00:00Z'
           updated_at: '2025-01-25T11:00:00Z'
+          custom_fields: []
         meta:
           timestamp: '2025-01-25T11:00:00Z'
           request_id: a5b6c7d8-e9f0-4a1b-2c3d-4e5f6a7b8c9d
@@ -36959,6 +39597,7 @@ components:
           pdf_download_url: /v1/companies/7c9e6679-7425-40de-944b-e07fc1f90ae7/invoices/f47ac10b-58cc-4372-a567-0e02b2c3d479/pdf
           created_at: '2025-01-20T10:30:00Z'
           updated_at: '2025-02-05T14:30:00Z'
+          custom_fields: []
         meta:
           timestamp: '2025-02-05T14:30:00Z'
           request_id: d2e3f4a5-b6c7-4d8e-9f0a-1b2c3d4e5f6a
@@ -36998,6 +39637,9 @@ components:
         payment_method: BANK_TRANSFER
         payment_iban: ES9121000418450200051332
         payment_term_days: 15
+        custom_fields:
+          - key: project
+            value: Web corporativa
         send_automatically: true
         email_configuration:
           recipients:
@@ -37784,6 +40426,10 @@ x-scope-catalog:
     grants: Read products
   - name: products:write
     grants: Create, update and delete products
+  - name: custom-fields:read
+    grants: Read invoice custom fields and their options
+  - name: custom-fields:write
+    grants: Create, update and archive invoice custom fields and their options
   - name: members:read
     grants: Read the account's members
   - name: members:write
@@ -37820,6 +40466,10 @@ x-scope-catalog:
     grants: Connect and disconnect payment providers for a managed NIF
   - name: emails:read
     grants: Read the email delivery history
+  - name: email-domains:read
+    grants: Read the account's email sending domains and the DNS records to publish for each
+  - name: email-domains:write
+    grants: Register, verify, remove and choose the default of the account's email sending domains; it changes the address your invoices are sent from
   - name: logs:read
     grants: 'Read the API request logs. Its reach is the PERSON, not the key: a credential with this scope reads the requests — bodies and headers included — made with ANY of your API keys in that environment, including your privileged ones. It never crosses to another user or another account.'
 x-tagGroups:
@@ -37851,6 +40501,10 @@ x-tagGroups:
     tags:
       - CompanyProducts
       - Products
+  - name: Custom Fields
+    x-icon: Tags
+    tags:
+      - CompanyCustomFields
   - name: Members
     x-icon: Users
     tags:
@@ -37930,6 +40584,9 @@ x-tagGroups:
     tags:
       - Emails
       - AccountEmails
+      - AccountEmailDomains
+      - CompanyEmailConfiguration
+      - EmailTemplateVariables
   - name: Identity
     x-icon: Fingerprint
     tags:
