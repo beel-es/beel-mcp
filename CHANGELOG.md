@@ -3,6 +3,19 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.12.0](https://github.com/beel-es/beel-mcp/compare/v0.11.0...v0.12.0) (2026-11-11)
+
+
+### Novedades
+
+* **mcpapp:** the BeeL. app, invoicing in a panel beside the conversation ([#158](https://github.com/beel-es/beel-mcp/issues/158)) ([1e19c47](https://github.com/beel-es/beel-mcp/commit/1e19c471b94ffea82d7bb02714dc3bdb004e7e70))
+
+
+### Correcciones
+
+* **mcpapp:** BeeL. app as a card, faster views, and optional JSON bodies sent as {} ([#161](https://github.com/beel-es/beel-mcp/issues/161)) ([a6556d6](https://github.com/beel-es/beel-mcp/commit/a6556d6ec9bfb0a8a701ecd450d5eb4a40fbb132))
+* **mcpapp:** drop the newest-panel-wins rule, which reached across conversations ([#162](https://github.com/beel-es/beel-mcp/issues/162)) ([21c99df](https://github.com/beel-es/beel-mcp/commit/21c99dfea17d94f66961ba07d067ddf9e0cfae5f))
+
 ## [0.11.0](https://github.com/beel-es/beel-mcp/compare/v0.10.0...v0.11.0) (2026-11-07)
 
 
