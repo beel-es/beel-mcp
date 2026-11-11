@@ -47,7 +47,7 @@ function verifactuCell(invoice: Invoice): HTMLElement {
   );
 }
 
-export interface ButtonOptions {
+interface ButtonOptions {
   /**
    * One primary per screen: the next step. `danger-outline`, as in the web app,
    * for an action on a fiscal record that cannot be undone.

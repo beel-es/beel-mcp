@@ -18,7 +18,7 @@ import { readString } from '../shared/guards.js';
 export const OPEN_APP = 'beel_open_app';
 
 /** Shown where the host lists the app; at most 60 characters. */
-export const OPEN_APP_TITLE = 'BeeL. Facturación';
+const OPEN_APP_TITLE = 'BeeL. Facturación';
 
 export const openAppTool: Tool = {
   name: OPEN_APP,

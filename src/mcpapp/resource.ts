@@ -58,7 +58,7 @@ function resolveHtmlFromDisk(file: string): string | null {
   return null;
 }
 
-export interface AppDocument {
+interface AppDocument {
   html: string;
   csp: AppCsp;
   presentation: McpAppPresentation;

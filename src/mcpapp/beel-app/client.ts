@@ -29,12 +29,12 @@ function firstText(result: CallToolResult): string | undefined {
   return undefined;
 }
 
-export interface InvoicePage {
+interface InvoicePage {
   invoices: Invoice[];
   total?: number;
 }
 
-export interface InvoicePdf extends Partial<InvoicePdfAppData> {
+interface InvoicePdf extends Partial<InvoicePdfAppData> {
   /** The PDF itself, base64, when the server attached it to the result. */
   base64?: string;
 }

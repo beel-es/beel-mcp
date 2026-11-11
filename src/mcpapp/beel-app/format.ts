@@ -49,7 +49,7 @@ export function quarterToDate(now: Date): { start: string; end: string; label: s
  * An invoice status in the BeeL web app's status palette: each API status maps
  * to the same tone and label the web app shows.
  */
-export type StatusTone =
+type StatusTone =
   'scheduled' | 'draft' | 'issued' | 'sent' | 'paid' | 'overdue' | 'rectified' | 'cancelled';
 
 const STATUS_TONE: Record<string, StatusTone> = {
@@ -63,7 +63,7 @@ const STATUS_TONE: Record<string, StatusTone> = {
   VOIDED: 'cancelled',
 };
 
-export interface StatusBadge {
+interface StatusBadge {
   label: string;
   tone: StatusTone;
 }
@@ -77,7 +77,7 @@ export function statusBadge(status: string | undefined): StatusBadge {
 }
 
 /** The semantic tones of the BeeL web app's badges. */
-export type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'neutral';
+type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'neutral';
 
 /** The VeriFactu state as the BeeL web app shows it. */
 export interface VerifactuBadge {

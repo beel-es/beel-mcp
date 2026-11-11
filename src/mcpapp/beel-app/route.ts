@@ -35,7 +35,7 @@ export interface NavigationTarget extends Partial<BeelAppRoute> {
   filter?: InvoiceFilter;
 }
 
-export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
+type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /** The statuses `show_view` accepts, each one a list filter or part of one. */
 export const SHOW_VIEW_STATUSES = ['DRAFT', 'ISSUED', 'SENT', 'OVERDUE', 'PAID'] as const;

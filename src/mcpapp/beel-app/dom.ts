@@ -7,7 +7,7 @@ export type Child = Node | string | false | null | undefined;
 
 type Handlers = { [K in keyof HTMLElementEventMap]?: (event: HTMLElementEventMap[K]) => void };
 
-export interface Props {
+interface Props {
   class?: string;
   /** Attributes; `false` and `undefined` leave one out, `true` sets it empty. */
   attrs?: Record<string, string | number | boolean | undefined>;

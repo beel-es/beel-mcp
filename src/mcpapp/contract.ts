@@ -180,7 +180,7 @@ export const BRAND_FONT_FILES = ['dm-sans-latin.woff2', 'geist-mono.woff2'] as c
 export type BrandFontFile = (typeof BRAND_FONT_FILES)[number];
 
 /** The BeeL. app's CSP: the viewer's, plus its own origin for the brand fonts. */
-export function beelAppCsp(env: EnvRecord = ambientEnv()): AppCsp {
+function beelAppCsp(env: EnvRecord = ambientEnv()): AppCsp {
   const base = appCsp(env);
   return { ...base, resourceDomains: [...base.resourceDomains, appOrigin(env)] };
 }
@@ -192,7 +192,7 @@ export interface McpAppPresentation {
   prefersBorder?: boolean;
 }
 
-export interface McpAppSpec {
+interface McpAppSpec {
   /** The file scripts/build-mcpapp.mjs writes under dist/mcpapp. */
   file: string;
   csp: (env?: EnvRecord) => AppCsp;

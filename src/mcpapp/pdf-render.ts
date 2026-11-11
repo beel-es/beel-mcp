@@ -24,7 +24,7 @@ export const proxiedPdfUrl = (url: string): string =>
 
 /** Load pdf.js from the CDN exactly once, pinning its worker to the same origin. */
 let pdfjsPromise: Promise<typeof PDFJS> | null = null;
-export function loadPdfjs(): Promise<typeof PDFJS> {
+function loadPdfjs(): Promise<typeof PDFJS> {
   if (!pdfjsPromise) {
     pdfjsPromise = import(/* @vite-ignore */ PDFJS_MODULE_URL).then((mod) => {
       const lib = mod as typeof PDFJS;

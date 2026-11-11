@@ -5,9 +5,9 @@
  */
 import type { BeelAppView } from '../contract.js';
 
-export type Environment = 'test' | 'live';
+type Environment = 'test' | 'live';
 
-export interface Company {
+interface Company {
   company_id: string;
   nif?: string;
   legal_name?: string;
@@ -21,7 +21,7 @@ export interface Setup {
   companies?: Company[];
 }
 
-export interface InvoiceLine {
+interface InvoiceLine {
   description?: string;
   quantity?: number;
   unit_price?: number;

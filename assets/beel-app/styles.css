@@ -72,7 +72,6 @@
   --st-paid-bg: #e6f4ea;
   --st-paid-fg: #137333;
   --st-paid-line: #a8dab5;
-  --st-paid-strong: #137333;
   --st-overdue-bg: #fbeaea;
   --st-overdue-fg: #b32a2a;
   --st-overdue-line: #efc4c4;
@@ -86,7 +85,6 @@
   --tone-danger-fg: #b32a2a;
   --mode-test-bg: #f5e9cc;
   --mode-test-fg: #7a5410;
-  --muted-2: #8a92a8;
 
   --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -136,7 +134,6 @@
   --st-paid-bg: rgba(19, 115, 51, 0.22);
   --st-paid-fg: #8fd3a3;
   --st-paid-line: rgba(143, 211, 163, 0.35);
-  --st-paid-strong: #8fd3a3;
   --st-overdue-bg: rgba(179, 42, 42, 0.24);
   --st-overdue-fg: #e9a0a0;
   --st-overdue-line: rgba(233, 160, 160, 0.35);
