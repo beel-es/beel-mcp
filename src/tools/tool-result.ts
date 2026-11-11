@@ -6,8 +6,8 @@
  * single lookup and adding a case never touches it.
  */
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { invoicePdfAppData } from '../mcpapp/binding.js';
-import { INVOICE_PDF_OPERATION } from '../mcpapp/contract.js';
+import { invoiceAppRoute, invoicePdfAppData } from '../mcpapp/binding.js';
+import { BEEL_APP_OPENED_BY, INVOICE_PDF_OPERATION } from '../mcpapp/contract.js';
 import { ENV_VAR, HTTP_DEFAULTS } from '../shared/defaults.js';
 import { ambientEnv, readEnvInt, readEnvList, type EnvRecord } from '../shared/env.js';
 import { fetchWithTimeout, readBoundedArrayBuffer } from '../shared/fetch.js';
@@ -32,7 +32,18 @@ export type ResultEnricher = (data: unknown) => Promise<CallToolResult | null>;
 /** operationId → enricher. The single point of registration. */
 export const RESULT_ENRICHERS: Record<string, ResultEnricher> = {
   [INVOICE_PDF_OPERATION]: buildInvoicePdfResult,
+  ...Object.fromEntries(BEEL_APP_OPENED_BY.map((id) => [id, buildBeelAppRouteResult])),
 };
+
+/**
+ * An invoice that opens the BeeL. app keeps its JSON for the model and adds the
+ * route the app opens on, so a host that renders the app lands on that invoice.
+ */
+async function buildBeelAppRouteResult(data: unknown): Promise<CallToolResult | null> {
+  const route = invoiceAppRoute(data);
+  if (!route) return null;
+  return { content: [{ type: 'text', text: jsonText(data) }], structuredContent: { ...route } };
+}
 
 /** Apply the enricher for an operationId, or `null` when there is none. */
 export async function enrichToolResult(

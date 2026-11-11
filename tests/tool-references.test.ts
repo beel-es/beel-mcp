@@ -6,6 +6,7 @@ import { docsTools } from '../src/tools/docs-tools.js';
 import { rulesTools } from '../src/tools/rules-tools.js';
 import { schemaTools } from '../src/tools/schema-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
+import { openAppTool } from '../src/tools/open-app-tool.js';
 import { ERROR_CATALOG } from '../src/guardrails/catalog.js';
 
 /**
@@ -25,6 +26,7 @@ const TOOL_NAMES = new Set([
   ...rulesTools.map((t) => t.name),
   ...schemaTools.map((t) => t.name),
   ...workflowTools.map((t) => t.name),
+  openAppTool.name,
 ]);
 
 /** `beel_sk_test_`/`beel_sk_live_` are API key prefixes, not tools. */

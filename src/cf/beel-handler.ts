@@ -38,8 +38,9 @@ import {
 } from '../shared/defaults.js';
 import { readEnv } from '../shared/env.js';
 import { surfaceForClient } from '../policy/surface.js';
-import { PDF_PROXY_PATH } from '../mcpapp/contract.js';
+import { BRAND_FONT_PATH, PDF_PROXY_PATH } from '../mcpapp/contract.js';
 import { pdfProxyHandler } from './pdf-proxy.js';
+import { brandFontHandler } from './brand-fonts.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -145,6 +146,9 @@ app.get(WORKER_PATH.openaiAppsChallenge, (c) => {
 
 // The PDF relay for the viewer: inline + CORS, restricted to an allowlist.
 app.get(PDF_PROXY_PATH, pdfProxyHandler);
+
+// The BeeL. app's brand fonts, public and cacheable.
+app.get(`${BRAND_FONT_PATH}/:file`, brandFontHandler);
 
 /**
  * Build the upstream authorization URL for a pending request.

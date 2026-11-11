@@ -7,9 +7,11 @@
   // Builds the viewer HTML (dist/mcpapp/invoice-pdf.html) BEFORE bundling, because
   // worker.ts imports it as a text module. pdf.js is not built in; it loads from a CDN.
   "build": { "command": "node scripts/build-mcpapp.mjs" },
-  // The spec, the viewer HTML and the guardrail prose travel as text modules.
+  // The spec, the apps' HTML and the guardrail prose travel as text modules; the
+  // BeeL. app's brand fonts as binary data (served by src/cf/brand-fonts.ts).
   "rules": [
     { "type": "Text", "globs": ["**/*.yaml", "**/*.html", "**/*.md"], "fallthrough": true },
+    { "type": "Data", "globs": ["**/*.woff2"], "fallthrough": true },
   ],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BeelMcpAgent"] }],
   "durable_objects": {

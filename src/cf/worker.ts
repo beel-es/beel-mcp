@@ -3,8 +3,10 @@ import * as Sentry from '@sentry/cloudflare';
 import { McpAgent } from 'agents/mcp';
 import specYaml from '../../openapi/public-api.yaml';
 import invoicePdfHtml from '../../dist/mcpapp/invoice-pdf.html';
+import beelAppHtml from '../../dist/mcpapp/beel-app.html';
 import { setSpecSource } from '../spec/load.js';
-import { setInvoicePdfAppHtml } from '../mcpapp/resource.js';
+import { setAppHtml } from '../mcpapp/resource.js';
+import { BEEL_APP_URI, INVOICE_PDF_APP_URI } from '../mcpapp/contract.js';
 import type { Env } from './env.js';
 import { createServer } from '../server.js';
 import type { ResolvedConfig } from '../config.js';
@@ -36,7 +38,8 @@ import { upstreamConfig, workerAccessTokenTTL } from './upstream.js';
 // The Worker bundle has no filesystem: the spec and the MCP-App HTML are
 // embedded as text modules at build time (see `rules` in wrangler.jsonc).
 setSpecSource(specYaml);
-setInvoicePdfAppHtml(invoicePdfHtml);
+setAppHtml(INVOICE_PDF_APP_URI, invoicePdfHtml);
+setAppHtml(BEEL_APP_URI, beelAppHtml);
 
 /**
  * The MCP session runs inside the Durable Object, a different runtime from the

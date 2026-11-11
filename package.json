@@ -76,6 +76,7 @@
     "eslint": "^10.9.1",
     "hono": "^4.13.1",
     "jose": "^6.2.9",
+    "lucide": "0.545.0",
     "pdfjs-dist": "^4.10.38",
     "posthog-node": "^5.54.1",
     "prettier": "^3.9.6",

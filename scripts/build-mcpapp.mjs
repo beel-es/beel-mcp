@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
- * Bundles the invoice-viewer MCP App (src/mcpapp/app.ts) into a self-contained
- * HTML document served as a `ui://` resource. pdf.js stays external: it is
- * imported by URL at runtime, so the resource stays small enough to travel
- * inside the bundle.
+ * Bundles the MCP Apps into self-contained HTML documents served as `ui://`
+ * resources: the invoice viewer (src/mcpapp/app.ts) and the BeeL. app
+ * (src/mcpapp/beel-app/main.ts). pdf.js stays external: it is imported by URL
+ * at runtime, so each resource stays small enough to travel inside the bundle.
  *
- * Output: dist/mcpapp/invoice-pdf.html, which worker.ts embeds as a text module
- * and the stdio server reads from disk.
+ * Output: dist/mcpapp/invoice-pdf.html and dist/mcpapp/beel-app.html, which
+ * worker.ts embeds as text modules and the stdio server reads from disk.
  */
 import { build } from 'esbuild';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = resolve(root, 'dist/mcpapp/invoice-pdf.html');
 
 /** Keeps http(s) imports external: pdf.js is fetched at runtime, never bundled. */
 const externalHttps = {
@@ -60,29 +59,62 @@ function htmlShell(script) {
 </html>`;
 }
 
-const result = await build({
-  entryPoints: [resolve(root, 'src/mcpapp/app.ts')],
-  bundle: true,
-  format: 'iife',
-  platform: 'browser',
-  target: ['es2020'],
-  minify: true,
-  write: false,
-  logLevel: 'warning',
-  plugins: [externalHttps],
-});
+/**
+ * The BeeL. app's shell. Its stylesheet is the site's design system, kept as a
+ * real CSS file (assets/beel-app/styles.css) and inlined here; the logo is
+ * imported by the app itself.
+ */
+const BEEL_APP_CSS = await readFile(resolve(root, 'assets/beel-app/styles.css'), 'utf8');
 
-// `write: false` makes esbuild hand the bundle back in memory; an empty result
-// would otherwise be written out as an HTML shell with no viewer inside it.
-const [output] = result.outputFiles;
-if (!output) {
-  console.error('esbuild produced no output for src/mcpapp/app.ts.');
-  process.exit(1);
+function beelAppShell(script) {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
+<title>BeeL.</title>
+<style>${BEEL_APP_CSS}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>${script}</script>
+</body>
+</html>`;
 }
 
-const script = output.text;
-await mkdir(dirname(OUT), { recursive: true });
-await writeFile(OUT, htmlShell(script), 'utf8');
-console.log(
-  `[build-mcpapp] src/mcpapp/app.ts -> ${OUT} (${(script.length / 1024).toFixed(0)} KB inlined, pdf.js external)`,
-);
+/** Bundle one app into an IIFE and write it inside its HTML shell. */
+async function buildApp(entry, out, shell) {
+  const result = await build({
+    entryPoints: [resolve(root, entry)],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['es2020'],
+    minify: true,
+    write: false,
+    logLevel: 'warning',
+    // The app's own SVG assets travel inside the bundle as text.
+    loader: { '.svg': 'text' },
+    plugins: [externalHttps],
+  });
+
+  // `write: false` makes esbuild hand the bundle back in memory; an empty result
+  // would otherwise be written out as an HTML shell with no app inside it.
+  const [output] = result.outputFiles;
+  if (!output) {
+    console.error(`esbuild produced no output for ${entry}.`);
+    process.exit(1);
+  }
+
+  const script = output.text;
+  const path = resolve(root, out);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, shell(script), 'utf8');
+  console.log(
+    `[build-mcpapp] ${entry} -> ${out} (${(script.length / 1024).toFixed(0)} KB inlined, pdf.js external)`,
+  );
+}
+
+await buildApp('src/mcpapp/app.ts', 'dist/mcpapp/invoice-pdf.html', htmlShell);
+await buildApp('src/mcpapp/beel-app/main.ts', 'dist/mcpapp/beel-app.html', beelAppShell);
