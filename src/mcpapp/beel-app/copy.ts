@@ -10,7 +10,6 @@ export const COPY = {
   app: { loading: 'Cargando…', test: 'Test', live: 'Live', open: 'Abrir BeeL.' },
   tabs: { home: 'Inicio', invoices: 'Facturas', customers: 'Clientes' },
   company: { select: 'Empresa' },
-  superseded: 'Este panel se ha quedado atrás: usa el más reciente de la conversación.',
 
   home: {
     ready: (env: string) => `Lista para emitir en ${env}.`,

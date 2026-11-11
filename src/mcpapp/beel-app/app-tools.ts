@@ -62,12 +62,6 @@ export function createAppToolHandler(
   store: Store<AppState>,
 ): (name: string, args: Record<string, unknown> | undefined) => Promise<CallToolResult> {
   return async (name, args) => {
-    if (store.get().superseded) {
-      return text(
-        'This panel was replaced by a newer one in the conversation; use that one.',
-        true,
-      );
-    }
     switch (name) {
       case 'show_view': {
         const parsed = parseShowViewArgs(args);

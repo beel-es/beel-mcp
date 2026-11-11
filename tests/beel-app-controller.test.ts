@@ -235,18 +235,6 @@ describe('Controller', () => {
     });
   });
 
-  it('acts on nothing once a newer panel took over', async () => {
-    const { store, ctl, calls, host } = setup();
-    await ctl.navigate({ view: 'invoice', invoice_id: 'i1' });
-    ctl.markSuperseded();
-    const before = calls.length;
-    await ctl.issue();
-    await ctl.askClaude('hola');
-    expect(calls.length).toBe(before);
-    expect(host.sendMessage).not.toHaveBeenCalled();
-    expect(store.get().superseded).toBe(true);
-  });
-
   it('tells the user when Claude did not take the message', async () => {
     const { store, ctl } = setup(fakeServer(), fakeHost({ sendMessage: async () => false }));
     await ctl.askClaude('Quiero crear una factura nueva.');

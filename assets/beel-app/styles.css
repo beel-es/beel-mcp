@@ -819,10 +819,6 @@ select {
   min-width: 180px;
 }
 
-.superseded {
-  margin-top: 12px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

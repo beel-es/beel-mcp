@@ -106,8 +106,6 @@ export interface AppState {
   pending?: ActionId;
   confirmingIssue: boolean;
   feedback?: Feedback;
-  /** A newer panel was opened in this conversation; this one only shows. */
-  superseded: boolean;
 }
 
 export const INITIAL_STATE: AppState = {
@@ -119,7 +117,6 @@ export const INITIAL_STATE: AppState = {
   invoices: [],
   customers: [],
   confirmingIssue: false,
-  superseded: false,
 };
 
 export const activeCompany = (s: AppState): Company | undefined =>
