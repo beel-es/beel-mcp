@@ -93,9 +93,6 @@ export function shell(env: ViewEnv, body: HTMLElement): HTMLElement {
             ),
           ),
     ),
-    state.superseded
-      ? h('div', { class: 'notice warn superseded' }, h('p', {}, COPY.superseded))
-      : null,
     notice(state.feedback),
     body,
   );

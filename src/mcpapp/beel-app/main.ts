@@ -23,7 +23,6 @@ import { installBrandFonts } from './fonts.js';
 import { INITIAL_STATE, type AppState, type Invoice } from './model.js';
 import { parseRoute } from './route.js';
 import { Store } from './store.js';
-import { watchForNewerInstance } from './supersede.js';
 import { customersView } from './views/customers.js';
 import type { ViewEnv } from './views/env.js';
 import { homeView } from './views/home.js';
@@ -162,7 +161,6 @@ app.onlisttools = async () => ({ tools: APP_TOOLS });
 app.oncalltool = async ({ name, arguments: args }) => handleAppTool(name, args);
 
 store.subscribe(render);
-watchForNewerInstance(() => ctl.markSuperseded());
 render(store.get());
 
 void app.connect().then(() => {

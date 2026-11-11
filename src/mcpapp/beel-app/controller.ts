@@ -205,23 +205,18 @@ export class Controller {
   /** Tell Claude what is on screen, so "issue it" or "send it" needs no explaining. */
   shareContext(): void {
     const s = this.store.get();
-    if (s.superseded || s.phase !== 'ready') return;
+    if (s.phase !== 'ready') return;
     void this.host.updateModelContext(contextSentence(s), viewState(s)).catch(() => undefined);
   }
 
   /** Hand a request that needs judgement (correct, void, a new invoice) to Claude. */
   async askClaude(text: string): Promise<void> {
-    if (this.store.get().superseded) return;
     const accepted = await this.host.sendMessage(text).catch(() => false);
     this.store.set({
       feedback: accepted
         ? { tone: 'ok', title: COPY.done.toClaude }
         : { tone: 'error', title: COPY.failed.toClaude },
     });
-  }
-
-  markSuperseded(): void {
-    this.store.set({ superseded: true, confirmingIssue: false });
   }
 
   // ── Actions on the open invoice ────────────────────────────────────────────
@@ -326,14 +321,14 @@ export class Controller {
     });
   }
 
-  /** One action at a time; a superseded panel acts on nothing. */
+  /** One action at a time. */
   private async run(
     id: ActionId,
     failure: string,
     act: () => Promise<Partial<AppState>>,
   ): Promise<void> {
     const s = this.store.get();
-    if (s.pending || s.superseded) return;
+    if (s.pending) return;
     this.store.set({ pending: id, feedback: undefined });
     let patch: Partial<AppState>;
     try {

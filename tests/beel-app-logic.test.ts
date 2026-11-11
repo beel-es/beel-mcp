@@ -10,7 +10,6 @@ import {
 import { parseRoute, parseShowViewArgs } from '../src/mcpapp/beel-app/route.js';
 import { contextSentence, viewState } from '../src/mcpapp/beel-app/context.js';
 import { INITIAL_STATE, type AppState } from '../src/mcpapp/beel-app/model.js';
-import { isNewer } from '../src/mcpapp/beel-app/supersede.js';
 import { fontFaceCss } from '../src/mcpapp/beel-app/fonts.js';
 import { BRAND_FONT_PATH } from '../src/mcpapp/contract.js';
 
@@ -160,13 +159,7 @@ describe('BeeL. app context for Claude', () => {
   });
 });
 
-describe('BeeL. app instances and fonts', () => {
-  it('lets exactly one copy win, ties broken by id', () => {
-    expect(isNewer({ startedAt: 2, id: 'a' }, { startedAt: 1, id: 'z' })).toBe(true);
-    expect(isNewer({ startedAt: 1, id: 'b' }, { startedAt: 1, id: 'a' })).toBe(true);
-    expect(isNewer({ startedAt: 1, id: 'a' }, { startedAt: 1, id: 'b' })).toBe(false);
-  });
-
+describe('BeeL. app fonts', () => {
   it('declares the brand fonts from the server origin and path', () => {
     const css = fontFaceCss('https://mcp.example.test');
     expect(css).toContain(`url("https://mcp.example.test${BRAND_FONT_PATH}/dm-sans-latin.woff2")`);

@@ -127,7 +127,7 @@ function confirmIssue({ state, ctl }: ViewEnv): HTMLElement {
 function actions(env: ViewEnv, invoice: Invoice, box: HTMLElement): HTMLElement {
   const { state, ctl } = env;
   const busy = (id: typeof state.pending) => state.pending === id;
-  const locked = state.superseded || state.pending !== undefined;
+  const locked = state.pending !== undefined;
   if (invoice.status === 'DRAFT') {
     return h(
       'div',
