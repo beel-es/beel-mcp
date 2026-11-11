@@ -32,7 +32,9 @@
 
   /* Roles: what the components read. Dark mode swaps the roles, not the
      components. */
-  --page: var(--ds-bg);
+  /* The host's own surface (its style variables), so the panel sits in Claude
+     instead of on a block of its own; the brand colours stay in the parts. */
+  --page: var(--color-background-primary, #ffffff);
   --card: var(--ds-surface);
   --text: var(--ds-ink);
   --muted: var(--ds-muted);
@@ -86,8 +88,8 @@
   --mode-test-bg: #f5e9cc;
   --mode-test-fg: #7a5410;
 
-  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --beel-font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --beel-font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: light;
 }
 
@@ -95,7 +97,7 @@
    brand blue does not contrast against the ink (same rule as the site's dark
    bands). */
 :root[data-theme='dark'] {
-  --page: #1c1c1f;
+  --page: var(--color-background-primary, #1c1c1f);
   --card: #232326;
   --text: #f1f3f9;
   --muted: #a3a9ba;
@@ -156,9 +158,9 @@
 html,
 body {
   margin: 0;
-  background: var(--page);
+  background: transparent;
   color: var(--text);
-  font-family: var(--font-sans);
+  font-family: var(--beel-font-sans);
   font-size: 14px;
   line-height: 20px;
   -webkit-font-smoothing: antialiased;
@@ -176,12 +178,16 @@ select {
 .app {
   max-width: 960px;
   margin: 0 auto;
-  padding: 0 16px 24px;
+  padding: 0 16px 16px;
+}
+/* Full screen: the host's message box floats over the bottom of the panel. */
+:root[data-display='fullscreen'] .app {
+  padding-bottom: calc(var(--safe-bottom, 0px) + 112px);
 }
 
 /* ── Type ── */
 .mono {
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-variant-numeric: tabular-nums;
 }
 .muted {
@@ -190,7 +196,7 @@ select {
 .eyebrow {
   display: block;
   margin: 24px 0 10px;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1;
@@ -208,11 +214,14 @@ select {
 
 /* ── Top bar ── */
 .topbar {
+  padding-top: 12px;
+}
+/* Only the workspace scrolls under its header; the card in the chat does not. */
+:root[data-display='fullscreen'] .topbar {
   position: sticky;
   top: 0;
   z-index: 1;
   background: var(--page);
-  padding-top: 14px;
 }
 .topbar-row {
   display: flex;
@@ -547,7 +556,7 @@ select {
 }
 .stat-label {
   display: block;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-size: 10.5px;
   line-height: 1;
   letter-spacing: 0.09em;
@@ -557,7 +566,7 @@ select {
 .stat-value {
   display: block;
   margin-top: 8px;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 18px;
   line-height: 24px;
@@ -646,7 +655,7 @@ select {
   background-color: transparent;
 }
 .ledger-head span {
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-size: 10.5px;
   line-height: 1;
   letter-spacing: 0.09em;
@@ -697,12 +706,12 @@ select {
   gap: 8px 12px;
 }
 .doc-number {
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-size: 15px;
 }
 .doc-total {
   margin-left: auto;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 20px;
   line-height: 28px;
@@ -720,7 +729,7 @@ select {
 .lines th {
   padding: 0 0 8px;
   border-bottom: 1px solid var(--line);
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-size: 10.5px;
   font-weight: 400;
   letter-spacing: 0.09em;
@@ -731,13 +740,13 @@ select {
 .lines td {
   padding: 10px 0;
   text-align: right;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-variant-numeric: tabular-nums;
 }
 .lines th:first-child,
 .lines td:first-child {
   text-align: left;
-  font-family: var(--font-sans);
+  font-family: var(--beel-font-sans);
   padding-right: 16px;
 }
 .lines th + th,
@@ -763,7 +772,7 @@ select {
 .totals dd {
   margin: 0;
   text-align: right;
-  font-family: var(--font-mono);
+  font-family: var(--beel-font-mono);
   font-variant-numeric: tabular-nums;
 }
 .totals .grand {
@@ -810,10 +819,6 @@ select {
   min-width: 180px;
 }
 
-.loading {
-  padding: 32px 0;
-  color: var(--muted);
-}
 .superseded {
   margin-top: 12px;
 }
@@ -825,6 +830,10 @@ select {
   .btn:not(:disabled):active {
     transform: none;
   }
+  .progress,
+  .skeleton span {
+    animation: none;
+  }
 }
 
 /* The first block of every view keeps its distance from the tabs. */
@@ -833,4 +842,63 @@ main > :first-child {
 }
 main.invoice > .card {
   margin-top: 8px;
+}
+
+/* Loading: a hairline under the header while the next view loads, and three
+   placeholder lines when there is nothing to show yet. */
+.progress {
+  height: 2px;
+  margin-top: -2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: progress 1s var(--ds-ease-ui) infinite;
+}
+@keyframes progress {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 0;
+}
+.skeleton span {
+  height: 14px;
+  border-radius: var(--ds-radius);
+  background: var(--hover);
+  animation: pulse 1.2s ease-in-out infinite alternate;
+}
+.skeleton span:nth-child(2) {
+  width: 80%;
+}
+.skeleton span:nth-child(3) {
+  width: 60%;
+}
+@keyframes pulse {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* The compact card's three figures. */
+.stats-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 560px) {
+  .stats-3 .stat:nth-child(3) {
+    border-left: 1px solid var(--line);
+    border-top: 0;
+  }
+}
+/* Two surfaces in a row never touch. */
+.card + .card {
+  margin-top: 12px;
 }

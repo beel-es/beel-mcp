@@ -3,9 +3,9 @@
 import { COPY } from '../copy.js';
 import { h } from '../dom.js';
 import { icon } from '../icons.js';
-import { INVOICE_FILTERS, type InvoiceFilter } from '../model.js';
+import { INVOICE_FILTERS, type Invoice, type InvoiceFilter } from '../model.js';
 import type { ViewEnv } from './env.js';
-import { button, ledger } from './parts.js';
+import { button, COMPACT_ROWS, ledger } from './parts.js';
 
 export function searchForm(
   value: string,
@@ -38,6 +38,7 @@ export function searchForm(
 }
 
 export function invoicesView({ state, ctl, host }: ViewEnv): HTMLElement {
+  const open = (i: Invoice) => void ctl.navigate({ view: 'invoice', invoice_id: i.id }, i);
   const filters = (Object.keys(INVOICE_FILTERS) as InvoiceFilter[]).map((f) =>
     h(
       'button',
@@ -77,9 +78,8 @@ export function invoicesView({ state, ctl, host }: ViewEnv): HTMLElement {
   return h(
     'main',
     {},
-    ledger(state.invoices, (i) => void ctl.navigate({ view: 'invoice', invoice_id: i.id }), {
-      toolbar,
-      footer,
-    }),
+    host.compact
+      ? ledger(state.invoices.slice(0, COMPACT_ROWS), open)
+      : ledger(state.invoices, open, { toolbar, footer }),
   );
 }

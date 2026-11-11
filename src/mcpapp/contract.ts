@@ -187,8 +187,6 @@ function beelAppCsp(env: EnvRecord = ambientEnv()): AppCsp {
 
 /** How the host should present an app (`_meta.ui` of its resource contents). */
 export interface McpAppPresentation {
-  /** Claude opens `fullscreen` as its side panel, beside the conversation. */
-  preferredDisplayMode?: 'fullscreen';
   prefersBorder?: boolean;
 }
 
@@ -205,8 +203,8 @@ export const MCP_APPS: Readonly<Record<string, McpAppSpec>> = {
   [BEEL_APP_URI]: {
     file: 'beel-app.html',
     csp: beelAppCsp,
-    // A workspace, not a card: it opens beside the conversation and paints its
-    // own surface, so the host draws no frame around it.
-    presentation: { preferredDisplayMode: 'fullscreen', prefersBorder: false },
+    // Opens as a card in the conversation; the user takes it to the larger
+    // panel when they want the workspace. It draws its own frame.
+    presentation: { prefersBorder: false },
   },
 };

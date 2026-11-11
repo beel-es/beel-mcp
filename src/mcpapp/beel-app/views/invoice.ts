@@ -9,10 +9,10 @@ import { renderPdf } from '../../pdf-render.js';
 import { COPY } from '../copy.js';
 import { h } from '../dom.js';
 import { icon } from '../icons.js';
-import { aeatNeedsAttention, date, money, verifactuBadge } from '../format.js';
+import { aeatNeedsAttention, date, money, verifactuBadge, type VerifactuBadge } from '../format.js';
 import { isLive, type Invoice } from '../model.js';
 import type { ViewEnv } from './env.js';
-import { button, statusBadgeEl, verifactuChipEl } from './parts.js';
+import { button, skeleton, statusBadgeEl, verifactuChipEl } from './parts.js';
 
 const CLOSED = new Set(['VOIDED', 'RECTIFIED']);
 
@@ -207,8 +207,23 @@ function showPdf({ ctl }: ViewEnv, box: HTMLElement): void {
     });
 }
 
+function docHead(invoice: Invoice, vf: VerifactuBadge | null): HTMLElement {
+  return h(
+    'div',
+    { class: 'doc-head' },
+    h(
+      'span',
+      { class: invoice.invoice_number ? 'doc-number' : 'doc-number muted' },
+      invoice.invoice_number ?? COPY.invoices.draftNumber,
+    ),
+    statusBadgeEl(invoice.status),
+    vf ? verifactuChipEl(vf) : null,
+    h('span', { class: 'doc-total' }, money(invoice.totals?.invoice_total)),
+  );
+}
+
 export function invoiceView(env: ViewEnv): HTMLElement {
-  const { state, ctl } = env;
+  const { state, ctl, host } = env;
   const invoice = state.invoice;
   const back = h(
     'button',
@@ -220,7 +235,12 @@ export function invoiceView(env: ViewEnv): HTMLElement {
     icon('back'),
     COPY.invoice.back,
   );
-  if (!invoice) return h('main', {}, back, h('p', { class: 'empty' }, COPY.invoice.notFound));
+  if (!invoice) {
+    // Still on its way, or truly missing: only a finished load can say which.
+    const body =
+      state.phase === 'ready' ? h('p', { class: 'empty' }, COPY.invoice.notFound) : skeleton();
+    return h('main', {}, host.compact ? null : back, body);
+  }
 
   const box = pdfBoxFor(invoice.id);
   const vf = verifactuBadge(invoice);
@@ -232,6 +252,24 @@ export function invoiceView(env: ViewEnv): HTMLElement {
     invoice.due_date ? COPY.invoice.due(date(invoice.due_date)) : undefined,
   ].filter(Boolean);
 
+  if (host.compact) {
+    // The card in the conversation: what the invoice is, and issuing for a
+    // draft (the step it was opened for); everything else is one click away.
+    return h(
+      'main',
+      { class: 'invoice' },
+      h(
+        'article',
+        { class: 'card card-pad' },
+        docHead(invoice, vf),
+        h('p', { class: 'doc-meta' }, meta.join(' · ')),
+        aeatProblem(env, invoice),
+      ),
+      invoice.status === 'DRAFT' && state.confirmingIssue ? confirmIssue(env) : null,
+      invoice.status === 'DRAFT' ? actions(env, invoice, box) : null,
+    );
+  }
+
   return h(
     'main',
     { class: 'invoice' },
@@ -239,18 +277,7 @@ export function invoiceView(env: ViewEnv): HTMLElement {
     h(
       'article',
       { class: 'card card-pad' },
-      h(
-        'div',
-        { class: 'doc-head' },
-        h(
-          'span',
-          { class: invoice.invoice_number ? 'doc-number' : 'doc-number muted' },
-          invoice.invoice_number ?? COPY.invoices.draftNumber,
-        ),
-        statusBadgeEl(invoice.status),
-        vf ? verifactuChipEl(vf) : null,
-        h('span', { class: 'doc-total' }, money(invoice.totals?.invoice_total)),
-      ),
+      docHead(invoice, vf),
       h('p', { class: 'doc-meta' }, meta.join(' · ')),
       aeatProblem(env, invoice),
       lines(invoice),

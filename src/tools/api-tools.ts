@@ -114,7 +114,11 @@ export async function executeApiTool(
 ): Promise<unknown> {
   const path = substitutePath(op, args);
   const query = collectQuery(op, args);
-  const body = op.requestBody ? args.body : undefined;
+  // An optional JSON body the caller left out still travels as `{}`: the API
+  // reads the request's media type before the body, and answers a body-less
+  // POST to a JSON endpoint with 415 even when every field is optional.
+  const emptyBody = op.requestBody?.contentType.includes('json') ? {} : undefined;
+  const body = op.requestBody ? (args.body ?? emptyBody) : undefined;
   // Travels as a header, never as body or query: it is not part of the hashed
   // material, so two otherwise identical calls with different keys stay two
   // distinct operations.

@@ -140,6 +140,54 @@ describe('Controller', () => {
     expect(host.updateModelContext).toHaveBeenCalledOnce();
   });
 
+  it('shows an invoice the caller already holds at once, and refreshes it behind', async () => {
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const server = fakeServer();
+    const caller: ToolCaller = async (name, args) => {
+      if (name === toolName(BEEL_APP_CALLS.getInvoice)) await slow;
+      return server.caller(name, args);
+    };
+    const { store, ctl } = setup({ caller, calls: server.calls });
+    await ctl.navigate({ view: 'home' });
+    const row = { id: 'i9', status: 'SENT', invoice_number: 'F-2026-0009' };
+    const opening = ctl.navigate({ view: 'invoice', invoice_id: 'i9' }, row);
+    // Before the API answers, the row is already on screen.
+    expect(store.get()).toMatchObject({ view: 'invoice', invoice: row, phase: 'loading' });
+    release();
+    await opening;
+    expect(store.get()).toMatchObject({ phase: 'ready', invoice: { id: 'i1' } });
+  });
+
+  it('never shows one invoice under another id while the right one loads', async () => {
+    const { store, ctl } = setup();
+    await ctl.navigate({ view: 'invoice', invoice_id: 'i1' });
+    const next = ctl.navigate({ view: 'invoice', invoice_id: 'i2' });
+    expect(store.get().invoice).toBeUndefined();
+    await next;
+  });
+
+  it('loads the view alongside the account when the tool call named the company', async () => {
+    const order: string[] = [];
+    let release: () => void = () => undefined;
+    const slowSetup = new Promise<void>((resolve) => (release = resolve));
+    const server = fakeServer();
+    const caller: ToolCaller = async (name, args) => {
+      order.push(name);
+      if (name === BEEL_APP_SETUP_TOOL) await slowSetup;
+      return server.caller(name, args);
+    };
+    const { store, ctl } = setup({ caller, calls: server.calls });
+    ctl.preferCompany('c1');
+    const loading = ctl.navigate({ view: 'invoice', invoice_id: 'i1' });
+    await new Promise((r) => setTimeout(r, 0));
+    // The invoice was asked for without waiting for the account.
+    expect(order).toEqual([BEEL_APP_SETUP_TOOL, toolName(BEEL_APP_CALLS.getInvoice)]);
+    release();
+    await loading;
+    expect(store.get()).toMatchObject({ phase: 'ready', companyId: 'c1', invoice: { id: 'i1' } });
+  });
+
   it('drops the answer of a view the user already left', async () => {
     let release: () => void = () => undefined;
     const slow = new Promise<void>((resolve) => (release = resolve));
