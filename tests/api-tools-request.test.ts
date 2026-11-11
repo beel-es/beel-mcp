@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { buildApiTools, collectQuery, substitutePath } from '../src/tools/api-tools.js';
+import {
+  buildApiTools,
+  collectQuery,
+  executeApiTool,
+  substitutePath,
+} from '../src/tools/api-tools.js';
 import { ArgumentError } from '../src/tools/validate-args.js';
 import type { OperationSpec } from '../src/spec/manifest.js';
 
@@ -154,5 +159,32 @@ describe('the header parameters an operation declares reach the client', () => {
     expect(validate?.operation.headerParams.map((p) => p.name) ?? []).not.toContain(
       'Idempotency-Key',
     );
+  });
+});
+
+describe('an optional JSON body the caller leaves out', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('still travels as an empty JSON object, so the API does not answer 415', async () => {
+    const sent: RequestInit[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      sent.push(init);
+      return new Response(JSON.stringify({ success: true, data: { sent_to: [] } }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const send = buildApiTools().tools.find(
+      (t) => t.operation.operationId === 'sendCompanyInvoice',
+    )!;
+    expect(send.operation.requestBody?.required).toBe(false);
+
+    await executeApiTool(
+      { apiKey: 'beel_sk_test_x', env: 'test', baseUrl: 'https://api.example.test' },
+      send.operation,
+      { company_id: 'c1', invoice_id: 'i1' },
+    );
+    const headers = new Headers(sent[0]!.headers);
+    expect(headers.get('content-type')).toContain('application/json');
+    expect(sent[0]!.body).toBe('{}');
   });
 });
