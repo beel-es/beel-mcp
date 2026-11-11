@@ -19,8 +19,10 @@ import { executeSchemaTool, isSchemaTool, schemaTools } from './tools/schema-too
 import { getSetupStatus, workflowTools } from './tools/workflow-tools.js';
 import { listGuardrailResources, readGuardrailResource } from './resources/guardrails.js';
 import { enrichToolResult, jsonText } from './tools/tool-result.js';
-import { INVOICE_PDF_APP_URI, MCP_APP_MIME } from './mcpapp/contract.js';
-import { invoicePdfAppResource, readInvoicePdfApp } from './mcpapp/resource.js';
+import { MCP_APP_MIME } from './mcpapp/contract.js';
+import { beelAppResource, invoicePdfAppResource, readApp } from './mcpapp/resource.js';
+import { withBeelAppBinding } from './mcpapp/binding.js';
+import { OPEN_APP, openAppResult, openAppTool } from './tools/open-app-tool.js';
 import { getPrompt, prompts } from './prompts/workflows.js';
 import {
   ArgumentError,
@@ -102,19 +104,18 @@ function writeStderr(line: string): void {
   if (typeof process !== 'undefined' && process.stderr) process.stderr.write(line);
 }
 
-/** Resolve a resource URI to its contents: the MCP App, or a guardrail document. */
+/** Resolve a resource URI to its contents: an MCP App, or a guardrail document. */
 async function readResource(uri: string): Promise<{ contents: Array<Record<string, unknown>> }> {
-  if (uri === INVOICE_PDF_APP_URI) {
-    const app = readInvoicePdfApp();
-    if (!app) throw new Error('Invoice PDF app not built. Run `npm run build:mcpapp`.');
+  if (uri.startsWith('ui://')) {
+    const app = readApp(uri);
+    if (!app) throw new Error(`MCP App ${uri} not built. Run \`npm run build:mcpapp\`.`);
     return {
       contents: [
         {
           uri,
           mimeType: MCP_APP_MIME,
           text: app.html,
-          // CSP: pdf.js from the CDN (resourceDomains) plus the PDF fetch through the relay.
-          _meta: { ui: { csp: app.csp } },
+          _meta: { ui: { csp: app.csp, ...app.presentation } },
         },
       ],
     };
@@ -139,6 +140,7 @@ async function runSyntheticTool(
   if (isDocsTool(tool.name)) return textResult(await executeDocsTool(tool.name, args));
   if (isRulesTool(tool.name)) return textResult(await executeRulesTool(tool.name, args));
   if (isSchemaTool(tool.name)) return textResult(await executeSchemaTool(tool.name, args));
+  if (tool.name === OPEN_APP) return openAppResult(args);
 
   const status = await getSetupStatus(getConfig(), args);
   // The output schema is advertised to the client, which may validate against
@@ -199,7 +201,7 @@ function withoutRetiredArguments(args: Record<string, unknown>): Record<string, 
  */
 function createCallToolHandler(
   apiByNameFor: () => Map<string, ApiTool>,
-  syntheticByName: Map<string, Tool>,
+  syntheticByNameFor: () => Map<string, Tool>,
   getConfig: () => ResolvedConfig,
 ): (request: { params: { name: string; arguments?: unknown } }) => Promise<CallToolResult> {
   return async (request) => {
@@ -213,7 +215,7 @@ function createCallToolHandler(
       }
       const args = withoutRetiredArguments(rawArgs ?? {});
 
-      const synthetic = syntheticByName.get(name);
+      const synthetic = syntheticByNameFor().get(name);
       if (synthetic) {
         const result = await runSyntheticTool(synthetic, args, getConfig);
         logToolCall(name, 'ok', Date.now() - startedAt);
@@ -295,7 +297,8 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     const surface = options.getSurface?.() ?? 'full';
     let entry = surfaces.get(surface);
     if (!entry) {
-      const tools = apiToolsFor(apiTools, surface);
+      const forSurface = apiToolsFor(apiTools, surface);
+      const tools = surface === 'full' ? withBeelAppBinding(forSurface) : forSurface;
       entry = { tools, byName: new Map(tools.map((t) => [t.tool.name, t])) };
       surfaces.set(surface, entry);
     }
@@ -313,25 +316,34 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
     instructions: SERVER_INSTRUCTIONS,
   });
 
+  // The BeeL. app is on the full surface only: the ChatGPT surface was reviewed
+  // without it.
+  const sharedSynthetic = [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools];
+  const syntheticTools = (): Tool[] =>
+    (options.getSurface?.() ?? 'full') === 'full'
+      ? [...sharedSynthetic, openAppTool]
+      : sharedSynthetic;
+  const syntheticByName = new Map<ToolSurface, Map<string, Tool>>();
+  const syntheticByNameFor = (): Map<string, Tool> => {
+    const surface = options.getSurface?.() ?? 'full';
+    let entry = syntheticByName.get(surface);
+    if (!entry) {
+      entry = new Map(syntheticTools().map((t) => [t.name, t]));
+      syntheticByName.set(surface, entry);
+    }
+    return entry;
+  };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      ...surfaceOf().tools.map((t) => t.tool),
-      ...docsTools,
-      ...rulesTools,
-      ...schemaTools,
-      ...workflowTools,
-    ],
+    tools: [...surfaceOf().tools.map((t) => t.tool), ...syntheticTools()],
   }));
 
-  const syntheticByName = new Map<string, Tool>(
-    [...docsTools, ...rulesTools, ...schemaTools, ...workflowTools].map((t) => [t.name, t]),
-  );
-  const callTool = createCallToolHandler(() => surfaceOf().byName, syntheticByName, getConfig);
+  const callTool = createCallToolHandler(() => surfaceOf().byName, syntheticByNameFor, getConfig);
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => callTool(request));
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: [...(await listGuardrailResources()), invoicePdfAppResource],
+    resources: [...(await listGuardrailResources()), invoicePdfAppResource, beelAppResource],
   }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) =>
@@ -353,7 +365,7 @@ export function createServer(info: ServerInfo, options: CreateServerOptions = {}
   // Surface the policy on stderr at boot for operability (never on stdout — that's the protocol channel).
   if (!options.quiet) {
     writeStderr(
-      `[${SERVER_NAME}] ${apiTools.length} API tools, ${docsTools.length + rulesTools.length + schemaTools.length + workflowTools.length} synthetic tools, ` +
+      `[${SERVER_NAME}] ${apiTools.length} API tools, ${syntheticTools().length} synthetic tools, ` +
         `${policy.excluded.length} operations excluded by policy.\n`,
     );
   }

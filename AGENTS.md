@@ -13,7 +13,7 @@ npm test            # vitest — must stay green
 npm run typecheck   # tsc for both the Node and the Worker configs
 npm run lint        # eslint
 npm run format      # prettier --write (CI runs format:check)
-npm run build       # tsup + the MCP App bundle (dist/mcpapp/invoice-pdf.html)
+npm run build       # tsup + the MCP App bundles (dist/mcpapp/invoice-pdf.html, beel-app.html)
 npm run smoke       # boots dist/index.js and asserts tools/list
 npm run tools:list  # every tool the server exposes, with its scopes
 ```
@@ -27,7 +27,7 @@ npm run tools:list  # every tool the server exposes, with its scopes
 - `src/tools/` — API tools, docs tools, rules tools, the schema tool, workflow tools; `src/prompts/` — the workflow prompts.
 - `src/server.ts` — the MCP server (stdio and remote share it); `src/index.ts` — the stdio entrypoint.
 - `src/cf/` — the Cloudflare Worker: OAuth bridge (`beel-handler.ts`), token exchange, PDF relay. `/mcp` is a protected resource: every request without a token, `initialize` included, is answered by the OAuth provider with a 401 and its challenge. Deployment notes in `DEPLOY.md`.
-- `src/mcpapp/` — the invoice viewer MCP App and its CSP contract.
+- `src/mcpapp/` — the MCP Apps and their contract (`contract.ts`: URIs, CSP, the operations each app calls). `beel-app/` is the BeeL. app: `controller.ts` holds the behaviour, `views/` the screens, `copy.ts` every user-facing string; it draws itself with the BeeL web app's tokens, badges and Lucide icons (`assets/beel-app/`), so keep it in step with the web app rather than restyling it here.
 - `tests/` — vitest; one file per module. A behaviour change without a test is not done.
 
 ## Rules that are not negotiable

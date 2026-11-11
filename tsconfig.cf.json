@@ -9,7 +9,12 @@
     "node_modules",
     "tests",
     // Node-only entrypoint: the Worker's entry is src/cf/worker.ts.
-    "src/index.ts"
+    "src/index.ts",
+    // Browser-only: the MCP Apps run in the host's sandbox, never in the Worker,
+    // and the Workers types clash with the DOM's. tsconfig.json checks them.
+    "src/mcpapp/app.ts",
+    "src/mcpapp/pdf-render.ts",
+    "src/mcpapp/beel-app"
   ],
   "include": ["src"]
 }

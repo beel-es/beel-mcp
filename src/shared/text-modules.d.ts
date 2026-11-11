@@ -11,7 +11,16 @@ declare module '*.yaml' {
   const text: string;
   export default text;
 }
+declare module '*.svg' {
+  const text: string;
+  export default text;
+}
 declare module '*.html' {
   const text: string;
   export default text;
+}
+/** Binary assets (wrangler `Data` rule): the bytes, as an ArrayBuffer. */
+declare module '*.woff2' {
+  const data: ArrayBuffer;
+  export default data;
 }

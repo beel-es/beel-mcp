@@ -124,3 +124,89 @@ export function appCspMeta(csp: AppCsp): string {
     "base-uri 'none'",
   ].join('; ');
 }
+
+/**
+ * The BeeL. app: the day-to-day invoicing workflow in one view (status, invoices,
+ * a single invoice with its actions, customers). It holds no data of its own and
+ * reads and writes through the server's own tools, so every call goes through
+ * the same validation, guardrails and scopes as a call Claude makes.
+ */
+export const BEEL_APP_URI = 'ui://beel/app.html';
+
+/** The views the app can open on. */
+export const BEEL_APP_VIEWS = ['home', 'invoices', 'invoice', 'customers'] as const;
+export type BeelAppView = (typeof BEEL_APP_VIEWS)[number];
+
+/** Where the app opens: the `structuredContent` of every result bound to it. */
+export interface BeelAppRoute {
+  view: BeelAppView;
+  company_id?: string;
+  invoice_id?: string;
+  search?: string;
+}
+
+/**
+ * Operations whose result opens the app, on the full surface only: creating an
+ * invoice lands on it, so the user reviews the draft and issues it from there.
+ */
+export const BEEL_APP_OPENED_BY: readonly string[] = ['createCompanyInvoice'];
+
+/**
+ * The operations the app calls, by operationId. The view derives each tool name
+ * with `toolName`, so a renamed operation fails a test here rather than a click
+ * in production.
+ */
+export const BEEL_APP_CALLS = {
+  fiscalSummary: 'getCompanyFiscalSummary',
+  listInvoices: 'listCompanyInvoices',
+  getInvoice: 'getCompanyInvoice',
+  issueInvoice: 'issueCompanyInvoice',
+  sendInvoice: 'sendCompanyInvoice',
+  setInvoiceStatus: 'setCompanyInvoiceStatus',
+  invoicePdf: INVOICE_PDF_OPERATION,
+  listCustomers: 'listCompanyCustomers',
+} as const;
+
+/** The setup report the home view reads: a hand-written tool, so named, not derived. */
+export const BEEL_APP_SETUP_TOOL = 'beel_get_setup_status';
+
+/**
+ * The brand fonts, served by the server itself under this path. Self-hosted for
+ * the same reason the website self-hosts them: a third-party font CDN would hand
+ * every user's IP address to that third party.
+ */
+export const BRAND_FONT_PATH = '/assets/fonts';
+export const BRAND_FONT_FILES = ['dm-sans-latin.woff2', 'geist-mono.woff2'] as const;
+export type BrandFontFile = (typeof BRAND_FONT_FILES)[number];
+
+/** The BeeL. app's CSP: the viewer's, plus its own origin for the brand fonts. */
+function beelAppCsp(env: EnvRecord = ambientEnv()): AppCsp {
+  const base = appCsp(env);
+  return { ...base, resourceDomains: [...base.resourceDomains, appOrigin(env)] };
+}
+
+/** How the host should present an app (`_meta.ui` of its resource contents). */
+export interface McpAppPresentation {
+  /** Claude opens `fullscreen` as its side panel, beside the conversation. */
+  preferredDisplayMode?: 'fullscreen';
+  prefersBorder?: boolean;
+}
+
+interface McpAppSpec {
+  /** The file scripts/build-mcpapp.mjs writes under dist/mcpapp. */
+  file: string;
+  csp: (env?: EnvRecord) => AppCsp;
+  presentation?: McpAppPresentation;
+}
+
+/** Every MCP App this server serves, by ui:// URI: the single point of registration. */
+export const MCP_APPS: Readonly<Record<string, McpAppSpec>> = {
+  [INVOICE_PDF_APP_URI]: { file: 'invoice-pdf.html', csp: appCsp },
+  [BEEL_APP_URI]: {
+    file: 'beel-app.html',
+    csp: beelAppCsp,
+    // A workspace, not a card: it opens beside the conversation and paints its
+    // own surface, so the host draws no frame around it.
+    presentation: { preferredDisplayMode: 'fullscreen', prefersBorder: false },
+  },
+};

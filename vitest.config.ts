@@ -18,6 +18,23 @@ function textModules(): Plugin {
   };
 }
 
+/**
+ * Binary assets the Worker embeds with wrangler's `Data` rule, which hands the
+ * module an ArrayBuffer. Tests get the same shape from the file's bytes.
+ */
+function binaryModules(): Plugin {
+  return {
+    name: 'beel-binary-modules',
+    transform(_code, id) {
+      if (!id.endsWith('.woff2')) return null;
+      const base64 = readFileSync(id.split('?')[0]!).toString('base64');
+      const code = `const b = Buffer.from(${JSON.stringify(base64)}, 'base64');
+export default b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);`;
+      return { code, map: null };
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [textModules()],
+  plugins: [textModules(), binaryModules()],
 });
