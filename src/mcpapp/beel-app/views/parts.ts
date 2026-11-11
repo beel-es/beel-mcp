@@ -47,6 +47,20 @@ function verifactuCell(invoice: Invoice): HTMLElement {
   );
 }
 
+/** Placeholder lines while a view's first data is on its way. */
+export function skeleton(): HTMLElement {
+  return h(
+    'div',
+    { class: 'skeleton', attrs: { 'aria-busy': 'true', 'aria-label': COPY.app.loading } },
+    h('span', {}),
+    h('span', {}),
+    h('span', {}),
+  );
+}
+
+/** Rows a list shows in the compact card. */
+export const COMPACT_ROWS = 3;
+
 interface ButtonOptions {
   /**
    * One primary per screen: the next step. `danger-outline`, as in the web app,

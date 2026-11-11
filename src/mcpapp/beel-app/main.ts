@@ -7,15 +7,20 @@
  * Bundled into an IIFE and inlined into dist/mcpapp/beel-app.html by
  * scripts/build-mcpapp.mjs.
  */
-import { App, applyDocumentTheme, type McpUiHostContext } from '@modelcontextprotocol/ext-apps';
+import {
+  App,
+  applyDocumentTheme,
+  applyHostStyleVariables,
+  type McpUiHostContext,
+} from '@modelcontextprotocol/ext-apps';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { SERVER_INFO } from '../../shared/defaults.js';
 import { APP_TOOLS, createAppToolHandler } from './app-tools.js';
 import { BeelClient } from './client.js';
 import { Controller, type HostPort } from './controller.js';
 import { COPY } from './copy.js';
-import { h } from './dom.js';
 import { installBrandFonts } from './fonts.js';
-import { INITIAL_STATE, type AppState } from './model.js';
+import { INITIAL_STATE, type AppState, type Invoice } from './model.js';
 import { parseRoute } from './route.js';
 import { Store } from './store.js';
 import { watchForNewerInstance } from './supersede.js';
@@ -24,6 +29,7 @@ import type { ViewEnv } from './views/env.js';
 import { homeView } from './views/home.js';
 import { invoiceView } from './views/invoice.js';
 import { invoicesView } from './views/invoices.js';
+import { skeleton } from './views/parts.js';
 import { shell } from './views/shell.js';
 
 /** Claude leaves the dialog open as long as the user takes; ours waits ten minutes. */
@@ -82,20 +88,22 @@ const root = document.getElementById('root') as HTMLElement;
 
 function render(state: AppState): void {
   const ctx = app.getHostContext();
+  const canExpand =
+    ctx?.displayMode === 'inline' && !!ctx.availableDisplayModes?.includes('fullscreen');
   const env: ViewEnv = {
     state,
     ctl,
     host: {
-      canExpand:
-        ctx?.displayMode === 'inline' && !!ctx.availableDisplayModes?.includes('fullscreen'),
+      compact: canExpand,
+      canExpand,
       // Must run inside the click: the host refuses a mode change without a gesture.
       expand: () => void app.requestDisplayMode({ mode: 'fullscreen' }).catch(() => undefined),
       canDownload: host.canDownload(),
     },
   };
   const body =
-    state.phase !== 'ready'
-      ? h('p', { class: 'loading' }, COPY.app.loading)
+    state.phase === 'connecting'
+      ? skeleton()
       : state.view === 'home'
         ? homeView(env, new Date())
         : state.view === 'invoices'
@@ -106,8 +114,28 @@ function render(state: AppState): void {
   root.replaceChildren(shell(env, body));
 }
 
+/** The invoice a tool result carries as its JSON text, when it is the one routed to. */
+function invoiceIn(result: CallToolResult, invoiceId: string): Invoice | undefined {
+  const text = result.content?.find((b) => b.type === 'text');
+  if (!text || text.type !== 'text') return undefined;
+  try {
+    const data = JSON.parse(text.text) as Partial<Invoice>;
+    return data.id === invoiceId ? (data as Invoice) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function applyHostContext(ctx: McpUiHostContext): void {
   if (ctx.theme) applyDocumentTheme(ctx.theme);
+  // The host's surface colour, so the panel sits in Claude; the brand's own
+  // tokens are prefixed and these never override them.
+  if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
+  // Full screen keeps the host's message box floating over the bottom of the
+  // panel: the layout leaves it room, from the host's own insets when given.
+  const root = document.documentElement;
+  root.dataset.display = ctx.displayMode ?? 'inline';
+  root.style.setProperty('--safe-bottom', `${ctx.safeAreaInsets?.bottom ?? 0}px`);
   render(store.get());
 }
 
@@ -123,7 +151,9 @@ app.ontoolresult = (result) => {
     store.set({ phase: 'ready', feedback: { tone: 'error', title: COPY.failed.chatAction } });
     return;
   }
-  void ctl.navigate(parseRoute(result.structuredContent) ?? { view: 'home' });
+  const route = parseRoute(result.structuredContent) ?? { view: 'home' };
+  // Creating an invoice returns the invoice itself: show it without asking again.
+  void ctl.navigate(route, route.invoice_id ? invoiceIn(result, route.invoice_id) : undefined);
 };
 app.ontoolcancelled = () => void ctl.navigate({ view: 'home' });
 

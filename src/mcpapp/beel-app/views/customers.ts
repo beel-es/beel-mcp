@@ -8,9 +8,9 @@ import { COPY } from '../copy.js';
 import { h } from '../dom.js';
 import type { ViewEnv } from './env.js';
 import { searchForm } from './invoices.js';
-import { button } from './parts.js';
+import { button, COMPACT_ROWS } from './parts.js';
 
-export function customersView({ state, ctl }: ViewEnv): HTMLElement {
+export function customersView({ state, ctl, host }: ViewEnv): HTMLElement {
   const toolbar = h(
     'div',
     { class: 'toolbar' },
@@ -20,7 +20,8 @@ export function customersView({ state, ctl }: ViewEnv): HTMLElement {
       icon: 'newCustomer',
     }),
   );
-  const rows = state.customers.map((c) => {
+  const shown = host.compact ? state.customers.slice(0, COMPACT_ROWS) : state.customers;
+  const rows = shown.map((c) => {
     const name = c.legal_name ?? c.trade_name ?? c.id;
     return h(
       'div',
@@ -31,20 +32,24 @@ export function customersView({ state, ctl }: ViewEnv): HTMLElement {
         h('span', {}, name),
         h('span', { class: 'mono muted' }, [c.nif, c.email].filter(Boolean).join(' · ')),
       ),
-      button(
-        COPY.customers.invoice,
-        () => void ctl.askClaude(COPY.ask.invoiceCustomer(name, c.id)),
-        {
-          small: true,
-          variant: 'primary',
-          icon: 'newInvoice',
-        },
-      ),
-      button(
-        COPY.customers.theirInvoices,
-        () => void ctl.navigate({ view: 'invoices', search: c.nif ?? name, filter: 'all' }),
-        { small: true, icon: 'search' },
-      ),
+      host.compact
+        ? null
+        : [
+            button(
+              COPY.customers.invoice,
+              () => void ctl.askClaude(COPY.ask.invoiceCustomer(name, c.id)),
+              {
+                small: true,
+                variant: 'primary',
+                icon: 'newInvoice',
+              },
+            ),
+            button(
+              COPY.customers.theirInvoices,
+              () => void ctl.navigate({ view: 'invoices', search: c.nif ?? name, filter: 'all' }),
+              { small: true, icon: 'search' },
+            ),
+          ],
     );
   });
   return h(
@@ -53,7 +58,7 @@ export function customersView({ state, ctl }: ViewEnv): HTMLElement {
     h(
       'div',
       { class: 'card' },
-      toolbar,
+      host.compact ? null : toolbar,
       rows.length
         ? h('div', { class: 'stack' }, rows)
         : h('p', { class: 'empty' }, COPY.customers.empty),

@@ -4,7 +4,7 @@ import logo from '../../../../assets/beel-app/logo.svg';
 import type { BeelAppView } from '../../contract.js';
 import { COPY } from '../copy.js';
 import { h, svg } from '../dom.js';
-import { isLive } from '../model.js';
+import { activeCompany, isLive } from '../model.js';
 import type { ViewEnv } from './env.js';
 import { button, notice } from './parts.js';
 
@@ -58,7 +58,9 @@ export function shell(env: ViewEnv, body: HTMLElement): HTMLElement {
         'div',
         { class: 'topbar-row' },
         h('span', { class: 'logo' }, svg(logo)),
-        companyPicker(env),
+        host.compact
+          ? h('span', { class: 'muted truncate' }, activeCompany(state)?.legal_name ?? '')
+          : companyPicker(env),
         environment
           ? h(
               'span',
@@ -67,23 +69,29 @@ export function shell(env: ViewEnv, body: HTMLElement): HTMLElement {
             )
           : null,
         h('span', { class: 'spacer' }),
-        host.canExpand ? button(COPY.app.expand, host.expand, { small: true }) : null,
+        host.canExpand ? button(COPY.app.open, host.expand, { small: true }) : null,
       ),
-      h(
-        'nav',
-        { class: 'tabs' },
-        TABS.map(([view, label]) =>
-          h(
-            'button',
-            {
-              class: 'tab',
-              attrs: { type: 'button', 'aria-current': current === view ? 'page' : undefined },
-              on: { click: () => void ctl.navigate({ view, search: '', filter: 'all' }) },
-            },
-            label,
+      // What is on screen stays while the next view loads; this line says so.
+      state.phase === 'loading'
+        ? h('div', { class: 'progress', attrs: { role: 'progressbar' } })
+        : null,
+      host.compact
+        ? null
+        : h(
+            'nav',
+            { class: 'tabs' },
+            TABS.map(([view, label]) =>
+              h(
+                'button',
+                {
+                  class: 'tab',
+                  attrs: { type: 'button', 'aria-current': current === view ? 'page' : undefined },
+                  on: { click: () => void ctl.navigate({ view, search: '', filter: 'all' }) },
+                },
+                label,
+              ),
+            ),
           ),
-        ),
-      ),
     ),
     state.superseded
       ? h('div', { class: 'notice warn superseded' }, h('p', {}, COPY.superseded))

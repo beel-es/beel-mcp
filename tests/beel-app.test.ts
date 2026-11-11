@@ -111,7 +111,8 @@ describe('BeeL. app resource', () => {
     const [content] = contents as Array<{ mimeType?: string; text?: string; _meta: AppMeta }>;
     expect(content!.mimeType).toBe(MCP_APP_MIME);
     expect(content!.text).toContain('http-equiv="Content-Security-Policy"');
-    expect(content!._meta.ui?.preferredDisplayMode).toBe('fullscreen');
+    // A card first: the user, not the server, takes it to the larger panel.
+    expect(content!._meta.ui?.preferredDisplayMode).toBeUndefined();
     expect(content!._meta.ui?.prefersBorder).toBe(false);
     expect(content!._meta.ui?.csp?.connectDomains.length).toBeGreaterThan(0);
     // The brand fonts load from the server's own origin, so it is a resource domain.

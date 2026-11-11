@@ -3,9 +3,9 @@
 import { COPY } from '../copy.js';
 import { h } from '../dom.js';
 import { money, quarterToDate } from '../format.js';
-import { activeCompany, isLive } from '../model.js';
+import { activeCompany, isLive, type Invoice } from '../model.js';
 import type { ViewEnv } from './env.js';
-import { button, eyebrow, ledger } from './parts.js';
+import { button, COMPACT_ROWS, eyebrow, ledger } from './parts.js';
 
 function companyStatus({ state, ctl }: ViewEnv): HTMLElement | null {
   const company = activeCompany(state);
@@ -60,8 +60,24 @@ function stat(label: string, value: string): HTMLElement {
 }
 
 export function homeView(env: ViewEnv, now: Date): HTMLElement {
-  const { state, ctl } = env;
+  const { state, ctl, host } = env;
   const s = state.summary;
+  const open = (i: Invoice) => void ctl.navigate({ view: 'invoice', invoice_id: i.id }, i);
+  if (host.compact) {
+    // The card in the conversation: the quarter at a glance and the last three.
+    return h(
+      'main',
+      {},
+      h(
+        'div',
+        { class: 'card stats stats-3' },
+        stat(COPY.home.taxableBase, money(s?.total_taxable_base)),
+        stat(COPY.home.vat, money(s?.total_vat)),
+        stat(COPY.home.count, s?.total_invoices !== undefined ? String(s.total_invoices) : '—'),
+      ),
+      ledger(state.recent.slice(0, COMPACT_ROWS), open),
+    );
+  }
   return h(
     'main',
     {},
@@ -89,6 +105,6 @@ export function homeView(env: ViewEnv, now: Date): HTMLElement {
       ),
     ),
     eyebrow(COPY.home.recent),
-    ledger(state.recent, (i) => void ctl.navigate({ view: 'invoice', invoice_id: i.id })),
+    ledger(state.recent, open),
   );
 }

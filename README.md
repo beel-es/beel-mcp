@@ -132,10 +132,11 @@ than a redirect; both point at the same npm package and the same hosted server.
   `setup-representation`, `invite-member`, `connect-payments` and `upgrade-integration`.
 - **Inline invoice PDF viewer** ([MCP Apps](https://modelcontextprotocol.io/seps/1865-mcp-apps-interactive-user-interfaces-for-mcp)):
   generating an invoice PDF opens it in a side panel in hosts that support it.
-- **The BeeL. app** (MCP Apps, full surface): `beel_open_app` opens the day-to-day
-  invoicing workflow in a panel beside the conversation (status and quarter figures,
-  invoices with their VeriFactu state, one invoice with issue, send, mark paid and PDF,
-  customers), and creating an invoice opens it on the new draft. It reads and writes
+- **The BeeL. app** (MCP Apps, full surface): `beel_open_app` shows the day-to-day
+  invoicing workflow as a compact card in the conversation, which opens into the full
+  panel (status and quarter figures, invoices with their VeriFactu state, one invoice
+  with issue, send, mark paid and PDF, customers); creating an invoice shows the new
+  draft. It reads and writes
   through the server's own tools, so every call keeps their validation, guardrails and
   scopes; issuing takes an explicit confirmation that names the environment. Claude can
   drive the open panel (`show_view`, `get_view_state`, `refresh_view`) and is told what

@@ -8,7 +8,14 @@ import type { BeelClient } from './client.js';
 import { contextSentence, viewState } from './context.js';
 import { COPY } from './copy.js';
 import { invoicesCsv, isoDate, quarterToDate } from './format.js';
-import { INVOICE_FILTERS, isLive, type ActionId, type AppState, type Feedback } from './model.js';
+import {
+  INVOICE_FILTERS,
+  isLive,
+  type ActionId,
+  type AppState,
+  type Feedback,
+  type Invoice,
+} from './model.js';
 import type { NavigationTarget } from './route.js';
 import type { Store } from './store.js';
 
@@ -75,11 +82,20 @@ export class Controller {
     this.requestedCompany = companyId;
   }
 
-  navigate(target: NavigationTarget): Promise<void> {
+  /**
+   * Go to a view. `preload` is the invoice when the caller already holds it (a
+   * row of the list, the result of creating it): it is shown at once and
+   * refreshed behind it, instead of waiting a round trip on a blank panel.
+   */
+  navigate(target: NavigationTarget, preload?: Invoice): Promise<void> {
     const s = this.store.get();
     const patch: Partial<AppState> = { confirmingIssue: false, feedback: undefined };
     if (target.view) patch.view = target.view;
-    if (target.invoice_id) patch.invoiceId = target.invoice_id;
+    if (target.invoice_id && target.invoice_id !== s.invoice?.id) {
+      patch.invoiceId = target.invoice_id;
+      // Never show one invoice under another's id while the right one loads.
+      patch.invoice = preload?.id === target.invoice_id ? preload : undefined;
+    }
     if (target.search !== undefined) patch.search = target.search;
     if (target.filter) patch.filter = target.filter;
     if (target.company_id) {
@@ -118,13 +134,30 @@ export class Controller {
     return this.setupLoaded;
   }
 
+  /**
+   * Load the current view. What is on screen stays there meanwhile (the views
+   * mark it as refreshing), so moving around never blanks the panel.
+   */
   private async load(): Promise<void> {
     const seq = ++this.loadSeq;
-    this.store.set({ phase: 'loading' });
+    // The first load waits for the account only when it has to: a company the
+    // tool call already named lets the view and the account load side by side.
+    if (!this.store.get().companyId && this.requestedCompany) {
+      this.store.set({ companyId: this.requestedCompany });
+    }
+    this.store.set({ phase: this.store.get().phase === 'connecting' ? 'connecting' : 'loading' });
     let patch: Partial<AppState>;
     try {
-      await this.ensureSetup();
-      patch = await this.fetchView(this.store.get());
+      const companyId = this.store.get().companyId;
+      if (companyId) {
+        const [, view] = await Promise.all([this.ensureSetup(), this.fetchView(this.store.get())]);
+        // The account may have settled on another company than the one assumed.
+        patch =
+          this.store.get().companyId === companyId ? view : await this.fetchView(this.store.get());
+      } else {
+        await this.ensureSetup();
+        patch = await this.fetchView(this.store.get());
+      }
     } catch (err) {
       patch = { feedback: failureFeedback(COPY.failed.load, err) };
     }

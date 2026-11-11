@@ -6,6 +6,11 @@ export interface ViewEnv {
   state: AppState;
   ctl: Controller;
   host: {
+    /**
+     * Shown in the conversation with a larger mode available: the panel is a
+     * compact card (the essentials and one way in), not the whole workspace.
+     */
+    compact: boolean;
     /** Inline, with a side panel available to move to. */
     canExpand: boolean;
     expand(): void;
