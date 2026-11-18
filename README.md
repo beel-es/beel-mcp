@@ -55,6 +55,10 @@ Add **`https://mcp.beel.es/mcp`** as a connector in Claude, ChatGPT, Cursor or V
 log in with your BeeL account. Nothing to install and no API key to handle: the server acts
 with your own credentials, and the OAuth flow is discovered from the URL.
 
+In Claude, [**Add to Claude**](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=BeeL.&connectorUrl=https%3A%2F%2Fmcp.beel.es%2Fmcp)
+opens the connector dialog already filled in. Step-by-step instructions for every client
+are at [mcp.beel.es](https://mcp.beel.es/#claude).
+
 ```bash
 # Claude Code
 claude mcp add --transport http beel https://mcp.beel.es/mcp

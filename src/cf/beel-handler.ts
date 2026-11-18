@@ -41,6 +41,7 @@ import { surfaceForClient } from '../policy/surface.js';
 import { BRAND_FONT_PATH, PDF_PROXY_PATH } from '../mcpapp/contract.js';
 import { pdfProxyHandler } from './pdf-proxy.js';
 import { brandFontHandler } from './brand-fonts.js';
+import { connectPageHandler } from './connect-page.js';
 
 /**
  * Unprotected routes of the Worker: the /authorize + /callback pair that bridges
@@ -149,6 +150,9 @@ app.get(PDF_PROXY_PATH, pdfProxyHandler);
 
 // The BeeL. app's brand fonts, public and cacheable.
 app.get(`${BRAND_FONT_PATH}/:file`, brandFontHandler);
+
+// How to connect a client, linked from the docs as mcp.beel.es/#claude.
+app.get(WORKER_PATH.connect, connectPageHandler);
 
 /**
  * Build the upstream authorization URL for a pending request.
