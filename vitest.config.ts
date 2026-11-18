@@ -2,17 +2,20 @@ import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vitest/config';
 
 /**
- * Guardrail prose is imported as a text module (`import body from './x.md'`),
- * which tsup and wrangler each provide through their own loader. Vite has no
- * equivalent built in, so tests get the same contract from this plugin —
+ * Guardrail prose and the logo are imported as text modules (`import body from
+ * './x.md'`), which tsup and wrangler each provide through their own loader. Vite
+ * has no equivalent built in, so tests get the same contract from this plugin —
  * otherwise they would exercise a different module shape than production.
  */
+const TEXT_MODULE_EXTENSIONS = ['.md', '.svg'];
+
 function textModules(): Plugin {
   return {
     name: 'beel-text-modules',
     transform(_code, id) {
-      if (!id.endsWith('.md')) return null;
-      const text = readFileSync(id.split('?')[0]!, 'utf8');
+      const path = id.split('?')[0]!;
+      if (!TEXT_MODULE_EXTENSIONS.some((ext) => path.endsWith(ext))) return null;
+      const text = readFileSync(path, 'utf8');
       return { code: `export default ${JSON.stringify(text)};`, map: null };
     },
   };

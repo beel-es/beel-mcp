@@ -38,8 +38,18 @@ describe('connect page', () => {
   it('gives every client its own anchor, #claude included', async () => {
     const { html } = await page('https://mcp.beel.es');
     for (const id of ['claude', 'claude-code', 'chatgpt', 'codex', 'cursor', 'vscode', 'other']) {
-      expect(html, id).toContain(`<section id="${id}"`);
+      expect(html, id).toMatch(new RegExp(`<section class="client" id="${id}"`));
       expect(html, id).toContain(`href="#${id}"`);
+    }
+  });
+
+  it('carries the BeeL. logo, and every copy button points at an element that exists once', async () => {
+    const { html } = await page('https://mcp.beel.es');
+    expect(html).toContain('aria-label="BeeL."');
+    const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const [, target] of html.matchAll(/data-copy="([^"]+)"/g)) {
+      expect(ids, target).toContain(target);
     }
   });
 });
