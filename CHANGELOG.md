@@ -3,6 +3,26 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.12.0](https://github.com/beel-es/beel-mcp/compare/v0.11.0...v0.12.0) (2026-11-18)
+
+
+### Novedades
+
+* **cf:** a connect page at the server root with an Add to Claude link ([#166](https://github.com/beel-es/beel-mcp/issues/166)) ([7b16dd6](https://github.com/beel-es/beel-mcp/commit/7b16dd651c895e15de4b3cfb7c9b1f49217466e7))
+* **cf:** BeeL. branding on the connect page ([#168](https://github.com/beel-es/beel-mcp/issues/168)) ([05190c2](https://github.com/beel-es/beel-mcp/commit/05190c21b1ef86d702f0b80382e7dc8e971f7952))
+* **mcpapp:** the BeeL. app, invoicing in a panel beside the conversation ([#158](https://github.com/beel-es/beel-mcp/issues/158)) ([1e19c47](https://github.com/beel-es/beel-mcp/commit/1e19c471b94ffea82d7bb02714dc3bdb004e7e70))
+
+
+### Correcciones
+
+* **mcpapp:** BeeL. app as a card, faster views, and optional JSON bodies sent as {} ([#161](https://github.com/beel-es/beel-mcp/issues/161)) ([a6556d6](https://github.com/beel-es/beel-mcp/commit/a6556d6ec9bfb0a8a701ecd450d5eb4a40fbb132))
+* **mcpapp:** drop the newest-panel-wins rule, which reached across conversations ([#162](https://github.com/beel-es/beel-mcp/issues/162)) ([21c99df](https://github.com/beel-es/beel-mcp/commit/21c99dfea17d94f66961ba07d067ddf9e0cfae5f))
+
+
+### Documentación
+
+* **deploy:** the server root now serves the connect page ([#167](https://github.com/beel-es/beel-mcp/issues/167)) ([64d93d5](https://github.com/beel-es/beel-mcp/commit/64d93d52ae5e5552ea434ffb2d0fb8ebeec1d442))
+
 ## [0.11.0](https://github.com/beel-es/beel-mcp/compare/v0.10.0...v0.11.0) (2026-11-07)
 
 
