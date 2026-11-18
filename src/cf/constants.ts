@@ -19,6 +19,8 @@ export const WORKER_PATH = {
   /** Where the upstream authorization server sends the user back. */
   callback: '/callback',
   health: '/healthz',
+  /** How to connect each MCP client, with an "Add to Claude" deep link. */
+  connect: '/',
   /** Domain-ownership challenge of OpenAI's plugin submission portal. */
   openaiAppsChallenge: '/.well-known/openai-apps-challenge',
 } as const;
