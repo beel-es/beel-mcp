@@ -124,8 +124,8 @@ npx wrangler deploy --dry-run --outdir /tmp/worker-build   # bundles, no credent
 npx wrangler deploy                                        # uses your wrangler login
 ```
 
-Then point an MCP client at `https://<your-host>/mcp` and log in — that is the endpoint,
-not the root, which serves nothing. `GET /healthz` answers without auth and is what a
+Then point an MCP client at `https://<your-host>/mcp` and log in — that is the endpoint.
+The root serves a page with the steps for each client and an "Add to Claude" link. `GET /healthz` answers without auth and is what a
 health check should target.
 
 ## How a connection is established
