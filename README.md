@@ -112,7 +112,7 @@ than a redirect; both point at the same npm package and the same hosted server.
 
 ## What it provides
 
-- **145 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
+- **168 API tools** derived from `openapi/public-api.yaml` — invoices, customers,
   products, recurring invoices, series and tax configuration, NIF validation, companies.
 - **7 synthetic tools** the API has no single endpoint for: `beel_docs_search`,
   `beel_docs_get`, `beel_docs_list` over the documentation (the docs site's search
