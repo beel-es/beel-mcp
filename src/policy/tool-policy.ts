@@ -47,7 +47,8 @@ export interface PolicyOptions {
   includedOperationIds?: Set<string>;
 }
 
-export const DEFAULT_EXCLUDED_TAGS = new Set(['Webhooks']);
+// Automations: production has no automations service yet, so those tools could only answer an error.
+export const DEFAULT_EXCLUDED_TAGS = new Set(['Webhooks', 'Automations']);
 
 /** Reserved: JSON operations that are technically callable but not agent-appropriate. */
 export const DEFAULT_EXCLUDED_OPERATION_IDS = new Set<string>();
