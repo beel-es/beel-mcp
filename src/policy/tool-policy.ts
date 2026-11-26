@@ -23,7 +23,8 @@ import type { OperationSpec } from '../spec/manifest.js';
  * per-operation overrides exist as an escape hatch but should stay near-empty.
  */
 
-import { API_KEY_SECURITY_SCHEME } from '../shared/defaults.js';
+import { API_KEY_SECURITY_SCHEME, ENV_VAR } from '../shared/defaults.js';
+import { ambientEnv, readEnv, type EnvRecord } from '../shared/env.js';
 
 /**
  * Why an operation is not a tool. A tag exclusion names the tag it matched:
@@ -65,6 +66,23 @@ export const TEXT_UPLOAD_OPERATION_IDS = new Set([
   'createCompanyCustomerImport',
 ]);
 
+/**
+ * The sheet operations of `Automations`, the one part of that tag a deployment
+ * may expose before the rest exists. Off unless `ENV_VAR.sheetTools` is '1'.
+ */
+export const SHEET_OPERATION_IDS = new Set([
+  'listSheets',
+  'putSheet',
+  'listSheetRows',
+  'loadSheet',
+  'listSheetLoads',
+]);
+
+/** The only place that reads `ENV_VAR.sheetTools`. */
+export function sheetToolsEnabled(env: EnvRecord = ambientEnv()): boolean {
+  return readEnv(env, ENV_VAR.sheetTools) === '1';
+}
+
 export interface PolicyResult {
   tools: OperationSpec[];
   excluded: Array<{ op: OperationSpec; reason: ExclusionReason }>;
@@ -93,7 +111,8 @@ export function applyToolPolicy(
   const opts: Required<PolicyOptions> = {
     excludedTags: options.excludedTags ?? DEFAULT_EXCLUDED_TAGS,
     excludedOperationIds: options.excludedOperationIds ?? DEFAULT_EXCLUDED_OPERATION_IDS,
-    includedOperationIds: options.includedOperationIds ?? new Set(),
+    includedOperationIds:
+      options.includedOperationIds ?? (sheetToolsEnabled() ? SHEET_OPERATION_IDS : new Set()),
   };
 
   const tools: OperationSpec[] = [];

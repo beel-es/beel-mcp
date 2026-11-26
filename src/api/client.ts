@@ -47,6 +47,8 @@ export interface ApiRequestOptions {
    * value becomes a CSV file, each JSON part a JSON document, the rest plain fields.
    */
   multipart?: readonly MultipartPart[];
+  /** When set, `body` is a string sent as-is with this Content-Type instead of JSON. */
+  textContentType?: string;
 }
 
 export interface ApiResult {
@@ -195,7 +197,7 @@ async function buildHeaders(
     [HttpHeader.Authorization]: bearerAuthHeader(config.apiKey),
     [HttpHeader.Accept]: ContentType.Json,
   };
-  if (hasBody) headers[HttpHeader.ContentType] = ContentType.Json;
+  if (hasBody) headers[HttpHeader.ContentType] = opts.textContentType ?? ContentType.Json;
   // Stable per logical operation, not per HTTP call: an agent that retries
   // "create invoice" must reuse the key or the backend mints a second fiscal
   // document. The caller may pass an explicit key when a repeat is intentional.
@@ -272,7 +274,13 @@ export async function apiRequest(
   const init: RequestInit = {
     method,
     headers,
-    body: multipart ?? (hasBody ? JSON.stringify(opts.body) : undefined),
+    body:
+      multipart ??
+      (hasBody
+        ? opts.textContentType
+          ? String(opts.body)
+          : JSON.stringify(opts.body)
+        : undefined),
   };
 
   const send = async (): Promise<Response> => {

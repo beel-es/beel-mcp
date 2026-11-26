@@ -26,7 +26,8 @@ import type { ApiTool } from '../tools/api-tools.js';
  *  - prompts for the flows above; only the invoicing ones stay;
  *  - identity documents other than the NIF (passports, foreign IDs), company
  *    set-up and activation (done in the BeeL app) and bulk operations that
- *    hide several operations behind one tool.
+ *    hide several operations behind one tool;
+ *  - automations, the sheet tools included: bulk data loads, not invoicing.
  */
 export type ToolSurface = 'full' | 'chatgpt';
 
@@ -35,6 +36,7 @@ export const CHATGPT_EXCLUDED_TAGS = new Set([
   'AccountRequestLogs',
   'Accounts',
   'AccountWebhooks',
+  'Automations',
   'CompanyPaymentConnections',
   'CompanyPaymentEvents',
   'CompanyRepresentation',

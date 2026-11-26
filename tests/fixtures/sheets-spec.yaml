@@ -1,0 +1,184 @@
+# Minimal contract with the sheet operations in their account-scoped form, for
+# the tests that exercise them before the vendored contract carries that form.
+openapi: 3.1.0
+info:
+  title: Sheets fixture
+  version: '0'
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    AccountIdPathParam:
+      name: account_id
+      in: path
+      required: true
+      schema:
+        type: string
+    SheetNamePathParam:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    AutomationLoadSheetMode:
+      type: string
+      enum:
+        - replace
+        - upsert
+    AutomationSheetLoadBody:
+      type: array
+      items:
+        type: object
+        additionalProperties: {}
+      description: One object per row, keyed by column name.
+    AutomationSheetDefinition:
+      type: object
+      properties:
+        key:
+          type: array
+          items:
+            type: string
+paths:
+  /v1/accounts/{account_id}/automations/flows:
+    parameters:
+      - $ref: '#/components/parameters/AccountIdPathParam'
+    get:
+      operationId: listFlows
+      tags:
+        - Automations
+      summary: List flows
+      x-required-scopes:
+        - automations:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/accounts/{account_id}/automations/sheets:
+    parameters:
+      - $ref: '#/components/parameters/AccountIdPathParam'
+    get:
+      operationId: listSheets
+      tags:
+        - Automations
+      summary: List sheets
+      x-required-scopes:
+        - automations:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/accounts/{account_id}/automations/sheets/{name}:
+    parameters:
+      - $ref: '#/components/parameters/AccountIdPathParam'
+      - $ref: '#/components/parameters/SheetNamePathParam'
+    put:
+      operationId: putSheet
+      tags:
+        - Automations
+      summary: Create or update a sheet
+      x-required-scopes:
+        - automations:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSheetDefinition'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/accounts/{account_id}/automations/sheets/{name}/rows:
+    parameters:
+      - $ref: '#/components/parameters/AccountIdPathParam'
+      - $ref: '#/components/parameters/SheetNamePathParam'
+    get:
+      operationId: listSheetRows
+      tags:
+        - Automations
+      summary: List sheet rows
+      x-required-scopes:
+        - automations:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/accounts/{account_id}/automations/sheets/{name}/loads:
+    parameters:
+      - $ref: '#/components/parameters/AccountIdPathParam'
+      - $ref: '#/components/parameters/SheetNamePathParam'
+    get:
+      operationId: listSheetLoads
+      tags:
+        - Automations
+      summary: List the loads of a sheet
+      x-required-scopes:
+        - automations:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      operationId: loadSheet
+      tags:
+        - Automations
+      summary: Load rows into a sheet
+      description: JSON (an array of objects) or CSV with a header row (`text/csv`).
+      x-required-scopes:
+        - automations:write
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AutomationLoadSheetMode'
+        - name: dry_run
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+            description: Validate and count without storing anything.
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSheetLoadBody'
+          text/csv:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

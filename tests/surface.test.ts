@@ -8,6 +8,7 @@ import { rulesTools } from '../src/tools/rules-tools.js';
 import { schemaTools } from '../src/tools/schema-tools.js';
 import { workflowTools } from '../src/tools/workflow-tools.js';
 import { buildApiTools } from '../src/tools/api-tools.js';
+import { tags as specTags } from '../src/spec/tags.js';
 import {
   apiToolsFor,
   CHATGPT_EXCLUDED_TAGS,
@@ -52,8 +53,9 @@ describe('chatgpt surface', () => {
   });
 
   it('names only tags and operations that exist', () => {
-    const tags = new Set(apiTools.flatMap((t) => t.operation.tags));
-    expect([...CHATGPT_EXCLUDED_TAGS].filter((t) => !tags.has(t))).toEqual([]);
+    // Against the contract, not the exposed tools: a switched-off family (the
+    // sheet tools) still has to be kept off this surface once it is on.
+    expect([...CHATGPT_EXCLUDED_TAGS].filter((t) => !specTags().has(t))).toEqual([]);
     const names = new Set(prompts.map((p) => p.name));
     expect([...CHATGPT_PROMPTS].filter((p) => !names.has(p))).toEqual([]);
   });

@@ -246,6 +246,7 @@ of silently switching a fiscal check off.
 | `BEEL_DOCS_URL` | Documentation source for the docs and rules tools. Default `https://docs.beel.es`. |
 | `BEEL_REQUEST_TIMEOUT_MS` | Hard ceiling on a single API call. Default `30000`. |
 | `BEEL_DISABLE_PREFLIGHT` | Set to `1` to skip the enforced guardrails. |
+| `BEEL_SHEET_TOOLS` | Set to `1` to expose the sheet tools of automations (list, define, read and load sheets) and request the `automations:*` scopes. Off by default. |
 
 Every default lives in `src/shared/defaults.ts`; nothing is hardcoded twice. Remote
 deployment variables are documented in [DEPLOY.md](./DEPLOY.md).

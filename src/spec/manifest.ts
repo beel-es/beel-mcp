@@ -47,6 +47,8 @@ export interface RequestBodySpec {
   schema?: SpecNode;
   /** Multipart only: how each property of `schema` travels. */
   parts?: MultipartPart[];
+  /** A JSON body the contract also accepts as CSV text: `text/csv`. */
+  textAlternative?: 'text/csv';
 }
 
 export interface OperationSpec {
@@ -145,6 +147,9 @@ function buildRequestBody(doc: SpecNode, operation: SpecNode): RequestBodySpec |
     schema,
     ...(contentType.includes('multipart')
       ? { parts: multipartParts(doc, resolveRef(doc, schema) ?? schema, media) }
+      : {}),
+    ...(contentType.includes('json') && 'text/csv' in content
+      ? { textAlternative: 'text/csv' as const }
       : {}),
   };
 }

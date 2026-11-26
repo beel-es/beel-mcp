@@ -258,7 +258,17 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
     properties[p.name] = withDescription(projector.project(p.schema), p.description);
     if (p.required) required.push(p.name);
   }
-  if (op.requestBody && op.requestBody.contentType.includes('json')) {
+  if (op.requestBody?.textAlternative) {
+    // Neither is required: exactly one of the two is checked when the tool runs.
+    properties.rows = withDescription(
+      projector.project(op.requestBody.schema),
+      'The rows as JSON. Send `rows` or `csv`, not both.',
+    );
+    properties.csv = {
+      type: 'string',
+      description: 'The rows as CSV text, header row first. Send `rows` or `csv`, not both.',
+    };
+  } else if (op.requestBody && op.requestBody.contentType.includes('json')) {
     properties.body = withDescription(projector.project(op.requestBody.schema));
     if (op.requestBody.required) required.push('body');
   } else if (op.requestBody?.parts) {
