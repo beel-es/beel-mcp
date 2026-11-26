@@ -15,6 +15,7 @@ import { executeApiTool } from '../src/tools/api-tools.js';
 import { ArgumentError } from '../src/tools/validate-args.js';
 import { describeTool } from '../src/guardrails/enrich.js';
 import { SERVER_INSTRUCTIONS } from '../src/server.js';
+import { apiToolsFor } from '../src/policy/surface.js';
 
 /**
  * The sheet tools, against a fixture contract that already carries them in their
@@ -134,5 +135,17 @@ describe('the sheet load description', () => {
 
   it('lives with the tool, not in the server instructions', () => {
     expect(SERVER_INSTRUCTIONS).not.toMatch(/dry_run|deleted_keys/);
+  });
+});
+
+describe('the sheet tools on the ChatGPT surface', () => {
+  it('stay out: loading data sheets is not the invoicing function that surface is reviewed for', () => {
+    vi.stubEnv(ENV_VAR.sheetTools, '1');
+    const tools = applyToolPolicy(manifest).tools.map((operation) => ({
+      operation,
+      tool: { name: operation.operationId, inputSchema: { type: 'object' as const } },
+    }));
+    expect(tools.length).toBe(SHEET_IDS.length);
+    expect(apiToolsFor(tools, 'chatgpt')).toEqual([]);
   });
 });
