@@ -3,12 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { SpecNode } from '../src/spec/load.js';
 import { buildManifest } from '../src/spec/manifest.js';
-import {
-  applyToolPolicy,
-  CSV_BODY_OPERATION_IDS,
-  SHEET_OPERATION_IDS,
-} from '../src/policy/tool-policy.js';
-import { fallbackAllowlist, requiredScopes } from '../src/policy/scopes.js';
+import { applyToolPolicy, SHEET_OPERATION_IDS } from '../src/policy/tool-policy.js';
+import { fallbackScopesFor, requiredScopes } from '../src/policy/scopes.js';
 import { ENV_VAR } from '../src/shared/defaults.js';
 import { buildInputSchema } from '../src/spec/json-schema.js';
 import { executeApiTool } from '../src/tools/api-tools.js';
@@ -39,7 +35,7 @@ describe('sheet tools switched off (the default)', () => {
 
   it('ask for no automations scope, not even in the fallback', () => {
     expect(requiredScopes(manifest)).toEqual([]);
-    for (const s of AUTOMATION_SCOPES) expect(fallbackAllowlist().has(s)).toBe(false);
+    expect(fallbackScopesFor(manifest)).toEqual([]);
   });
 });
 
@@ -48,13 +44,12 @@ describe('sheet tools switched on', () => {
     vi.stubEnv(ENV_VAR.sheetTools, '1');
     expect(toolIds().sort()).toEqual([...SHEET_IDS].sort());
     expect([...SHEET_OPERATION_IDS].sort()).toEqual([...SHEET_IDS].sort());
-    for (const id of CSV_BODY_OPERATION_IDS) expect(SHEET_IDS).toContain(id);
   });
 
   it('ask for automations:read and automations:write, and let the fallback request them', () => {
     vi.stubEnv(ENV_VAR.sheetTools, '1');
     expect(requiredScopes(manifest)).toEqual(AUTOMATION_SCOPES);
-    for (const s of AUTOMATION_SCOPES) expect(fallbackAllowlist().has(s)).toBe(true);
+    expect(fallbackScopesFor(manifest)).toEqual(AUTOMATION_SCOPES);
   });
 
   it('stays off for any other value', () => {
@@ -85,6 +80,12 @@ describe('loading a sheet', () => {
   }
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it('reads from the contract that the body may also be CSV text', () => {
+    expect(load.requestBody?.textAlternative).toBe('text/csv');
+    const put = manifest.find((op) => op.operationId === 'putSheet')!;
+    expect(put.requestBody?.textAlternative).toBeUndefined();
+  });
 
   it('takes the rows as JSON or as CSV text, with the dry run and mode as arguments', () => {
     const schema = buildInputSchema(load, doc) as { properties: Record<string, { type?: string }> };

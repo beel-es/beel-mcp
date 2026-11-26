@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   fallbackAllowlist,
+  SHEET_FALLBACK_SCOPES,
   fallbackGrantableScopes,
   intersectScopes,
   keyEnvFromScopes,
@@ -87,6 +88,12 @@ describe('the scope sets nest, from the contract outwards', () => {
     // fallback. That is safe, but it is also a line nobody will ever delete.
     const needed = new Set(requiredScopes(manifest));
     expect([...fallbackAllowlist()].filter((s) => !needed.has(s))).toEqual([]);
+  });
+
+  it('the sheet scopes the fallback accepts exist in the contract', () => {
+    // They are not in requiredScopes while the sheet switch is off, so the
+    // check above cannot see one that was renamed upstream.
+    expect([...SHEET_FALLBACK_SCOPES].filter((s) => !specScopes().has(s))).toEqual([]);
   });
 
   it('the fallback is not empty, so a discovery failure still connects', () => {

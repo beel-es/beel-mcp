@@ -5,12 +5,7 @@ import { loadSpec } from '../spec/load.js';
 import { buildManifest, type OperationSpec } from '../spec/manifest.js';
 import { buildInputSchema } from '../spec/json-schema.js';
 import { toolName } from '../spec/derive.js';
-import {
-  applyToolPolicy,
-  CSV_BODY_OPERATION_IDS,
-  type PolicyResult,
-} from '../policy/tool-policy.js';
-import { ContentType } from '../shared/http.js';
+import { applyToolPolicy, type PolicyResult } from '../policy/tool-policy.js';
 import { annotationsFor } from '../policy/annotations.js';
 import { describeTool } from '../guardrails/enrich.js';
 import { APP_BINDINGS } from '../mcpapp/binding.js';
@@ -108,7 +103,7 @@ export function collectQuery(
   return query;
 }
 
-/** The body of a `CSV_BODY_OPERATION_IDS` tool: exactly one of `rows` or `csv`. */
+/** The body of an operation with a `textAlternative`: exactly one of `rows` or `csv`. */
 function rowsOrCsv(op: OperationSpec, args: Record<string, unknown>): unknown {
   if ((args.rows === undefined) === (args.csv === undefined)) {
     throw new ArgumentError(op.operationId, [
@@ -133,8 +128,8 @@ export async function executeApiTool(
   // reads the request's media type before the body, and answers a body-less
   // POST to a JSON endpoint with 415 even when every field is optional.
   const emptyBody = op.requestBody?.contentType.includes('json') ? {} : undefined;
-  const csvBody = CSV_BODY_OPERATION_IDS.has(op.operationId);
-  const body = csvBody
+  const textAlternative = op.requestBody?.textAlternative;
+  const body = textAlternative
     ? rowsOrCsv(op, args)
     : op.requestBody
       ? (args.body ?? emptyBody)
@@ -159,7 +154,7 @@ export async function executeApiTool(
     idempotencyKey,
     declaredHeaders: op.headerParams.map((p) => p.name),
     multipart: op.requestBody?.parts,
-    textContentType: csvBody && args.csv !== undefined ? ContentType.Csv : undefined,
+    textContentType: textAlternative && args.csv !== undefined ? textAlternative : undefined,
   });
   return result.data;
 }

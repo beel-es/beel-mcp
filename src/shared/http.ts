@@ -21,7 +21,6 @@ export const AuthScheme = {
 export const ContentType = {
   Json: 'application/json',
   Form: 'application/x-www-form-urlencoded',
-  Csv: 'text/csv',
 } as const;
 
 /**

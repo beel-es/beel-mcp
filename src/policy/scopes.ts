@@ -1,7 +1,7 @@
 import type { OperationSpec } from '../spec/manifest.js';
 import type { KeyEnv } from '../config.js';
 import { specManifest } from '../spec/manifest.js';
-import { applyToolPolicy, sheetToolsEnabled } from './tool-policy.js';
+import { applyToolPolicy } from './tool-policy.js';
 
 /**
  * Everything about OAuth scopes lives here — which ones the tools need, which
@@ -50,8 +50,14 @@ const FALLBACK_ALLOWLIST: ReadonlySet<string> = new Set([
   'companies:write',
 ]);
 
-/** Registered only by backends that serve the sheets, which is why they follow the switch. */
-const SHEET_FALLBACK_SCOPES = ['automations:read', 'automations:write'];
+/**
+ * The sheet tools' scopes, also accepted by the fallback. They only reach it when
+ * the sheet switch puts those tools in `requiredScopes`.
+ */
+export const SHEET_FALLBACK_SCOPES: ReadonlySet<string> = new Set([
+  'automations:read',
+  'automations:write',
+]);
 
 let cachedFallback: readonly string[] | null = null;
 
@@ -63,15 +69,19 @@ let cachedFallback: readonly string[] | null = null;
  * import has been evaluated.
  */
 export function fallbackGrantableScopes(): readonly string[] {
-  const allowlist = fallbackAllowlist();
-  return (cachedFallback ??= requiredScopes(specManifest()).filter((s) => allowlist.has(s)));
+  return (cachedFallback ??= fallbackScopesFor(specManifest()));
+}
+
+/** What the tools of `operations` need, narrowed to the fallback's families. */
+export function fallbackScopesFor(operations: OperationSpec[]): string[] {
+  return requiredScopes(operations).filter(
+    (s) => FALLBACK_ALLOWLIST.has(s) || SHEET_FALLBACK_SCOPES.has(s),
+  );
 }
 
 /** The allowlist itself, so a test can catch an entry that no longer resolves. */
 export function fallbackAllowlist(): ReadonlySet<string> {
-  return sheetToolsEnabled()
-    ? new Set([...FALLBACK_ALLOWLIST, ...SHEET_FALLBACK_SCOPES])
-    : FALLBACK_ALLOWLIST;
+  return FALLBACK_ALLOWLIST;
 }
 
 /**
