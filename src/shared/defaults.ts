@@ -85,6 +85,8 @@ export const ENV_VAR = {
   requestTimeoutMs: 'BEEL_REQUEST_TIMEOUT_MS',
   /** Escape hatch: set to '1' to skip the executable guardrails (see guardrails/validate.ts). */
   disablePreflight: 'BEEL_DISABLE_PREFLIGHT',
+  /** Set to '1' to expose the sheet tools of Automations; read only in policy/tool-policy.ts. */
+  sheetTools: 'BEEL_SHEET_TOOLS',
   /** Error-reporting destination, in the Sentry DSN format. Absent: nothing is sent. */
   sentryDsn: 'SENTRY_DSN',
   /** Label the error reports are filed under. */
