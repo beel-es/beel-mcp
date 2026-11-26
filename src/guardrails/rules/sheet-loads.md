@@ -15,6 +15,5 @@ are the rows you mean to remove. `upsert` never removes rows.
 
 ## CSV or JSON
 
-Send the rows as `csv` (text, header row first) or as `rows` (a JSON array of
-objects), never both. CSV states each column name once instead of once per row, so the
-same load takes far fewer tokens.
+CSV states each column name once instead of once per row, so the same load takes far
+fewer tokens than JSON.

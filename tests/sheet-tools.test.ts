@@ -10,6 +10,7 @@ import { buildInputSchema } from '../src/spec/json-schema.js';
 import { executeApiTool } from '../src/tools/api-tools.js';
 import { ArgumentError } from '../src/tools/validate-args.js';
 import { describeTool } from '../src/guardrails/enrich.js';
+import { GUARDRAILS } from '../src/guardrails/rules.js';
 import { SERVER_INSTRUCTIONS } from '../src/server.js';
 import { apiToolsFor } from '../src/policy/surface.js';
 
@@ -132,6 +133,16 @@ describe('the sheet load description', () => {
     expect(description).toMatch(/`deleted_keys`/);
     expect(description).toMatch(/`replace`/);
     expect(description).toMatch(/CSV/);
+  });
+
+  it('says each thing once: rows-or-csv in the arguments, the token cost in the guide', () => {
+    const guide = GUARDRAILS.find((g) => g.id === 'sheet-loads')!;
+    expect(`${guide.summary}\n${guide.body}`).not.toMatch(/\bboth\b/);
+    const schema = buildInputSchema(load, doc) as {
+      properties: Record<string, { description?: string }>;
+    };
+    expect(schema.properties.csv!.description).not.toMatch(/token/i);
+    expect(schema.properties.rows!.description).not.toMatch(/token/i);
   });
 
   it('lives with the tool, not in the server instructions', () => {
