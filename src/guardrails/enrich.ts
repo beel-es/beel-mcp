@@ -49,6 +49,7 @@ export const BY_OPERATION_ID: Record<string, string[]> = {
   patchCompanySeries: ['numbering', 'series-and-numbering'],
   setCompanyDefaultSeries: ['numbering', 'series-and-numbering'],
   listCompanies: ['multi-nif'],
+  loadSheet: ['sheet-loads'],
 };
 
 export const BY_TAG: Record<string, string[]> = {

@@ -25,6 +25,7 @@ import invoiceStateMachine from './rules/invoice-state-machine.md';
 import multiNif from './rules/multi-nif.md';
 import nifValidation from './rules/nif-validation.md';
 import seriesAndNumbering from './rules/series-and-numbering.md';
+import sheetLoads from './rules/sheet-loads.md';
 import verifactuGates from './rules/verifactu-gates.md';
 
 export interface Guardrail {
@@ -52,6 +53,7 @@ const SOURCES: Record<string, string> = {
   'multi-nif': multiNif,
   'nif-validation': nifValidation,
   'series-and-numbering': seriesAndNumbering,
+  'sheet-loads': sheetLoads,
   'verifactu-gates': verifactuGates,
 };
 

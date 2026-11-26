@@ -3,12 +3,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { SpecNode } from '../src/spec/load.js';
 import { buildManifest } from '../src/spec/manifest.js';
-import { applyToolPolicy, SHEET_OPERATION_IDS } from '../src/policy/tool-policy.js';
+import {
+  applyToolPolicy,
+  CSV_BODY_OPERATION_IDS,
+  SHEET_OPERATION_IDS,
+} from '../src/policy/tool-policy.js';
 import { fallbackAllowlist, requiredScopes } from '../src/policy/scopes.js';
 import { ENV_VAR } from '../src/shared/defaults.js';
 import { buildInputSchema } from '../src/spec/json-schema.js';
 import { executeApiTool } from '../src/tools/api-tools.js';
 import { ArgumentError } from '../src/tools/validate-args.js';
+import { describeTool } from '../src/guardrails/enrich.js';
+import { SERVER_INSTRUCTIONS } from '../src/server.js';
 
 /**
  * The sheet tools, against a fixture contract that already carries them in their
@@ -41,6 +47,7 @@ describe('sheet tools switched on', () => {
     vi.stubEnv(ENV_VAR.sheetTools, '1');
     expect(toolIds().sort()).toEqual([...SHEET_IDS].sort());
     expect([...SHEET_OPERATION_IDS].sort()).toEqual([...SHEET_IDS].sort());
+    for (const id of CSV_BODY_OPERATION_IDS) expect(SHEET_IDS).toContain(id);
   });
 
   it('ask for automations:read and automations:write, and let the fallback request them', () => {
@@ -110,5 +117,22 @@ describe('loading a sheet', () => {
     );
     await expect(executeApiTool(config, load, base)).rejects.toThrow(ArgumentError);
     expect(sent).toEqual([]);
+  });
+});
+
+describe('the sheet load description', () => {
+  const load = manifest.find((op) => op.operationId === 'loadSheet')!;
+
+  it('says to rehearse with dry_run and check what a replace deletes, and that CSV is smaller', () => {
+    const description = describeTool(load);
+    expect(description).toMatch(/dry_run=true/);
+    expect(description).toMatch(/`deleted`/);
+    expect(description).toMatch(/`deleted_keys`/);
+    expect(description).toMatch(/`replace`/);
+    expect(description).toMatch(/CSV/);
+  });
+
+  it('lives with the tool, not in the server instructions', () => {
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/dry_run|deleted_keys/);
   });
 });
