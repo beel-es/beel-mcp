@@ -5,7 +5,12 @@ import { loadSpec } from '../spec/load.js';
 import { buildManifest, type OperationSpec } from '../spec/manifest.js';
 import { buildInputSchema } from '../spec/json-schema.js';
 import { toolName } from '../spec/derive.js';
-import { applyToolPolicy, type PolicyResult } from '../policy/tool-policy.js';
+import {
+  applyToolPolicy,
+  CSV_BODY_OPERATION_IDS,
+  type PolicyResult,
+} from '../policy/tool-policy.js';
+import { ContentType } from '../shared/http.js';
 import { annotationsFor } from '../policy/annotations.js';
 import { describeTool } from '../guardrails/enrich.js';
 import { APP_BINDINGS } from '../mcpapp/binding.js';
@@ -103,6 +108,16 @@ export function collectQuery(
   return query;
 }
 
+/** The body of a `CSV_BODY_OPERATION_IDS` tool: exactly one of `rows` or `csv`. */
+function rowsOrCsv(op: OperationSpec, args: Record<string, unknown>): unknown {
+  if ((args.rows === undefined) === (args.csv === undefined)) {
+    throw new ArgumentError(op.operationId, [
+      'send exactly one of `rows` or `csv`: `rows` as a JSON array of objects, `csv` as text with a header row',
+    ]);
+  }
+  return args.csv ?? args.rows;
+}
+
 /**
  * Execute an API tool: map MCP arguments onto path/query/body and call the API.
  * Returns the raw data payload (already unwrapped from the success envelope).
@@ -118,7 +133,12 @@ export async function executeApiTool(
   // reads the request's media type before the body, and answers a body-less
   // POST to a JSON endpoint with 415 even when every field is optional.
   const emptyBody = op.requestBody?.contentType.includes('json') ? {} : undefined;
-  const body = op.requestBody ? (args.body ?? emptyBody) : undefined;
+  const csvBody = CSV_BODY_OPERATION_IDS.has(op.operationId);
+  const body = csvBody
+    ? rowsOrCsv(op, args)
+    : op.requestBody
+      ? (args.body ?? emptyBody)
+      : undefined;
   // Travels as a header, never as body or query: it is not part of the hashed
   // material, so two otherwise identical calls with different keys stay two
   // distinct operations.
@@ -139,6 +159,7 @@ export async function executeApiTool(
     idempotencyKey,
     declaredHeaders: op.headerParams.map((p) => p.name),
     multipart: op.requestBody?.parts,
+    textContentType: csvBody && args.csv !== undefined ? ContentType.Csv : undefined,
   });
   return result.data;
 }

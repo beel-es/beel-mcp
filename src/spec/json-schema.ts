@@ -1,6 +1,7 @@
 import type { SpecNode } from './load.js';
 import type { OperationSpec } from './manifest.js';
 import { BEEL_HEADER } from '../shared/defaults.js';
+import { CSV_BODY_OPERATION_IDS } from '../policy/tool-policy.js';
 import { resolvePointer, resolveRef } from './refs.js';
 
 /** A minimal JSON Schema object — what MCP tools expose as `inputSchema`. */
@@ -258,7 +259,18 @@ export function buildInputSchema(op: OperationSpec, doc: SpecNode): JsonSchema {
     properties[p.name] = withDescription(projector.project(p.schema), p.description);
     if (p.required) required.push(p.name);
   }
-  if (op.requestBody && op.requestBody.contentType.includes('json')) {
+  if (op.requestBody && CSV_BODY_OPERATION_IDS.has(op.operationId)) {
+    // Neither is required: exactly one of the two is checked when the tool runs.
+    properties.rows = withDescription(
+      projector.project(op.requestBody.schema),
+      'The rows as JSON. Send `rows` or `csv`, not both.',
+    );
+    properties.csv = {
+      type: 'string',
+      description:
+        'The rows as CSV text, header row first; fewer tokens than `rows`. Send `rows` or `csv`, not both.',
+    };
+  } else if (op.requestBody && op.requestBody.contentType.includes('json')) {
     properties.body = withDescription(projector.project(op.requestBody.schema));
     if (op.requestBody.required) required.push('body');
   } else if (op.requestBody?.parts) {

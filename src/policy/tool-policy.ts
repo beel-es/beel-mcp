@@ -83,6 +83,12 @@ export function sheetToolsEnabled(env: EnvRecord = ambientEnv()): boolean {
   return readEnv(env, ENV_VAR.sheetTools) === '1';
 }
 
+/**
+ * JSON operations that also take their body as CSV text. The tool offers `rows`
+ * (the JSON body) or `csv` (the text, sent as-is with `text/csv`), never both.
+ */
+export const CSV_BODY_OPERATION_IDS = new Set(['loadSheet']);
+
 export interface PolicyResult {
   tools: OperationSpec[];
   excluded: Array<{ op: OperationSpec; reason: ExclusionReason }>;
