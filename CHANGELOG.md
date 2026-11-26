@@ -3,6 +3,38 @@
 Las entradas las genera [release-please](https://github.com/googleapis/release-please)
 a partir de los Conventional Commits fusionados en `master`.
 
+## [0.12.0](https://github.com/beel-es/beel-mcp/compare/v0.11.0...v0.12.0) (2026-11-26)
+
+
+### Novedades
+
+* **cf:** a connect page at the server root with an Add to Claude link ([#166](https://github.com/beel-es/beel-mcp/issues/166)) ([7b16dd6](https://github.com/beel-es/beel-mcp/commit/7b16dd651c895e15de4b3cfb7c9b1f49217466e7))
+* **cf:** BeeL. branding on the connect page ([#168](https://github.com/beel-es/beel-mcp/issues/168)) ([05190c2](https://github.com/beel-es/beel-mcp/commit/05190c21b1ef86d702f0b80382e7dc8e971f7952))
+* **guardrails:** a sheet-loads guide on the sheet load tool ([1e9fd0f](https://github.com/beel-es/beel-mcp/commit/1e9fd0fdf32fce97d9d3068ca628ba8cb0429534))
+* **mcpapp:** the BeeL. app, invoicing in a panel beside the conversation ([#158](https://github.com/beel-es/beel-mcp/issues/158)) ([1e19c47](https://github.com/beel-es/beel-mcp/commit/1e19c471b94ffea82d7bb02714dc3bdb004e7e70))
+* **policy:** expose the sheet tools behind a switch, off by default ([6628d78](https://github.com/beel-es/beel-mcp/commit/6628d78aa6a384fc827193f464db87aafb59cba0))
+* **policy:** keep automations off the ChatGPT surface ([eb63080](https://github.com/beel-es/beel-mcp/commit/eb630805e3ebaeaa011bd246a53318a1b31198bf))
+* sheet tools behind a switch, with CSV bodies read from the contract ([9fee1d2](https://github.com/beel-es/beel-mcp/commit/9fee1d2b79c224a7da534991cc45d889afc15570))
+* **tools:** load a sheet from JSON rows or CSV text ([7ddec7c](https://github.com/beel-es/beel-mcp/commit/7ddec7cf18d201420fc72b4b72b7fddc51690771))
+
+
+### Correcciones
+
+* **guardrails:** say rows-or-csv and the CSV token cost once each ([73b336d](https://github.com/beel-es/beel-mcp/commit/73b336d3963ec5d5164c5c0b1b1556a132761cbe))
+* **mcpapp:** BeeL. app as a card, faster views, and optional JSON bodies sent as {} ([#161](https://github.com/beel-es/beel-mcp/issues/161)) ([a6556d6](https://github.com/beel-es/beel-mcp/commit/a6556d6ec9bfb0a8a701ecd450d5eb4a40fbb132))
+* **mcpapp:** drop the newest-panel-wins rule, which reached across conversations ([#162](https://github.com/beel-es/beel-mcp/issues/162)) ([21c99df](https://github.com/beel-es/beel-mcp/commit/21c99dfea17d94f66961ba07d067ddf9e0cfae5f))
+
+
+### Cambios internos
+
+* **spec:** read the CSV body alternative from the contract ([e5be607](https://github.com/beel-es/beel-mcp/commit/e5be6071d6a8b74e99d986a19b8e62e348d522bb))
+
+
+### Documentación
+
+* **deploy:** the server root now serves the connect page ([#167](https://github.com/beel-es/beel-mcp/issues/167)) ([64d93d5](https://github.com/beel-es/beel-mcp/commit/64d93d52ae5e5552ea434ffb2d0fb8ebeec1d442))
+* the sheet tools switch in README and DEPLOY ([bd985bc](https://github.com/beel-es/beel-mcp/commit/bd985bc1851f5933be297b31105bb1f49fcd3afd))
+
 ## [0.11.0](https://github.com/beel-es/beel-mcp/compare/v0.10.0...v0.11.0) (2026-11-07)
 
 
